@@ -259,7 +259,7 @@ function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=moch
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
 function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
-function newPokemon(extra={}){ return Object.assign({tipo:'P',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
+function newPokemon(extra={}){ return Object.assign({tipo:'P',genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
   if(!S.canWrite) return;
@@ -376,7 +376,7 @@ function renderSheet(){
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
   h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${isP?'':`<div class="pdest">P. Destino<b>${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="3" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
     <div class="kind">${kind}${S.ro?' · solo lectura':''}</div><div class="headline">
-    <span class="namewrap">${isP?'':(g=>`<button class="gender ${g==='F'?'f':'m'}" data-act="gen" title="${g==='F'?'Femenino':'Masculino'}" aria-label="Género: ${g==='F'?'Femenino':'Masculino'}" ${S.ro?'disabled':''}>${g==='F'?'♀':'♂'}</button>`)(f.genero)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
+    <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
     <div class="grid ${isP?'g3':'g4'}" style="margin-top:12px">`;
   if(isP){
@@ -411,8 +411,8 @@ function renderSheet(){
     <div class="stat" style="grid-area:ps"><div class="k">PS</div><div class="v" data-c="ps"></div><div class="psbar"><i data-c="psbar"></i></div><div class="x">Daño <input type="text" inputmode="text" data-f="dano" value="${num(f.dano)}" ${S.ro?'disabled':''} aria-label="Daño recibido (admite +15 o −5)" title="Escribe un número, o +15 / −5 para sumar o restar" style="width:72px"></div></div>
     <div class="stat" style="grid-area:ini"><div class="k">Iniciativa</div><div class="v" data-c="ini"></div>${isP?'<div class="x">Vel ÷ 5 + DES + SAB</div>':`<div class="x"><select data-f="iniTal" ${S.ro?'disabled':''} aria-label="Talento para la Iniciativa"><option value="">Sin talento</option>${ALL_TAL.map(t=>`<option value="${t}"${f.iniTal===t?' selected':''}>+ ${TAL_LABEL(t)}</option>`).join('')}</select></div>`}</div>
     <div class="stat" style="grid-area:vel"><div class="k">Velocidad</div><div class="v" data-c="vel"></div><div class="x"><select data-f="velMod" ${S.ro?'disabled':''} aria-label="Modificador de Velocidad">${speedOpts(f.velMod||'Normal')}</select></div><div class="x" data-c="velx"></div></div>
-    <div class="stat" style="grid-area:esq"><div class="k">Esquiva</div><div class="v" data-c="esq"></div><div class="x">Intentos <input type="number" min="0" data-f="cEsq" value="${num(f.cEsq)}" ${S.ro?'disabled':''} aria-label="Intentos de Esquiva"></div>${S.ro?'':'<div class="x row" style="gap:4px;margin-top:4px"><button class="btn sm" data-act="evade" data-k="esq">Evadir</button><button class="btn sm" data-act="evreset" data-k="cEsq">Reiniciar</button></div>'}</div>
-    <div class="stat" style="grid-area:tem"><div class="k">Temple</div><div class="v" data-c="tem"></div><div class="x">Intentos <input type="number" min="0" data-f="cTem" value="${num(f.cTem)}" ${S.ro?'disabled':''} aria-label="Intentos de Temple"></div>${S.ro?'':'<div class="x row" style="gap:4px;margin-top:4px"><button class="btn sm" data-act="evade" data-k="tem">Evadir</button><button class="btn sm" data-act="evreset" data-k="cTem">Reiniciar</button></div>'}</div>
+    <div class="stat evs" style="grid-area:esq"><div style="min-width:0"><div class="k">Esquiva</div><div class="v" data-c="esq"></div><div class="x">Intentos <input type="number" min="0" data-f="cEsq" value="${num(f.cEsq)}" ${S.ro?'disabled':''} aria-label="Intentos de Esquiva"></div></div>${S.ro?'':'<div class="evbtns"><button class="btn sm" data-act="evade" data-k="esq">Evadir</button><button class="btn sm" data-act="evreset" data-k="cEsq">Reiniciar</button></div>'}</div>
+    <div class="stat evs" style="grid-area:tem"><div style="min-width:0"><div class="k">Temple</div><div class="v" data-c="tem"></div><div class="x">Intentos <input type="number" min="0" data-f="cTem" value="${num(f.cTem)}" ${S.ro?'disabled':''} aria-label="Intentos de Temple"></div></div>${S.ro?'':'<div class="evbtns"><button class="btn sm" data-act="evade" data-k="tem">Evadir</button><button class="btn sm" data-act="evreset" data-k="cTem">Reiniciar</button></div>'}</div>
     <div class="stat" style="grid-area:bev"><div class="k">Bono de Evasión</div><div class="v" data-c="bEv"></div><div class="x">−3 a +3 <input type="number" min="-3" max="3" data-f="bEv" value="${num(f.bEv)}" ${S.ro?'disabled':''} aria-label="Bono de Evasión"></div></div>
     <div class="stat" style="grid-area:ic"><div class="k">Índice Crítico</div><div class="v" data-c="crit"></div><div class="x">IC <input type="number" min="0" max="5" data-f="ic" value="${num(f.ic)}" ${S.ro?'disabled':''} aria-label="Índice de Crítico"></div></div>
     <div class="stat" style="grid-area:pre"><div class="k">Precisión base</div><div class="v" data-c="prec"></div><div class="x">Mod <input type="number" data-f="prec" value="${num(f.prec)}" ${S.ro?'disabled':''} aria-label="Modificador de Precisión"></div></div>
@@ -428,13 +428,13 @@ function renderSheet(){
   else h+=`<label class="f">Habilidad<input data-f="habilidad" list="dl-hab" value="${esc(f.habilidad||'')}" placeholder="Escribe una habilidad" ${S.ro?'disabled':''}></label>`;
   h+=`</div><div class="fx-box" data-c="habfx"></div></div>`;
   // atributos
-  h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th>Entrenado</th><th>Bonus</th><th>Rango</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+  h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th class="wide">Entrenado</th><th>Bonus</th><th>Rango</th><th>Total</th><th>Tirar</th></tr></thead><tbody>`;
   ATTR.forEach(k=>{ const a=(f.attr||{})[k]||{};
-    h+=`<tr><td class="attr-name"><span class="attrdot" style="background:#${ATTR_BG[k]}"></span><button class="linkbtn" data-rollattr="${k}">${ATTR_FULL[k]}</button></td>${isP?`<td class="num" data-c="sp${k}"></td><td class="num" data-c="nt${k}"></td>`:''}
+    h+=`<tr><td class="attr-name"><span class="attrdot" style="background:#${ATTR_BG[k]}"></span>${ATTR_FULL[k]}</td>${isP?`<td class="num" data-c="sp${k}"></td><td class="num" data-c="nt${k}"></td>`:''}
       <td><select data-f="attr.${k}.r" ${S.ro?'disabled':''} aria-label="Rango de ${ATTR_FULL[k]}">${opts(RANGOS,a.r,'—')}</select></td>
       <td><input type="number" data-f="attr.${k}.b" value="${num(a.b)}" ${S.ro?'disabled':''} aria-label="Bonus de ${ATTR_FULL[k]}"></td>
-      <td class="num" data-c="rk${k}"></td><td class="tot" data-c="at${k}"></td></tr>`; });
-  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div><p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje. Clic en un atributo para tirar 1d20.</p></div>`;
+      <td class="num" data-c="rk${k}"></td><td class="tot" data-c="at${k}"></td><td><button class="d20btn" data-rollattr="${k}" title="Tirar 1d20 + ${ATTR_FULL[k]}" aria-label="Tirar 1d20 + ${ATTR_FULL[k]}">${D20_SVG}</button></td></tr>`; });
+  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div><p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje.</p></div>`;
   if(!isP){
     h+=`<div class="card"><h2>Talentos <span class="pill" data-c="talPts"></span></h2><div class="tal">`;
     for(const [cat,col,list] of TALENTOS){ h+=`<div><div class="cat" style="color:${col}">${cat}</div>`;
@@ -547,6 +547,15 @@ function onImage(e){
 
 /* ---------- panel de tiradas ---------- */
 let RP=null;
+
+const GEN_SVG={
+  M:'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="6"/><path d="M14.5 9.5 20 4M14.5 4H20v5.5"/></svg>',
+  F:'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="9" r="6"/><path d="M12 15v7M8.5 18.5h7"/></svg>',
+  N:'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="9" r="6"/><path d="M12 15v7"/></svg>'};
+const GEN_TXT={M:'Masculino',F:'Femenino',N:'Sin género'};
+function genderBtn(f){ let g=f.genero||'M'; if(f.tipo!=='P'&&g==='N') g='M';
+  return `<button class="gender ${g.toLowerCase()}" data-act="gen" title="${GEN_TXT[g]}" aria-label="Género: ${GEN_TXT[g]}" ${S.ro?'disabled':''}>${GEN_SVG[g]}</button>`; }
+const D20_SVG='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><path d="M12 6.5 17.5 15h-11z"/><path d="M12 2v4.5M21 7l-3.5 8M3 7l3.5 8M6.5 15 3 17M17.5 15 21 17M6.5 15 12 22l5.5-7"/></svg>';
 function charName(f){ const dx=f.tipo==='P'?dexById.get(f.especie):null; return f.nombre||(dx?dx[1]:'Sin nombre'); }
 function openRP(o){ RP=o; renderRP(); }
 function renderRP(){
@@ -969,7 +978,7 @@ function cbAttackHTML(){
   if(!mine.length) return h+`<p class="note">No controlas a ningún combatiente.</p></div>`;
   if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; }
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
-  if(!mvs.includes(CBU.mv)) CBU.mv=mvs[0]||'';
+  if(!mvs.includes(CBU.mv)) CBU.mv=mvs.includes(x.f.rep?.mv)?x.f.rep.mv:(mvs[0]||'');
   h+=`<div class="grid g3"><label class="f">Atacante<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>
     <label class="f">Movimiento<select data-cbf="mv">${mvs.map(id=>`<option value="${id}"${id===CBU.mv?' selected':''}>${esc(atkById.get(id)?.[1]||id)}</option>`).join('')||'<option value="">Sin movimientos</option>'}</select></label>
     <div class="grid g2"><label class="f">Bonus CD<input type="number" data-cbf="bonus" value="${num(CBU.bonus)}"></label><label class="f">Repeticiones<input type="number" min="0" data-cbf="rep" value="${repOf(x.f,CBU.mv)}"></label></div></div>`;
@@ -1030,6 +1039,7 @@ function doAttack(){
   const nf=structuredClone(x.f); nf.rep={mv:CBU.mv,n:ai.n+1}; saveFicha(x,nf);
   const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],d100:r,prec:ai.prec,hit,crit,re,steps,res};
   CBU.picking=false; CBU.targets=[];
+  CL.a=x.key; if(dmgMoves(x.f).includes(CBU.mv)) CL.am=CBU.mv; if(tkeys[0]&&tkeys[0]!==x.key){ CL.d=tkeys[0]; CL.dm=''; } CL.res=null;
   cbWrite({last});
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
@@ -1072,7 +1082,7 @@ function cbClashHTML(){
   if(!all.some(x=>x.key===CL.a)){ CL.a=all[0].key; CL.am=''; }
   if(CL.d===CL.a||!all.some(x=>x.key===CL.d)){ CL.d=(all.find(x=>x.key!==CL.a)||{}).key; CL.dm=''; }
   const A=combatant(CL.a), B=combatant(CL.d); const am=dmgMoves(A.f), bm=dmgMoves(B.f);
-  if(!am.includes(CL.am)) CL.am=am[0]||''; if(!bm.includes(CL.dm)) CL.dm=bm[0]||'';
+  if(!am.includes(CL.am)) CL.am=am.includes(A.f.rep?.mv)?A.f.rep.mv:(am[0]||''); if(!bm.includes(CL.dm)) CL.dm=bm.includes(B.f.rep?.mv)?B.f.rep.mv:(bm[0]||'');
   const who=(k,sel)=>all.map(y=>`<option value="${esc(y.key)}"${y.key===sel?' selected':''}${k==='d'&&y.key===CL.a?' disabled':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('');
   const mvo=(list,sel)=>list.map(id=>`<option value="${id}"${id===sel?' selected':''}>${esc(atkById.get(id)?.[1]||id)}</option>`).join('')||'<option value="">Sin movimientos de daño</option>';
   h+=`<div class="grid g2"><div class="grid g2"><label class="f">Atacante<select data-clf="a">${who('a',CL.a)}</select></label><label class="f">Movimiento atacante<select data-clf="am">${mvo(am,CL.am)}</select></label></div>
@@ -1083,6 +1093,7 @@ function cbClashHTML(){
   const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
   const avgIdx=Math.round((SA.mi.idx+SB.mi.idx)/2), avgDice=SA.mi.idx&&SB.mi.idx?dice(avgIdx):'—';
   const side=(S_,lbl)=>`<div class="side${win===S_?' win':''}"><div class="note">${lbl}</div><b>${esc(charName(S_.x.f))}</b> · ${esc(S_.m[1])} ${chip(S_.m[2])} ${rankChip(S_.m[5])}
+    <div class="note">Repeticiones de ${esc(S_.m[1])}: ${S_.ai.n} · Precisión ${S_.ai.prec}%${S_.ai.pen?` (−${S_.ai.pen})`:''}</div>
     <table><tbody>${S_.rows.map(([t,v])=>`<tr><td>${esc(t)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}<tr><td><b>Total</b></td><td><b>${S_.tot}</b></td></tr></tbody></table></div>`;
   h+=`<div class="clpts">${side(SA,'Atacante')}${side(SB,'Defensor')}</div>`;
   let out;
@@ -1093,7 +1104,7 @@ function cbClashHTML(){
     <div class="row" style="margin-top:10px"><button class="btn pri" data-cl="roll">Tirar daño</button></div>`;
   if(CL.res&&CL.res.sig===`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`) h+=`<div class="res" style="margin-top:10px">${CL.res.list.map((z,i)=>{ const t=combatant(z.key); const can=t&&canEditRef(t)&&z.val;
       return `<div class="r"><div><div class="note">Daño a ${esc(z.name)}</div><div class="big">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${z.ap?'<div class="ok">Daño aplicado</div>':''}</div><div class="row" style="justify-content:flex-end">${can&&!z.ap?`<button class="btn sm pri" data-cl="apply" data-i="${i}">Aplicar daño</button>`:''}</div></div>`; }).join('')}</div>`;
-  return h+`<p class="note">Se usa después de que el ataque conectó y en lugar de esquivar; gasta la Acción del defensor (o la toma prestada de la ronda siguiente). Si el defensor falla la Precisión de su movimiento (${SB.mi.prec}%), recibe el golpe completo y pierde su Acción. El promedio de la CD es la Clase de Dado intermedia entre los dos movimientos.</p></div>`;
+  return h+`<p class="note">Se usa después de que el ataque conectó y en lugar de esquivar; gasta la Acción del defensor (o la toma prestada de la ronda siguiente). Al tirar el daño, el movimiento del defensor suma 1 a su contador de repeticiones. Si el defensor falla la Precisión de su movimiento (${SB.ai.prec}%), recibe el golpe completo y pierde su Acción. El promedio de la CD es la Clase de Dado intermedia entre los dos movimientos.</p></div>`;
 }
 function clashRoll(){
   const A=combatant(CL.a), B=combatant(CL.d); if(!A||!B) return;
@@ -1105,6 +1116,7 @@ function clashRoll(){
   if(!win){ for(const S_ of [SA,SB]) list.push({key:S_.x.key,name:charName(S_.x.f),...avg(false)}); }
   else if(ad<=3) list.push({key:lose.x.key,name:charName(lose.x.f),...avg(wcrit)});
   else { const dr=rollDamage(win.ai,lose.x,wcrit,0); list.push({key:lose.x.key,name:charName(lose.x.f),val:dr.val,det:dr.det}); }
+  if(canEditRef(B)){ const nf=structuredClone(B.f); nf.rep={mv:CL.dm,n:SB.ai.n+1}; saveFicha(B,nf); }
   CL.res={sig:`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`,list,mv:`${SA.m[1]} contra ${SB.m[1]}`};
   logRoll('Colisión',`${charName(A.f)} (${SA.m[1]}, ${SA.tot}) contra ${charName(B.f)} (${SB.m[1]}, ${SB.tot}) · ${win?'gana '+charName(win.x.f):'empate'}${list.length?' · '+list.map(z=>`${z.name} ${z.val??'—'}`).join(' · '):''}`,null);
   renderSheet();
@@ -1205,7 +1217,7 @@ document.addEventListener('click',async e=>{
   else if(act==='genSave'&&T.gen?.f){ const f=structuredClone(T.gen.f); if(a.dataset.to==='salvaje'){ f.cat='salvaje'; f.carpeta=''; S.view='master'; createDoc('master',f);} else { S.view='mis'; createDoc('jug',f);} }
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
   else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
-  else if(act==='gen'&&S.cur&&!S.ro){ S.cur.genero=S.cur.genero==='F'?'M':'F'; commit(true); }
+  else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
   else if(act==='addMove'&&S.cur&&!S.ro){ const mv=[...(S.cur.moves||[])]; while(mv.length<6) mv.push(''); mv.push(''); S.cur.moves=mv; commit(true); }
   else if(act==='rmMove'&&S.cur&&!S.ro){ S.cur.moves.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='evreset'&&S.cur&&!S.ro){ S.cur[a.dataset.k]=0; commit(true); }

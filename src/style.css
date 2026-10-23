@@ -200,14 +200,24 @@ table.moch td input,table.moch td select{font-size:13px;padding:4px 6px}
 
 /* género */
 .gender{flex:none;align-self:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--sunk);font:700 20px/1 var(--f-display);cursor:pointer;display:grid;place-items:center;padding:0}
-.gender.m{color:#2d6cc8}.gender.f{color:#d0457a}
+.gender.m{color:#2d6cc8}.gender.f{color:#d0457a}.gender.n{color:#2f8a55}
+.gender svg{display:block}
 .gender:disabled{cursor:default;opacity:1}
 .headline .namewrap{display:flex;align-items:flex-end;gap:8px;min-width:0}
 /* tabla de atributos */
 .attrt th,.attrt td{text-align:center}
 .attrt th:first-child,.attrt td:first-child{text-align:left;width:1%;white-space:nowrap;padding-right:14px}
 .attrt td.num,.attrt td.tot{text-align:center}
-.attrt td input,.attrt td select{text-align:center;text-align-last:center;max-width:120px;margin:0 auto;display:block}
+.attrt td input,.attrt td select{text-align:center;text-align-last:center;max-width:90px;margin:0 auto;display:block}
+.attrt th.wide{width:32%}
+.attrt td select{max-width:none;min-width:110px}
+.attrt th:last-child,.attrt td:last-child{width:1%}
+.d20btn{display:grid;place-items:center;margin:0 auto;width:34px;height:34px;border-radius:6px;border:1px solid var(--line);background:var(--sunk);color:var(--teal);cursor:pointer;padding:0}
+.d20btn:hover{border-color:var(--teal);background:var(--panel)}
+.d20btn svg{display:block}
+.stat.evs{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.evbtns{display:flex;flex-direction:column;gap:4px;flex:none}
+.evbtns .btn{width:100%}
 /* colisión */
 .clpts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
 @media (max-width:560px){.clpts{grid-template-columns:minmax(0,1fr)}}
