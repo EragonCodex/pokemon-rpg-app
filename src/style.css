@@ -32,7 +32,6 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 .brand .logo-d{display:none}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand .logo-l{display:none}:root:not([data-theme="light"]) .brand .logo-d{display:block}}
 :root[data-theme="dark"] .brand .logo-l{display:none}:root[data-theme="dark"] .brand .logo-d{display:block}
-.brand-sub{font:600 11px/1 var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding-left:10px;border-left:1px solid var(--line)}
 .ball{width:22px;height:22px;border-radius:50%;border:2px solid var(--ink);background:linear-gradient(var(--accent) 0 46%,var(--ink) 46% 54%,var(--panel) 54%);position:relative;flex:none;display:inline-block}
 .ball::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--panel);border:2px solid var(--ink)}
 .ball.off{background:linear-gradient(var(--line) 0 46%,var(--muted) 46% 54%,var(--panel) 54%);border-color:var(--muted)}
@@ -198,3 +197,21 @@ table.moch td input,table.moch td select{font-size:13px;padding:4px 6px}
 .gbtn{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:10px 18px;font:600 15px var(--f-body);cursor:pointer}
 .gbtn:hover{border-color:var(--muted)}
 .claim-list{display:flex;flex-direction:column;gap:6px;width:100%}
+
+/* género */
+.gender{flex:none;align-self:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--sunk);font:700 20px/1 var(--f-display);cursor:pointer;display:grid;place-items:center;padding:0}
+.gender.m{color:#2d6cc8}.gender.f{color:#d0457a}
+.gender:disabled{cursor:default;opacity:1}
+.headline .namewrap{display:flex;align-items:flex-end;gap:8px;min-width:0}
+/* tabla de atributos */
+.attrt th,.attrt td{text-align:center}
+.attrt th:first-child,.attrt td:first-child{text-align:left;width:1%;white-space:nowrap;padding-right:14px}
+.attrt td.num,.attrt td.tot{text-align:center}
+.attrt td input,.attrt td select{text-align:center;text-align-last:center;max-width:120px;margin:0 auto;display:block}
+/* colisión */
+.clpts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+@media (max-width:560px){.clpts{grid-template-columns:minmax(0,1fr)}}
+.clpts .side{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);padding:10px}
+.clpts .side.win{border-color:var(--good)}
+.clpts table td{font-size:13px}
+.clpts table td:last-child{text-align:right;font-family:var(--f-mono)}

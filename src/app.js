@@ -258,7 +258,7 @@ function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=moch
 
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
-function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
+function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
 function newPokemon(extra={}){ return Object.assign({tipo:'P',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
@@ -376,7 +376,7 @@ function renderSheet(){
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
   h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${isP?'':`<div class="pdest">P. Destino<b>${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="3" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
     <div class="kind">${kind}${S.ro?' · solo lectura':''}</div><div class="headline">
-    <input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}>
+    <span class="namewrap">${isP?'':(g=>`<button class="gender ${g==='F'?'f':'m'}" data-act="gen" title="${g==='F'?'Femenino':'Masculino'}" aria-label="Género: ${g==='F'?'Femenino':'Masculino'}" ${S.ro?'disabled':''}>${g==='F'?'♀':'♂'}</button>`)(f.genero)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
     <div class="grid ${isP?'g3':'g4'}" style="margin-top:12px">`;
   if(isP){
@@ -428,13 +428,13 @@ function renderSheet(){
   else h+=`<label class="f">Habilidad<input data-f="habilidad" list="dl-hab" value="${esc(f.habilidad||'')}" placeholder="Escribe una habilidad" ${S.ro?'disabled':''}></label>`;
   h+=`</div><div class="fx-box" data-c="habfx"></div></div>`;
   // atributos
-  h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table><thead><tr><th>Atributo <span class="note" style="text-transform:none;letter-spacing:0">(clic: tirar d20)</span></th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th>Entrenado</th><th>Bonus</th><th>Rango</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+  h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th>Entrenado</th><th>Bonus</th><th>Rango</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
   ATTR.forEach(k=>{ const a=(f.attr||{})[k]||{};
     h+=`<tr><td class="attr-name"><span class="attrdot" style="background:#${ATTR_BG[k]}"></span><button class="linkbtn" data-rollattr="${k}">${ATTR_FULL[k]}</button></td>${isP?`<td class="num" data-c="sp${k}"></td><td class="num" data-c="nt${k}"></td>`:''}
       <td><select data-f="attr.${k}.r" ${S.ro?'disabled':''} aria-label="Rango de ${ATTR_FULL[k]}">${opts(RANGOS,a.r,'—')}</select></td>
-      <td style="width:80px"><input type="number" data-f="attr.${k}.b" value="${num(a.b)}" ${S.ro?'disabled':''} aria-label="Bonus de ${ATTR_FULL[k]}"></td>
+      <td><input type="number" data-f="attr.${k}.b" value="${num(a.b)}" ${S.ro?'disabled':''} aria-label="Bonus de ${ATTR_FULL[k]}"></td>
       <td class="num" data-c="rk${k}"></td><td class="tot" data-c="at${k}"></td></tr>`; });
-  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div><p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje.</p></div>`;
+  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div><p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje. Clic en un atributo para tirar 1d20.</p></div>`;
   if(!isP){
     h+=`<div class="card"><h2>Talentos <span class="pill" data-c="talPts"></span></h2><div class="tal">`;
     for(const [cat,col,list] of TALENTOS){ h+=`<div><div class="cat" style="color:${col}">${cat}</div>`;
@@ -1042,7 +1042,88 @@ function cbLastHTML(){
       <div class="row" style="justify-content:flex-end">${can&&!z.heal&&z.kind&&!fx.ev&&fx.ev!==false?`<button class="btn sm" data-cb="evade" data-k="${esc(z.key)}">Evadir (${z.kind==='tem'?'Temple':'Esquiva'})</button>`:''}${can&&z.val&&!fx.ap&&!fx.ev?`<button class="btn sm pri" data-cb="apply" data-k="${esc(z.key)}">${z.heal?'Aplicar curación':'Aplicar daño'}</button>`:''}</div></div>`; }).join('')+`</div>`;
   return h+`<p class="note">Cada defensor decide si evade antes de aplicar el daño. Para evitar el ataque, su d100 debe ser ≤ su Evasión y ≤ ${L.d100}.</p></div>`;
 }
-function combatHTML(){ return cbOrderHTML()+cbAttackHTML()+cbLastHTML(); }
+function combatHTML(){ return cbOrderHTML()+cbAttackHTML()+cbLastHTML()+cbClashHTML(); }
+/* ---------- colisión ---------- */
+const CL={a:'',am:'',d:'',dm:'',ca:false,cd:false,res:null};
+const dmgMoves=f=>(f.moves||[]).filter(id=>{ const m=atkById.get(id); return m&&m[3]!=='Estado'; });
+function clashSize(dist){ const t=String(dist).toLowerCase();
+  if(t.startsWith('contacto')) return {p:0,t:'Contacto'};
+  if(/^(corta|lanzar|larga)/.test(t)) return {p:1,t:'A distancia, un objetivo'};
+  if(/^(cono|l[ií]nea)/.test(t)||/^[áa]rea \(5/.test(t)) return {p:2,t:'Cono, Línea o Área (5 ft)'};
+  if(/^[áa]rea \(15/.test(t)||t.startsWith('campo')) return {p:3,t:'Área (15 ft) o Campo'};
+  return {p:0,t:`${dist}: sin puntos`}; }
+function clashSide(x,mv,other,isAtk,crit){
+  const c=calc(x.f), mi=moveInfo(x.f,mv,c); if(!mi) return null; const m=mi.m;
+  const rows=[]; let tot=0; const add=(t,v)=>{ rows.push([t,v]); tot+=v; };
+  if(isAtk) add('Ser el atacante',1);
+  add(`Nivel ${m[5]}`,ri(m[5])+1);
+  const sz=clashSize(m[10]); add(`Tamaño: ${sz.t}`,sz.p);
+  const om=atkById.get(other); const e=om?effectiveness(m[2],[om[2]]):{steps:0,immune:false};
+  if(e.immune) add(`${m[2]} contra ${om[2]}: sin efecto`,-4);
+  else if(e.steps>0) add(`${m[2]} contra ${om[2]}: súper eficaz`,2);
+  else if(e.steps<0) add(`${m[2]} contra ${om[2]}: poco eficaz`,-2);
+  if(crit) add('Crítico',2);
+  return {x,c,mi,m,rows,tot,ai:attackInfo(x,mv)};
+}
+function cbClashHTML(){
+  const all=combatants();
+  let h=`<div class="card"><h2>Calculadora de Colisión</h2>`;
+  if(all.length<2) return h+`<p class="note">Se necesitan al menos dos combatientes.</p></div>`;
+  if(!all.some(x=>x.key===CL.a)){ CL.a=all[0].key; CL.am=''; }
+  if(CL.d===CL.a||!all.some(x=>x.key===CL.d)){ CL.d=(all.find(x=>x.key!==CL.a)||{}).key; CL.dm=''; }
+  const A=combatant(CL.a), B=combatant(CL.d); const am=dmgMoves(A.f), bm=dmgMoves(B.f);
+  if(!am.includes(CL.am)) CL.am=am[0]||''; if(!bm.includes(CL.dm)) CL.dm=bm[0]||'';
+  const who=(k,sel)=>all.map(y=>`<option value="${esc(y.key)}"${y.key===sel?' selected':''}${k==='d'&&y.key===CL.a?' disabled':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('');
+  const mvo=(list,sel)=>list.map(id=>`<option value="${id}"${id===sel?' selected':''}>${esc(atkById.get(id)?.[1]||id)}</option>`).join('')||'<option value="">Sin movimientos de daño</option>';
+  h+=`<div class="grid g2"><div class="grid g2"><label class="f">Atacante<select data-clf="a">${who('a',CL.a)}</select></label><label class="f">Movimiento atacante<select data-clf="am">${mvo(am,CL.am)}</select></label></div>
+    <div class="grid g2"><label class="f">Defensor<select data-clf="d">${who('d',CL.d)}</select></label><label class="f">Movimiento defensivo<select data-clf="dm">${mvo(bm,CL.dm)}</select></label></div></div>
+    <div class="row" style="margin-top:8px"><label class="row" style="gap:6px"><input type="checkbox" data-clf="ca" ${CL.ca?'checked':''}> Crítico del atacante</label><label class="row" style="gap:6px"><input type="checkbox" data-clf="cd" ${CL.cd?'checked':''}> Crítico del defensor</label></div>`;
+  if(!CL.am||!CL.dm) return h+`<p class="note">Cada lado necesita un movimiento de daño (Físico o Especial) para colisionar.</p></div>`;
+  const SA=clashSide(A,CL.am,CL.dm,true,CL.ca), SB=clashSide(B,CL.dm,CL.am,false,CL.cd);
+  const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
+  const avgIdx=Math.round((SA.mi.idx+SB.mi.idx)/2), avgDice=SA.mi.idx&&SB.mi.idx?dice(avgIdx):'—';
+  const side=(S_,lbl)=>`<div class="side${win===S_?' win':''}"><div class="note">${lbl}</div><b>${esc(charName(S_.x.f))}</b> · ${esc(S_.m[1])} ${chip(S_.m[2])} ${rankChip(S_.m[5])}
+    <table><tbody>${S_.rows.map(([t,v])=>`<tr><td>${esc(t)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}<tr><td><b>Total</b></td><td><b>${S_.tot}</b></td></tr></tbody></table></div>`;
+  h+=`<div class="clpts">${side(SA,'Atacante')}${side(SB,'Defensor')}</div>`;
+  let out;
+  if(!win) out=`<b>Empate.</b> Ambos reciben el promedio de la CD de los dos movimientos: <b>${avgDice}</b>. Ninguno aplica efectos secundarios.`;
+  else if(ad<=3) out=`<b>Gana ${esc(charName(win.x.f))} por ${ad}.</b> ${esc(charName(lose.x.f))} recibe el promedio de la CD de los dos movimientos: <b>${avgDice}</b>${(win===SA?CL.ca:CL.cd)?' × 2 (crítico del ganador)':''}. Solo el ganador aplica sus efectos secundarios.`;
+  else out=`<b>Gana ${esc(charName(win.x.f))} por ${ad}.</b> ${esc(charName(lose.x.f))} recibe el daño completo de ${esc(win.m[1])} (${win.mi.dice} + ${win.mi.atr} ${win.mi.ak}, con su efectividad y la defensa del objetivo)${(win===SA?CL.ca:CL.cd)?' × 2 (crítico)':''}. Solo el ganador aplica sus efectos secundarios.`;
+  h+=`<div class="fx-box" style="margin-top:10px">${out}${win?`<div class="note" style="margin-top:4px">Efecto de ${esc(win.m[1])}: ${esc(win.m[11])}</div>`:''}</div>
+    <div class="row" style="margin-top:10px"><button class="btn pri" data-cl="roll">Tirar daño</button></div>`;
+  if(CL.res&&CL.res.sig===`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`) h+=`<div class="res" style="margin-top:10px">${CL.res.list.map((z,i)=>{ const t=combatant(z.key); const can=t&&canEditRef(t)&&z.val;
+      return `<div class="r"><div><div class="note">Daño a ${esc(z.name)}</div><div class="big">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${z.ap?'<div class="ok">Daño aplicado</div>':''}</div><div class="row" style="justify-content:flex-end">${can&&!z.ap?`<button class="btn sm pri" data-cl="apply" data-i="${i}">Aplicar daño</button>`:''}</div></div>`; }).join('')}</div>`;
+  return h+`<p class="note">Se usa después de que el ataque conectó y en lugar de esquivar; gasta la Acción del defensor (o la toma prestada de la ronda siguiente). Si el defensor falla la Precisión de su movimiento (${SB.mi.prec}%), recibe el golpe completo y pierde su Acción. El promedio de la CD es la Clase de Dado intermedia entre los dos movimientos.</p></div>`;
+}
+function clashRoll(){
+  const A=combatant(CL.a), B=combatant(CL.d); if(!A||!B) return;
+  const SA=clashSide(A,CL.am,CL.dm,true,CL.ca), SB=clashSide(B,CL.dm,CL.am,false,CL.cd); if(!SA||!SB) return;
+  const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
+  const wcrit=win?(win===SA?CL.ca:CL.cd):false;
+  const avg=(crit)=>{ const dd=dice(Math.round((SA.mi.idx+SB.mi.idx)/2)); const rl=rollDice(dd); const v=rl.t*(crit?2:1); return {val:v,det:`Promedio de CD ${dd} [${rl.r.join(', ')}]${crit?' × 2 (crítico del ganador)':''}`}; };
+  const list=[];
+  if(!win){ for(const S_ of [SA,SB]) list.push({key:S_.x.key,name:charName(S_.x.f),...avg(false)}); }
+  else if(ad<=3) list.push({key:lose.x.key,name:charName(lose.x.f),...avg(wcrit)});
+  else { const dr=rollDamage(win.ai,lose.x,wcrit,0); list.push({key:lose.x.key,name:charName(lose.x.f),val:dr.val,det:dr.det}); }
+  CL.res={sig:`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`,list,mv:`${SA.m[1]} contra ${SB.m[1]}`};
+  logRoll('Colisión',`${charName(A.f)} (${SA.m[1]}, ${SA.tot}) contra ${charName(B.f)} (${SB.m[1]}, ${SB.tot}) · ${win?'gana '+charName(win.x.f):'empate'}${list.length?' · '+list.map(z=>`${z.name} ${z.val??'—'}`).join(' · '):''}`,null);
+  renderSheet();
+}
+function clClick(b){
+  const act=b.dataset.cl;
+  if(act==='roll') clashRoll();
+  else if(act==='apply'&&CL.res){ const z=CL.res.list[num(b.dataset.i)]; const t=z&&combatant(z.key); if(!t||!canEditRef(t)||z.ap||!z.val) return;
+    const nf=structuredClone(t.f); nf.dano=num(nf.dano)+z.val; saveFicha(t,nf); z.ap=true; logRoll(charName(t.f),`Recibe ${z.val} de daño (Colisión: ${CL.res.mv})`,z.val); renderSheet(); }
+}
+function clChange(el){
+  const k=el.dataset.clf;
+  if(k==='a'){ CL.a=el.value; CL.am=''; if(CL.d===CL.a){ CL.d=''; CL.dm=''; } }
+  else if(k==='d'){ CL.d=el.value; CL.dm=''; }
+  else if(k==='am'||k==='dm') CL[k]=el.value;
+  else if(k==='ca'||k==='cd') CL[k]=el.checked;
+  renderSheet();
+}
+
 function doEvade(ref,f,kind,against){
   const c=calc(f); const need=Math.round((kind==='esq'?c.esq:c.tem)*100); const r=d(100);
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100;
@@ -1086,6 +1167,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.dexj){ setVis([e.target.dataset.id],e.target.checked,e.target.dataset.dexj); return; }
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
+  if(e.target.dataset.clf){ clChange(e.target); return; }
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
   if(e.target.id==='alias'&&S.canWrite){ const a=e.target.value.trim()||'Jugador'; const dd={...(S.players[S.uid]||{creado:new Date().toISOString()}),alias:a}; S.players[S.uid]=dd; queueSave(`jug/${S.uid}`,dd); }});
@@ -1094,6 +1176,7 @@ document.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.ta
 document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
   const cb=e.target.closest('[data-cb]'); if(cb){ cbClick(cb); return; }
+  const clb=e.target.closest('[data-cl]'); if(clb){ clClick(clb); return; }
   const dpp=e.target.closest('[data-dexpop]'); if(dpp){ e.stopPropagation(); T.dpop=T.dpop===dpp.dataset.dexpop?'':dpp.dataset.dexpop; renderSheet(); return; }
   if(e.target.closest('.dexpop')){ e.stopPropagation(); return; }
   const da=e.target.closest('[data-dexall]'); if(da){ setVis(dexFiltered().map(r=>r[0]),da.dataset.dexall==='1',T.dfor||''); return; }
@@ -1122,6 +1205,7 @@ document.addEventListener('click',async e=>{
   else if(act==='genSave'&&T.gen?.f){ const f=structuredClone(T.gen.f); if(a.dataset.to==='salvaje'){ f.cat='salvaje'; f.carpeta=''; S.view='master'; createDoc('master',f);} else { S.view='mis'; createDoc('jug',f);} }
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
   else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
+  else if(act==='gen'&&S.cur&&!S.ro){ S.cur.genero=S.cur.genero==='F'?'M':'F'; commit(true); }
   else if(act==='addMove'&&S.cur&&!S.ro){ const mv=[...(S.cur.moves||[])]; while(mv.length<6) mv.push(''); mv.push(''); S.cur.moves=mv; commit(true); }
   else if(act==='rmMove'&&S.cur&&!S.ro){ S.cur.moves.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='evreset'&&S.cur&&!S.ro){ S.cur[a.dataset.k]=0; commit(true); }

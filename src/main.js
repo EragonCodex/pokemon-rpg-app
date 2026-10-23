@@ -7,7 +7,7 @@ const pie = `<p class="note">© 2026 Gonzalo Toro · Pokémon RPG</p>`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function showLogin(msg) {
-  gate.innerHTML = `<div class="gate-card">${logos}<h1 style="margin:0;font:700 22px var(--f-display)">Fichero</h1>
+  gate.innerHTML = `<div class="gate-card">${logos}
     <p class="note">Entra con tu cuenta de Google para ver y editar tus fichas.</p>
     <button class="gbtn" id="google">Entrar con Google</button>
     ${msg ? `<p class="ko" style="font-size:13px">${esc(msg)}</p>` : ''}${pie}</div>`;
