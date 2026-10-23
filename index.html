@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fichero Pokémon RPG</title>
+<meta name="description" content="Registro de fichas para el sistema Pokémon RPG de Gonzalo Toro.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div id="gate" class="gate"><div class="gate-card"><p class="note">Cargando…</p></div></div>
+<div id="app" hidden>
+<header class="top">
+  <div class="brand"><img class="logo logo-l" src="/logo-claro.png" alt="Pokémon RPG" width="129" height="44"><img class="logo logo-d" src="/logo-oscuro.png" alt="Pokémon RPG" width="129" height="44"><span class="brand-sub">Fichero</span></div>
+  <nav class="tabs" id="tabs">
+    <button data-v="mis" aria-pressed="true">Mis fichas</button>
+    <button data-v="mesa" aria-pressed="false">Mesa</button>
+    <button data-v="master" aria-pressed="false" hidden id="tabMaster">Master</button>
+    <button data-v="combate" aria-pressed="false">Combate</button>
+    <button data-v="tools" aria-pressed="false">Herramientas</button>
+    <button data-v="glos" aria-pressed="false">Glosario</button>
+  </nav>
+  <div class="who"><span class="status" id="status">Conectando…</span><img id="avatar" alt="" hidden><span id="whoName"></span></div>
+</header>
+<div class="banner" id="banner" hidden></div>
+<main id="main">
+  <aside class="list" id="list"></aside>
+  <section class="sheet" id="sheet"></section>
+</main>
+<footer class="foot">© 2026 Gonzalo Toro · Pokémon RPG</footer>
+<div id="rp" hidden></div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
