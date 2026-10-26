@@ -307,30 +307,34 @@ function groupHTML(pool,scope='mis'){
   const ids=new Set(trainers.map(t=>t.id));
   let h='';
   for(const t of trainers){ const team=teamOf(t); const k=refKey(t); const open=TEAM_OPEN.has(k);
-    h+=`<div class="tgrp" data-drag="${esc(t.id)}"><div class="trow"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(charName(t.f))}">⋮⋮</span><button class="tog" data-team="${esc(k)}" aria-expanded="${open}" title="${open?'Ocultar':'Mostrar'} equipo" aria-label="${open?'Ocultar':'Mostrar'} el equipo de ${esc(charName(t.f))}" ${team.length?'':'disabled'}>${open?'▾':'▸'}<small>${team.length}</small></button>${itemHTML(t)}</div>${open&&team.length?`<div class="team">${team.map(p=>itemHTML(p,true)).join('')}</div>`:''}</div>`; }
+    h+=`<div class="tgrp ditem" data-drag="${esc(t.id)}"><div class="trow"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(charName(t.f))}">⋮⋮</span><button class="tog" data-team="${esc(k)}" aria-expanded="${open}" title="${open?'Ocultar':'Mostrar'} equipo" aria-label="${open?'Ocultar':'Mostrar'} el equipo de ${esc(charName(t.f))}" ${team.length?'':'disabled'}>${open?'▾':'▸'}<small>${team.length}</small></button>${itemHTML(t)}</div>${open&&team.length?`<div class="team">${team.map(p=>itemHTML(p,true)).join('')}</div>`:''}</div>`; }
   const loose=pool.filter(x=>x.f.tipo==='P'&&!ids.has(x.f.entrenador));
-  return {h: h?`<div class="tlist" data-scope="${esc(scope)}">${h}</div>`:'', loose:loose.map(p=>itemHTML(p)).join('')};
+  return {h: h?`<div class="tlist dlist" data-scope="${esc(scope)}">${h}</div>`:'', loose:loose.map(p=>itemHTML(p)).join('')};
 }
-/* arrastrar para ordenar (mouse y pantalla táctil) */
-let DRAG=null;
-document.addEventListener('pointerdown',e=>{ const g=e.target.closest('[data-grip]'); if(!g) return; const el=g.closest('.tgrp'), box=g.closest('.tlist'); if(!el||!box) return;
-  e.preventDefault(); DRAG={el,box,id:e.pointerId}; el.classList.add('dragging'); try{ g.setPointerCapture(e.pointerId); }catch(_){} });
-document.addEventListener('pointermove',e=>{ if(!DRAG||e.pointerId!==DRAG.id) return; e.preventDefault();
-  const sibs=[...DRAG.box.children].filter(x=>x!==DRAG.el&&x.classList.contains('tgrp'));
+/* arrastrar para ordenar (mouse y pantalla táctil): .dlist[data-scope] > .ditem[data-drag], asa [data-grip] */
+let DRAG=null, DRAG_END=0;
+function sortByOrder(list,scope,idOf){ const o=loadOrder(scope); const pos=x=>{ const i=o.indexOf(idOf(x)); return i<0?1e9:i; }; return list.map((x,i)=>[x,i]).sort((a,b)=>pos(a[0])-pos(b[0])||a[1]-b[1]).map(a=>a[0]); }
+document.addEventListener('pointerdown',e=>{ const g=e.target.closest('[data-grip]'); if(!g||(e.button!==undefined&&e.button>0)) return; const el=g.closest('.ditem'); const box=el&&el.parentElement; if(!el||!box||!box.classList.contains('dlist')) return;
+  e.preventDefault(); DRAG={el,box,id:e.pointerId,moved:false}; el.classList.add('dragging'); document.body.classList.add('is-dragging'); });
+window.addEventListener('pointermove',e=>{ if(!DRAG||e.pointerId!==DRAG.id) return; e.preventDefault();
+  const sibs=[...DRAG.box.children].filter(x=>x!==DRAG.el&&x.classList.contains('ditem'));
   const after=sibs.find(x=>{ const r=x.getBoundingClientRect(); return e.clientY<r.top+r.height/2; });
-  if(after) DRAG.box.insertBefore(DRAG.el,after); else DRAG.box.appendChild(DRAG.el); });
-function endDrag(e){ if(!DRAG||e.pointerId!==DRAG.id) return; const {el,box}=DRAG; DRAG=null; el.classList.remove('dragging');
-  saveOrder(box.dataset.scope,[...box.querySelectorAll(':scope > .tgrp')].map(x=>x.dataset.drag)); renderList(); }
-document.addEventListener('pointerup',endDrag); document.addEventListener('pointercancel',endDrag);
+  const ref=after||null; if(DRAG.el.nextElementSibling!==ref||(!ref&&DRAG.box.lastElementChild!==DRAG.el)){ DRAG.box.insertBefore(DRAG.el,ref); DRAG.moved=true; } },{passive:false});
+function endDrag(e){ if(!DRAG||e.pointerId!==DRAG.id) return; const {el,box,moved}=DRAG; DRAG=null; el.classList.remove('dragging'); document.body.classList.remove('is-dragging'); DRAG_END=Date.now();
+  if(moved) saveOrder(box.dataset.scope,[...box.children].filter(x=>x.classList.contains('ditem')).map(x=>x.dataset.drag)); renderList(); }
+window.addEventListener('pointerup',endDrag); window.addEventListener('pointercancel',endDrag);
+/* tocar el asa no abre ni pliega nada */
+document.addEventListener('click',e=>{ if(e.target.closest('[data-grip]')||Date.now()-DRAG_END<250&&e.target.closest('.dlist')){ e.preventDefault(); e.stopPropagation(); } },true);
 function folderHTML(pool,addAct){
   const groups={}; pool.forEach(x=>{ if(x.f.tipo==='P'&&x.f.entrenador&&pool.some(t=>t.id===x.f.entrenador)) return; const k=x.f.carpeta||''; (groups[k] ||= []).push(x); });
-  const names=Object.keys(groups).sort((a,b)=>(a==='')-(b==='')||a.localeCompare(b));
+  const names=sortByOrder(Object.keys(groups).sort((a,b)=>(a==='')-(b==='')||a.localeCompare(b)),'mf.'+addAct,n=>n);
   if(!names.length) return '';
-  return names.map(n=>{ const sel=groups[n]; const all=pool.filter(x=>sel.includes(x)||sel.some(t=>t.id===x.f.entrenador));
+  return `<div class="dlist" data-scope="${esc('mf.'+addAct)}">`+names.map(n=>{ const sel=groups[n]; const all=pool.filter(x=>sel.includes(x)||sel.some(t=>t.id===x.f.entrenador));
     const key=addAct+'|'+n; const g=groupHTML(all,'m.'+key); const open=S.folders[key]!==false;
-    return `<details class="fold" data-fold="${esc(key)}" ${open?'open':''}><summary><span>${esc(n||'Sin carpeta')} <span class="pill">${sel.length}</span></span>${S.canWrite?`<button class="btn sm" data-act="${addAct}" data-folder="${esc(n)}">+</button>`:''}</summary><div class="items">${g.h+g.loose}</div></details>`; }).join('');
+    return `<details class="fold ditem" data-drag="${esc(n)}" data-fold="${esc(key)}" ${open?'open':''}><summary><span><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar la carpeta ${esc(n||'Sin carpeta')}">⋮⋮</span>${esc(n||'Sin carpeta')} <span class="pill">${sel.length}</span></span>${S.canWrite?`<button class="btn sm" data-act="${addAct}" data-folder="${esc(n)}">+</button>`:''}</summary><div class="items">${g.h+g.loose}</div></details>`; }).join('')+`</div>`;
 }
 function renderList(){
+  if(DRAG) return;
   const L=$('#list'); let h='';
   if(S.view==='mis'){
     const g=groupHTML(poolOf('jug',S.uid),'mis');
@@ -342,9 +346,11 @@ function renderList(){
     h+=`<div class="grp"><h3>Mis notas ${S.canWrite?'<button class="btn sm" data-act="newNota">+ Nota</button>':''}</h3><div class="items">${notas.map(noteItem).join('')||'<p class="note">Notas de tu personaje. Las ve toda la mesa.</p>'}</div></div>`;
   } else if(S.view==='mesa'){
     h+=`<div class="grp"><h3>Mesa</h3><div class="items"><button class="item" data-hist="1" aria-current="${S.open?.src==='hist'}"><span class="n">Historial de dados</span><span class="pill">${allRolls().length}</span></button></div></div>`;
-    const uids=Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias)));
+    const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
+    h+=`<div class="dlist" data-scope="mesa">`;
     for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=Object.entries(S.notas[u]||{}).map(([id,f])=>({src:'nota',uid:u,id,f}));
-      h+=`<div class="grp"><h3>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</h3><div class="items">${(g.h+g.loose+notas.map(noteItem).join(''))||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(g.h+g.loose+notas.map(noteItem).join(''))||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+    h+=`</div>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
     const npcs=pool.filter(x=>x.f.cat!=='salvaje'); const wild=pool.filter(x=>x.f.cat==='salvaje');
@@ -647,7 +653,7 @@ ${tbl(['Intentos previos','0','1','2','3','4','5','6+'],[['Evasión base','100 %
 ${ej('Un Pokémon con DES 5, 2 intentos previos y Bono +1 tiene 100 − 30 + 30 + 15 = 115 %, que queda en 100 %. El atacante sacó 12 y conectó; el defensor tira 9, que es ≤ 100 y ≤ 12: esquiva. Si el atacante hubiera sacado 3 (crítico), el defensor necesitaría 3 o menos.')}`},
 {id:'colision',t:'Colisión',h:()=>`<p>En vez de esquivar, el objetivo puede <b>chocar</b> el ataque con un movimiento de daño propio. Gasta su Acción (o toma prestada la de la ronda siguiente; solo una a la vez). Tira la Precisión de su movimiento: si falla, recibe el golpe completo y pierde su Acción. Si conecta, cada lado suma puntos:</p>
 ${tbl(['Factor','Puntos'],[['Ser el atacante','+1'],['Nivel del movimiento','Starter 1 · Beginner 2 · Amateur 3 · Elite 4 · Master 5 · Legend 6'],['Tamaño','Contacto 0 · A distancia +1 · Cono, Línea o Área 5 ft +2 · Área 15 ft o Campo +3'],['Tipo contra tipo','Súper eficaz +2 · Poco eficaz −2 · Sin efecto −4'],['Crítico (cualquiera)','+2']])}
-${tbl(['Diferencia','Resultado'],[['Empate','Ambos reciben el promedio de la CD de los dos movimientos.'],['1 a 3','El perdedor recibe el promedio de la CD de los dos movimientos.'],['4 o más','El perdedor recibe el daño completo del movimiento ganador.']])}
+${tbl(['Diferencia','Resultado'],[['Empate','Ambos reciben el promedio de la CD y del Atributo de los dos movimientos, sin restar defensas.'],['1 a 3','El perdedor recibe el promedio de la CD de los dos movimientos.'],['4 o más','El perdedor recibe el daño completo del movimiento ganador.']])}
 <ul><li>Solo el ganador aplica sus efectos secundarios; si es crítico, su daño aumenta como en un crítico normal.</li><li>Contra un área, cada defensor colisiona por separado. Una trampa también se puede colisionar.</li><li>El movimiento usado cuenta para la penalización por repetición.</li></ul>
 ${ej('El atacante lanza un movimiento Starter de Fuego a distancia: 1 (atacante) + 1 (nivel) + 1 (tamaño) = 3. El defensor responde con un movimiento Starter de Agua a distancia, súper eficaz contra Fuego: 1 + 1 + 2 = 4. Gana el defensor por 1, así que el atacante recibe el promedio de la CD de ambos movimientos.')}`},
 {id:'comandar',t:'Comandar',h:()=>`<p>El Entrenador usa su Acción para dirigir a uno de sus Pokémon en vez de atacar. No agrega tiradas: usa directamente el bonus del Talento (de +0 a +6).</p>
@@ -1186,7 +1192,7 @@ function doAttack(){
   saveFicha(x,nf);
   const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
-  CL.a=x.key; if(dmgMoves(x.f).includes(mvId)) CL.am=mvId; if(tkeys[0]&&tkeys[0]!==x.key){ CL.d=tkeys[0]; CL.dm=''; } CL.res=null;
+  if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
   cbWrite({last});
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
@@ -1225,7 +1231,7 @@ function cbLastHTML(){
 }
 function combatHTML(){ return cbOrderHTML()+cbAttackHTML()+cbLastHTML()+cbClashHTML(); }
 /* ---------- colisión ---------- */
-const CL={a:'',am:'',d:'',dm:'',ca:false,cd:false,res:null};
+const CL={am:'',dm:'',ca:false,cd:false};
 const dmgMoves=f=>(f.moves||[]).filter(id=>{ const m=atkById.get(id); return m&&m[3]!=='Estado'; });
 function clashSize(dist){ const t=String(dist).toLowerCase();
   if(t.startsWith('contacto')) return {p:0,t:'Contacto'};
@@ -1246,66 +1252,49 @@ function clashSide(x,mv,other,isAtk,crit){
   if(crit) add('Crítico',2);
   return {x,c,mi,m,rows,tot,ai:attackInfo(x,mv)};
 }
+/* Calculadora de Colisión: solo informativa, con los movimientos de daño de los combatientes */
+function clashMovePts(m,om,isAtk,crit){
+  const rows=[]; let tot=0; const add=(t,v)=>{ rows.push([t,v]); tot+=v; };
+  if(isAtk) add('Ser el atacante',1);
+  add(`Nivel ${m[5]}`,ri(m[5])+1);
+  const sz=clashSize(m[10]); add(`Tamaño: ${sz.t}`,sz.p);
+  const e=om?effectiveness(m[2],[om[2]]):{steps:0,immune:false};
+  if(e.immune) add(`${m[2]} contra ${om[2]}: sin efecto`,-4);
+  else if(e.steps>0) add(`${m[2]} contra ${om[2]}: súper eficaz`,2);
+  else if(e.steps<0) add(`${m[2]} contra ${om[2]}: poco eficaz`,-2);
+  if(crit) add('Crítico',2);
+  return {m,rows,tot};
+}
 function cbClashHTML(){
-  const all=combatants();
-  let h=`<div class="card"><h2>Calculadora de Colisión</h2>`;
-  if(all.length<2) return h+`<p class="note">Se necesitan al menos dos combatientes.</p></div>`;
-  if(!all.some(x=>x.key===CL.a)){ CL.a=all[0].key; CL.am=''; }
-  if(CL.d===CL.a||!all.some(x=>x.key===CL.d)){ CL.d=(all.find(x=>x.key!==CL.a)||{}).key; CL.dm=''; }
-  const A=combatant(CL.a), B=combatant(CL.d); const am=dmgMoves(A.f), bm=dmgMoves(B.f);
-  if(!am.includes(CL.am)) CL.am=am.includes(A.f.rep?.mv)?A.f.rep.mv:(am[0]||''); if(!bm.includes(CL.dm)) CL.dm=bm.includes(B.f.rep?.mv)?B.f.rep.mv:(bm[0]||'');
-  const who=(k,sel)=>all.map(y=>`<option value="${esc(y.key)}"${y.key===sel?' selected':''}${k==='d'&&y.key===CL.a?' disabled':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('');
-  const mvo=(list,sel)=>list.map(id=>`<option value="${id}"${id===sel?' selected':''}>${esc(atkById.get(id)?.[1]||id)}</option>`).join('')||'<option value="">Sin movimientos de daño</option>';
-  h+=`<div class="grid g2"><div class="grid g2"><label class="f">Atacante<select data-clf="a">${who('a',CL.a)}</select></label><label class="f">Movimiento atacante<select data-clf="am">${mvo(am,CL.am)}</select></label></div>
-    <div class="grid g2"><label class="f">Defensor<select data-clf="d">${who('d',CL.d)}</select></label><label class="f">Movimiento defensivo<select data-clf="dm">${mvo(bm,CL.dm)}</select></label></div></div>
+  const ids=[...new Set(combatants().flatMap(x=>dmgMoves(x.f)))].map(id=>atkById.get(id)).filter(Boolean)
+    .sort((a,b)=>deacc(a[2]).localeCompare(deacc(b[2]))||a[1].localeCompare(b[1],'es'));
+  let h=`<div class="card"><h2>Calculadora de Colisión <span class="note" style="text-transform:none;letter-spacing:0">Solo informativa</span></h2>`;
+  if(!ids.length) return h+`<p class="note">Los combatientes no tienen movimientos de daño.</p></div>`;
+  if(!ids.some(m=>m[0]===CL.am)) CL.am=ids[0][0]; if(!ids.some(m=>m[0]===CL.dm)) CL.dm=(ids[1]||ids[0])[0];
+  const mvo=sel=>ids.map(m=>`<option value="${m[0]}"${m[0]===sel?' selected':''}>${esc(m[2]==='Electrico'?'Eléctrico':m[2]==='Psiquico'?'Psíquico':m[2]==='Dragon'?'Dragón':m[2])} · ${esc(m[1])}</option>`).join('');
+  h+=`<div class="grid g2"><label class="f">Movimiento atacante<select data-clf="am">${mvo(CL.am)}</select></label><label class="f">Movimiento defensivo<select data-clf="dm">${mvo(CL.dm)}</select></label></div>
     <div class="row" style="margin-top:8px"><label class="row" style="gap:6px"><input type="checkbox" data-clf="ca" ${CL.ca?'checked':''}> Crítico del atacante</label><label class="row" style="gap:6px"><input type="checkbox" data-clf="cd" ${CL.cd?'checked':''}> Crítico del defensor</label></div>`;
-  if(!CL.am||!CL.dm) return h+`<p class="note">Cada lado necesita un movimiento de daño (Físico o Especial) para colisionar.</p></div>`;
-  const SA=clashSide(A,CL.am,CL.dm,true,CL.ca), SB=clashSide(B,CL.dm,CL.am,false,CL.cd);
+  const ma=atkById.get(CL.am), md=atkById.get(CL.dm);
+  const SA=clashMovePts(ma,md,true,CL.ca), SB=clashMovePts(md,ma,false,CL.cd);
   const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
-  const avgIdx=Math.round((SA.mi.idx+SB.mi.idx)/2), avgDice=SA.mi.idx&&SB.mi.idx?dice(avgIdx):'—';
-  const side=(S_,lbl)=>`<div class="side${win===S_?' win':''}"><div class="note">${lbl}</div><b>${esc(charName(S_.x.f))}</b> · ${esc(S_.m[1])} ${chip(S_.m[2])} ${rankChip(S_.m[5])}
-    <div class="note">Repeticiones de ${esc(S_.m[1])}: ${S_.ai.n} · Precisión ${S_.ai.prec}%${S_.ai.pen?` (−${S_.ai.pen})`:''}</div>
+  const cd=m=>typeof m[7]==='number'&&m[7]>0?m[7]:1;
+  const avgDice=dice(Math.round((cd(ma)+cd(md))/2));
+  const side=(S_,lbl)=>`<div class="side${win===S_?' win':''}"><div class="note">${lbl}</div><b>${esc(S_.m[1])}</b> ${chip(S_.m[2])} ${claseChip(S_.m[3])} ${rankChip(S_.m[5])}
     <table><tbody>${S_.rows.map(([t,v])=>`<tr><td>${esc(t)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}<tr><td><b>Total</b></td><td><b>${S_.tot}</b></td></tr></tbody></table></div>`;
   h+=`<div class="clpts">${side(SA,'Atacante')}${side(SB,'Defensor')}</div>`;
   let out;
-  if(!win) out=`<b>Empate.</b> Ambos reciben el promedio de la CD de los dos movimientos: <b>${avgDice}</b>. Ninguno aplica efectos secundarios.`;
-  else if(ad<=3) out=`<b>Gana ${esc(charName(win.x.f))} por ${ad}.</b> ${esc(charName(lose.x.f))} recibe el promedio de la CD de los dos movimientos: <b>${avgDice}</b>${(win===SA?CL.ca:CL.cd)?' × 2 (crítico del ganador)':''}. Solo el ganador aplica sus efectos secundarios.`;
-  else out=`<b>Gana ${esc(charName(win.x.f))} por ${ad}.</b> ${esc(charName(lose.x.f))} recibe el daño completo de ${esc(win.m[1])} (${win.mi.dice} + ${win.mi.atr} ${win.mi.ak}, con su efectividad y la defensa del objetivo)${(win===SA?CL.ca:CL.cd)?' × 2 (crítico)':''}. Solo el ganador aplica sus efectos secundarios.`;
-  h+=`<div class="fx-box" style="margin-top:10px">${out}${win?`<div class="note" style="margin-top:4px">Efecto de ${esc(win.m[1])}: ${esc(win.m[11])}</div>`:''}</div>
-    <div class="row" style="margin-top:10px"><button class="btn pri" data-cl="roll">Tirar daño</button></div>`;
-  if(CL.res&&CL.res.sig===`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`) h+=`<div class="res" style="margin-top:10px">${CL.res.list.map((z,i)=>{ const t=combatant(z.key); const can=t&&canEditRef(t)&&z.val;
-      return `<div class="r"><div><div class="note">Daño a ${esc(z.name)}</div><div class="big">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${z.ap?'<div class="ok">Daño aplicado</div>':''}</div><div class="row" style="justify-content:flex-end">${can&&!z.ap?`<button class="btn sm pri" data-cl="apply" data-i="${i}">Aplicar daño</button>`:''}</div></div>`; }).join('')}</div>`;
-  return h+`<p class="note">Se usa después de que el ataque conectó y en lugar de esquivar; gasta la Acción del defensor (o la toma prestada de la ronda siguiente). Al tirar el daño, el movimiento del defensor suma 1 a su contador de repeticiones. Si el defensor falla la Precisión de su movimiento (${SB.ai.prec}%), recibe el golpe completo y pierde su Acción. El promedio de la CD es la Clase de Dado intermedia entre los dos movimientos.</p></div>`;
-}
-function clashRoll(){
-  const A=combatant(CL.a), B=combatant(CL.d); if(!A||!B) return;
-  const SA=clashSide(A,CL.am,CL.dm,true,CL.ca), SB=clashSide(B,CL.dm,CL.am,false,CL.cd); if(!SA||!SB) return;
-  const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
-  const wcrit=win?(win===SA?CL.ca:CL.cd):false;
-  const avg=(crit)=>{ const dd=dice(Math.round((SA.mi.idx+SB.mi.idx)/2)); const rl=rollDice(dd); const v=rl.t*(crit?2:1); return {val:v,det:`Promedio de CD ${dd} [${rl.r.join(', ')}]${crit?' × 2 (crítico del ganador)':''}`}; };
-  const list=[];
-  if(!win){ for(const S_ of [SA,SB]) list.push({key:S_.x.key,name:charName(S_.x.f),...avg(false)}); }
-  else if(ad<=3) list.push({key:lose.x.key,name:charName(lose.x.f),...avg(wcrit)});
-  else { const dr=rollDamage(win.ai,lose.x,wcrit,0); list.push({key:lose.x.key,name:charName(lose.x.f),val:dr.val,det:dr.det}); }
-  if(canEditRef(B)){ const nf=structuredClone(B.f); nf.rep={mv:CL.dm,n:SB.ai.n+1}; saveFicha(B,nf); }
-  CL.res={sig:`${CL.a}|${CL.am}|${CL.d}|${CL.dm}|${CL.ca}|${CL.cd}`,list,mv:`${SA.m[1]} contra ${SB.m[1]}`};
-  logRoll('Colisión',`${charName(A.f)} (${SA.m[1]}, ${SA.tot}) contra ${charName(B.f)} (${SB.m[1]}, ${SB.tot}) · ${win?'gana '+charName(win.x.f):'empate'}${list.length?' · '+list.map(z=>`${z.name} ${z.val??'—'}`).join(' · '):''}`,null);
-  renderSheet();
-}
-function clClick(b){
-  const act=b.dataset.cl;
-  if(act==='roll') clashRoll();
-  else if(act==='apply'&&CL.res){ const z=CL.res.list[num(b.dataset.i)]; const t=z&&combatant(z.key); if(!t||!canEditRef(t)||z.ap||!z.val) return;
-    const nf=structuredClone(t.f); nf.dano=num(nf.dano)+z.val; saveFicha(t,nf); z.ap=true; logRoll(charName(t.f),`Recibe ${z.val} de daño (Colisión: ${CL.res.mv})`,z.val); renderSheet(); }
+  if(!win) out=`<b>Empate.</b> Ambos reciben el promedio de las CD (<b>${avgDice}</b>, sin STAB) más el promedio del Atributo de los dos movimientos, sin restar defensas. Nadie aplica efectos secundarios.`;
+  else if(ad<=3) out=`<b>Gana ${esc(win.m[1])} por ${ad}.</b> El perdedor recibe el promedio de las CD de los dos movimientos (<b>${avgDice}</b>, sin STAB)${(win===SA?CL.ca:CL.cd)?' × 2 por el crítico del ganador':''}. Solo el ganador aplica sus efectos secundarios.`;
+  else out=`<b>Gana ${esc(win.m[1])} por ${ad}.</b> El perdedor recibe el daño completo de ${esc(win.m[1])}${(win===SA?CL.ca:CL.cd)?' × 2 por el crítico':''}. Solo el ganador aplica sus efectos secundarios.`;
+  return h+`<div class="fx-box" style="margin-top:10px">${out}${win?`<div class="note" style="margin-top:4px">Efecto de ${esc(win.m[1])}: ${esc(win.m[11])}</div>`:''}</div></div>`;
 }
 function clChange(el){
   const k=el.dataset.clf;
-  if(k==='a'){ CL.a=el.value; CL.am=''; if(CL.d===CL.a){ CL.d=''; CL.dm=''; } }
-  else if(k==='d'){ CL.d=el.value; CL.dm=''; }
-  else if(k==='am'||k==='dm') CL[k]=el.value;
+  if(k==='am'||k==='dm') CL[k]=el.value;
   else if(k==='ca'||k==='cd') CL[k]=el.checked;
   renderSheet();
 }
+
 function doEvade(ref,f,kind,against){
   const c=calc(f); const need=Math.round((kind==='esq'?c.esq:c.tem)*100); const r=d(100);
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100;
@@ -1329,7 +1318,9 @@ function doCollide(L,z,mv){
   log.push({k:'',t:`Puntos: ${charName(A.f)} ${SA.tot} · ${charName(t.f)} ${SB.tot} → ${win?`gana ${charName(win.x.f)} por ${ad}`:'empate'}`});
   const avgDice=dice(Math.round((SA.mi.idx+SB.mi.idx)/2));
   const avgHit=(S_,crit)=>{ const rl=rollDice(avgDice); const v=rl.t*(crit?2:1); mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${charName(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}]${crit?' × 2 por el crítico del ganador':''}).`}); };
-  if(!win){ avgHit(SA,false); avgHit(SB,false); log.push({k:'',t:'Empate: nadie aplica efectos secundarios.'}); }
+  if(!win){ const atr=Math.round((num(SA.mi.atr)+num(SB.mi.atr))/2);
+    for(const S_ of [SA,SB]){ const rl=rollDice(avgDice); const v=rl.t+atr; mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${charName(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}] + promedio de Atributo ${atr}, sin defensa).`}); }
+    log.push({k:'',t:'Empate: nadie aplica efectos secundarios.'}); }
   else {
     const wcrit=win===SA?!!L.crit:dcrit;
     if(win===SA){ // gana el atacante: su golpe conecta con el defensor
@@ -1404,7 +1395,6 @@ document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
   const tg=e.target.closest('[data-team]'); if(tg){ toggleTeam(tg.dataset.team); return; }
   const cb=e.target.closest('[data-cb]'); if(cb){ cbClick(cb); return; }
-  const clb=e.target.closest('[data-cl]'); if(clb){ clClick(clb); return; }
   const dpp=e.target.closest('[data-dexpop]'); if(dpp){ e.stopPropagation(); T.dpop=T.dpop===dpp.dataset.dexpop?'':dpp.dataset.dexpop; renderSheet(); return; }
   if(e.target.closest('.dexpop')){ e.stopPropagation(); return; }
   const da=e.target.closest('[data-dexall]'); if(da){ setVis(dexFiltered().map(r=>r[0]),da.dataset.dexall==='1',T.dfor||''); return; }

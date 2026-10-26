@@ -280,3 +280,7 @@ details.rlog .steps-res{margin-top:6px}
 .mvpick{grid-area:pick;border-top:1px dashed var(--line);padding-top:8px;margin-top:4px}
 @media (max-width:640px){.mvrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "data" "fx" "pick"}}
 .colpick{grid-column:1/-1;border-top:1px dashed var(--line);padding-top:6px}
+.ditem.dragging{opacity:.6}
+.ditem.dragging>h3,.ditem.dragging>summary{color:var(--teal)}
+body.is-dragging{user-select:none;cursor:grabbing}
+.grp>h3 .grip,details.fold>summary .grip{display:inline-block;width:auto;letter-spacing:-1px;margin-right:8px;vertical-align:middle}
