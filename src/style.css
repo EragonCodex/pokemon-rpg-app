@@ -225,3 +225,58 @@ table.moch td input,table.moch td select{font-size:13px;padding:4px 6px}
 .clpts .side.win{border-color:var(--good)}
 .clpts table td{font-size:13px}
 .clpts table td:last-child{text-align:right;font-family:var(--f-mono)}
+/* ficha: restaurar */
+.restore{width:100%;margin-top:6px}
+#restoreConfirm{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+#restoreConfirm:empty{display:none}
+.stat.evs .d20btn{flex:none}
+/* tabla de tipos */
+table.typet{width:auto;border-collapse:separate;border-spacing:2px}
+table.typet th,table.typet td{padding:0;text-align:center;border:0}
+table.typet tbody th{text-align:left;padding-right:4px;white-space:nowrap}
+table.typet .tcol{display:inline-block;min-width:30px;padding:3px 2px;border-radius:4px;font:700 10px/1 var(--f-display);letter-spacing:0}
+table.typet td{width:30px;height:24px;border-radius:4px;background:var(--sunk);font:700 12px/24px var(--f-mono)}
+table.typet td.up{background:#2f8a55;color:#fff}
+table.typet td.dn{background:#c8303c;color:#fff}
+table.typet td.x0{background:#16212a;color:#fff}
+table.typet .corner{font-size:10px;text-transform:none;letter-spacing:0;color:var(--muted)}
+/* orden de columnas */
+.sortbtn{all:unset;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;white-space:nowrap}
+.sortbtn:hover{color:var(--ink)}
+.sortbtn:focus-visible{outline:2px solid var(--teal)}
+.sortbtn .arw{color:var(--accent)}
+/* entrenadores desplegables y arrastrables */
+.tlist{display:flex;flex-direction:column;gap:4px}
+.tgrp{display:flex;flex-direction:column;gap:4px}
+.tgrp.dragging{opacity:.6}
+.tgrp.dragging .item{border-color:var(--teal);box-shadow:0 2px 10px var(--shadow)}
+.trow{display:flex;gap:4px;align-items:stretch}
+.trow>.item,.trow>.irow{flex:1;min-width:0}
+.grip{display:grid;place-items:center;width:16px;flex:none;color:var(--muted);cursor:grab;touch-action:none;user-select:none;font-size:13px;letter-spacing:-2px}
+.grip:active{cursor:grabbing}
+.tog{flex:none;width:30px;border:1px solid var(--line);background:var(--sunk);border-radius:var(--r);cursor:pointer;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:12px;line-height:1;padding:0}
+.tog small{font:600 10px/1 var(--f-mono);color:var(--muted);margin-top:2px}
+.tog:disabled{cursor:default;opacity:.45}
+.team{display:flex;flex-direction:column;gap:4px;margin-left:20px}
+.team .item.sub,.team .irow.sub{margin-left:0;width:100%}
+/* combate: rondas */
+.ronda{display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:var(--accent);color:var(--accent-ink);letter-spacing:.06em}
+details.rlog{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+details.rlog>summary{cursor:pointer;font:600 12px/1.4 var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+details.rlog .steps-res{margin-top:6px}
+/* combate: atacar */
+.mvlist{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.mvrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);grid-template-areas:"head fx" "data fx" "pick pick";gap:4px 12px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+.mvrow.on{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.mvhead{grid-area:head;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.mvname{border:0;background:none;padding:0;font:700 16px/1.2 var(--f-display);color:var(--ink);cursor:pointer;text-align:left;border-bottom:2px solid var(--accent)}
+.mvname:hover{color:var(--accent)}
+.mini{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.mini input{width:52px;background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:2px 5px;font-family:var(--f-mono);color:var(--ink)}
+.mvdata{grid-area:data;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12.5px;color:var(--muted)}
+.mvdata b{color:var(--ink)}
+.mvfx{grid-area:fx;font-size:12.5px;line-height:1.4;color:var(--ink);background:var(--sunk);border-radius:4px;padding:6px 8px;align-self:stretch}
+.mvfx .re{margin-top:4px;color:var(--muted)}
+.mvpick{grid-area:pick;border-top:1px dashed var(--line);padding-top:8px;margin-top:4px}
+@media (max-width:640px){.mvrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "data" "fx" "pick"}}
+.colpick{grid-column:1/-1;border-top:1px dashed var(--line);padding-top:6px}

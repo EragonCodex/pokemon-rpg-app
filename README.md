@@ -19,6 +19,8 @@ Registro de fichas para el sistema **Pokémon RPG** (entrenadores, Pokémon, NPC
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
+Cambios posteriores del esquema (ya aplicados): `supabase/06_combate_jugadores.sql` (los jugadores entran solos al combate, daño y efectos entre fichas en combate, fin de ronda sin duplicados).
+
 La clave publicable es pública por diseño. Nunca subas al repositorio la clave secreta (`service_role`) ni el secreto de Google.
 
 ## Desarrollo local

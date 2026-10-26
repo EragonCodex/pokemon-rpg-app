@@ -291,30 +291,49 @@ function itemHTML(x,sub){
   const sub2 = f.tipo==='P'? `${dx?dexLabel(dx):'—'} · ${f.rango||''}${f.lugar==='caja'?' · caja':''}` : `Entrenador · ${f.rango||''}`;
   const cur = S.open&&S.open.id===x.id;
   const btn=`<button class="item${sub?' sub':''}" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${inCombat(refKey(x))?'🥊 ':''}${esc(nm)}</span><span class="pill">${c.act}/${c.ps}</span><span class="s">${esc(sub2)}</span><span class="hp"><i class="${r<.25?'low':r<.5?'mid':''}" style="width:${r*100}%"></i></span></button>`;
-  if(isMaster()&&S.canWrite&&(S.view==='mesa'||S.view==='master')) return `<div class="irow${sub?' sub':''}">${btn.replace('class="item sub"','class="item"')}${gloveBtn(refKey(x))}</div>`;
+  if(canGlove(x)&&(S.view==='mesa'||S.view==='master'||S.view==='mis')) return `<div class="irow${sub?' sub':''}">${btn.replace('class="item sub"','class="item"')}${gloveBtn(refKey(x))}</div>`;
   return btn;
 }
 function noteItem(x){ const cur=S.open&&S.open.id===x.id; return `<button class="item note-i" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${esc(x.f.titulo||'Sin título')}</span><span class="pill">${esc(x.f.fecha||'')}</span><span class="s">${esc((x.f.texto||'').slice(0,80))}</span></button>`; }
-function groupHTML(pool){
-  const trainers=pool.filter(x=>x.f.tipo==='E').sort((a,b)=>(a.f.creado||'').localeCompare(b.f.creado||''));
+/* orden propio de cada jugador (en este navegador) y equipos desplegables */
+const ordKey=scope=>'pkrpg.ord.'+(S.uid||'')+'.'+scope;
+function loadOrder(scope){ try{ return JSON.parse(localStorage.getItem(ordKey(scope))||'[]')||[]; }catch(_){ return []; } }
+function saveOrder(scope,ids){ try{ localStorage.setItem(ordKey(scope),JSON.stringify(ids)); }catch(_){} }
+const TEAM_OPEN=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('pkrpg.teams')||'[]')||[]; }catch(_){ return []; } })());
+function toggleTeam(k){ TEAM_OPEN.has(k)?TEAM_OPEN.delete(k):TEAM_OPEN.add(k); try{ localStorage.setItem('pkrpg.teams',JSON.stringify([...TEAM_OPEN])); }catch(_){} renderList(); }
+function groupHTML(pool,scope='mis'){
+  const o=loadOrder(scope); const pos=id=>{ const i=o.indexOf(id); return i<0?1e9:i; };
+  const trainers=pool.filter(x=>x.f.tipo==='E').sort((a,b)=>pos(a.id)-pos(b.id)||(a.f.creado||'').localeCompare(b.f.creado||''));
   const ids=new Set(trainers.map(t=>t.id));
   let h='';
-  for(const t of trainers){ h+=itemHTML(t)+teamOf(t).map(p=>itemHTML(p,true)).join(''); }
+  for(const t of trainers){ const team=teamOf(t); const k=refKey(t); const open=TEAM_OPEN.has(k);
+    h+=`<div class="tgrp" data-drag="${esc(t.id)}"><div class="trow"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(charName(t.f))}">⋮⋮</span><button class="tog" data-team="${esc(k)}" aria-expanded="${open}" title="${open?'Ocultar':'Mostrar'} equipo" aria-label="${open?'Ocultar':'Mostrar'} el equipo de ${esc(charName(t.f))}" ${team.length?'':'disabled'}>${open?'▾':'▸'}<small>${team.length}</small></button>${itemHTML(t)}</div>${open&&team.length?`<div class="team">${team.map(p=>itemHTML(p,true)).join('')}</div>`:''}</div>`; }
   const loose=pool.filter(x=>x.f.tipo==='P'&&!ids.has(x.f.entrenador));
-  return {h, loose:loose.map(p=>itemHTML(p)).join('')};
+  return {h: h?`<div class="tlist" data-scope="${esc(scope)}">${h}</div>`:'', loose:loose.map(p=>itemHTML(p)).join('')};
 }
+/* arrastrar para ordenar (mouse y pantalla táctil) */
+let DRAG=null;
+document.addEventListener('pointerdown',e=>{ const g=e.target.closest('[data-grip]'); if(!g) return; const el=g.closest('.tgrp'), box=g.closest('.tlist'); if(!el||!box) return;
+  e.preventDefault(); DRAG={el,box,id:e.pointerId}; el.classList.add('dragging'); try{ g.setPointerCapture(e.pointerId); }catch(_){} });
+document.addEventListener('pointermove',e=>{ if(!DRAG||e.pointerId!==DRAG.id) return; e.preventDefault();
+  const sibs=[...DRAG.box.children].filter(x=>x!==DRAG.el&&x.classList.contains('tgrp'));
+  const after=sibs.find(x=>{ const r=x.getBoundingClientRect(); return e.clientY<r.top+r.height/2; });
+  if(after) DRAG.box.insertBefore(DRAG.el,after); else DRAG.box.appendChild(DRAG.el); });
+function endDrag(e){ if(!DRAG||e.pointerId!==DRAG.id) return; const {el,box}=DRAG; DRAG=null; el.classList.remove('dragging');
+  saveOrder(box.dataset.scope,[...box.querySelectorAll(':scope > .tgrp')].map(x=>x.dataset.drag)); renderList(); }
+document.addEventListener('pointerup',endDrag); document.addEventListener('pointercancel',endDrag);
 function folderHTML(pool,addAct){
   const groups={}; pool.forEach(x=>{ if(x.f.tipo==='P'&&x.f.entrenador&&pool.some(t=>t.id===x.f.entrenador)) return; const k=x.f.carpeta||''; (groups[k] ||= []).push(x); });
   const names=Object.keys(groups).sort((a,b)=>(a==='')-(b==='')||a.localeCompare(b));
   if(!names.length) return '';
   return names.map(n=>{ const sel=groups[n]; const all=pool.filter(x=>sel.includes(x)||sel.some(t=>t.id===x.f.entrenador));
-    const g=groupHTML(all); const key=addAct+'|'+n; const open=S.folders[key]!==false;
+    const key=addAct+'|'+n; const g=groupHTML(all,'m.'+key); const open=S.folders[key]!==false;
     return `<details class="fold" data-fold="${esc(key)}" ${open?'open':''}><summary><span>${esc(n||'Sin carpeta')} <span class="pill">${sel.length}</span></span>${S.canWrite?`<button class="btn sm" data-act="${addAct}" data-folder="${esc(n)}">+</button>`:''}</summary><div class="items">${g.h+g.loose}</div></details>`; }).join('');
 }
 function renderList(){
   const L=$('#list'); let h='';
   if(S.view==='mis'){
-    const g=groupHTML(poolOf('jug',S.uid));
+    const g=groupHTML(poolOf('jug',S.uid),'mis');
     const alias = (S.players[S.uid]||{}).alias || S.me?.name || '';
     const notas=Object.entries(S.notas[S.uid]||{}).map(([id,f])=>({src:'nota',uid:S.uid,id,f})).sort((a,b)=>(b.f.creado||'').localeCompare(a.f.creado||''));
     h+=`<div class="grp"><h3>Tu nombre en la mesa</h3><input id="alias" class="btn" style="width:100%;text-align:left" value="${esc(alias)}" ${S.canWrite?'':'disabled'} aria-label="Tu nombre en la mesa"></div>`;
@@ -324,7 +343,7 @@ function renderList(){
   } else if(S.view==='mesa'){
     h+=`<div class="grp"><h3>Mesa</h3><div class="items"><button class="item" data-hist="1" aria-current="${S.open?.src==='hist'}"><span class="n">Historial de dados</span><span class="pill">${allRolls().length}</span></button></div></div>`;
     const uids=Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias)));
-    for(const u of uids){ const g=groupHTML(poolOf('jug',u)); const notas=Object.entries(S.notas[u]||{}).map(([id,f])=>({src:'nota',uid:u,id,f}));
+    for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=Object.entries(S.notas[u]||{}).map(([id,f])=>({src:'nota',uid:u,id,f}));
       h+=`<div class="grp"><h3>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</h3><div class="items">${(g.h+g.loose+notas.map(noteItem).join(''))||'<p class="note">Sin fichas.</p>'}</div></div>`; }
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
@@ -374,7 +393,7 @@ function renderSheet(){
   let h='';
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
-  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${isP?'':`<div class="pdest">P. Destino<b>${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="3" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
+  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b>${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="3" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
     <div class="kind">${kind}${S.ro?' · solo lectura':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
@@ -411,8 +430,8 @@ function renderSheet(){
     <div class="stat" style="grid-area:ps"><div class="k">PS</div><div class="v" data-c="ps"></div><div class="psbar"><i data-c="psbar"></i></div><div class="x">Daño <input type="text" inputmode="text" data-f="dano" value="${num(f.dano)}" ${S.ro?'disabled':''} aria-label="Daño recibido (admite +15 o −5)" title="Escribe un número, o +15 / −5 para sumar o restar" style="width:72px"></div></div>
     <div class="stat" style="grid-area:ini"><div class="k">Iniciativa</div><div class="v" data-c="ini"></div>${isP?'<div class="x">Vel ÷ 5 + DES + SAB</div>':`<div class="x"><select data-f="iniTal" ${S.ro?'disabled':''} aria-label="Talento para la Iniciativa"><option value="">Sin talento</option>${ALL_TAL.map(t=>`<option value="${t}"${f.iniTal===t?' selected':''}>+ ${TAL_LABEL(t)}</option>`).join('')}</select></div>`}</div>
     <div class="stat" style="grid-area:vel"><div class="k">Velocidad</div><div class="v" data-c="vel"></div><div class="x"><select data-f="velMod" ${S.ro?'disabled':''} aria-label="Modificador de Velocidad">${speedOpts(f.velMod||'Normal')}</select></div><div class="x" data-c="velx"></div></div>
-    <div class="stat evs" style="grid-area:esq"><div style="min-width:0"><div class="k">Esquiva</div><div class="v" data-c="esq"></div><div class="x">Intentos <input type="number" min="0" data-f="cEsq" value="${num(f.cEsq)}" ${S.ro?'disabled':''} aria-label="Intentos de Esquiva"></div></div>${S.ro?'':'<div class="evbtns"><button class="btn sm" data-act="evade" data-k="esq">Evadir</button><button class="btn sm" data-act="evreset" data-k="cEsq">Reiniciar</button></div>'}</div>
-    <div class="stat evs" style="grid-area:tem"><div style="min-width:0"><div class="k">Temple</div><div class="v" data-c="tem"></div><div class="x">Intentos <input type="number" min="0" data-f="cTem" value="${num(f.cTem)}" ${S.ro?'disabled':''} aria-label="Intentos de Temple"></div></div>${S.ro?'':'<div class="evbtns"><button class="btn sm" data-act="evade" data-k="tem">Evadir</button><button class="btn sm" data-act="evreset" data-k="cTem">Reiniciar</button></div>'}</div>
+    <div class="stat evs" style="grid-area:esq"><div style="min-width:0"><div class="k">Esquiva</div><div class="v" data-c="esq"></div><div class="x">Intentos <input type="number" min="0" data-f="cEsq" value="${num(f.cEsq)}" ${S.ro?'disabled':''} aria-label="Intentos de Esquiva"></div></div>${S.ro?'':`<button class="d20btn" data-act="evade" data-k="esq" title="Tirar Esquiva" aria-label="Tirar Esquiva">${D20_SVG}</button>`}</div>
+    <div class="stat evs" style="grid-area:tem"><div style="min-width:0"><div class="k">Temple</div><div class="v" data-c="tem"></div><div class="x">Intentos <input type="number" min="0" data-f="cTem" value="${num(f.cTem)}" ${S.ro?'disabled':''} aria-label="Intentos de Temple"></div></div>${S.ro?'':`<button class="d20btn" data-act="evade" data-k="tem" title="Tirar Temple" aria-label="Tirar Temple">${D20_SVG}</button>`}</div>
     <div class="stat" style="grid-area:bev"><div class="k">Bono de Evasión</div><div class="v" data-c="bEv"></div><div class="x">−3 a +3 <input type="number" min="-3" max="3" data-f="bEv" value="${num(f.bEv)}" ${S.ro?'disabled':''} aria-label="Bono de Evasión"></div></div>
     <div class="stat" style="grid-area:ic"><div class="k">Índice Crítico</div><div class="v" data-c="crit"></div><div class="x">IC <input type="number" min="0" max="5" data-f="ic" value="${num(f.ic)}" ${S.ro?'disabled':''} aria-label="Índice de Crítico"></div></div>
     <div class="stat" style="grid-area:pre"><div class="k">Precisión base</div><div class="v" data-c="prec"></div><div class="x">Mod <input type="number" data-f="prec" value="${num(f.prec)}" ${S.ro?'disabled':''} aria-label="Modificador de Precisión"></div></div>
@@ -507,7 +526,9 @@ function fillComputed(){
     set('mvfx'+i, esc(mi.m[11]));
   }
 }
-function moveMeta(f,mi,c,isOR){ const m=mi.m; return `${chip(m[2])} ${claseChip(m[3])} <span>${rankChip(m[5])}${isOR?' <span class="pill">OverRanked</span>':''}</span><span>Prec <b>${mi.prec}%</b></span><span>Daño <b>${mi.dice==='-'?'—':mi.dice+' + '+mi.atr}</b> ${mi.dice==='-'?'':attrChip(mi.ak)}${mi.stab?' <span class="pill">STAB</span>':''}</span>${typeof m[12]==='number'?`<span>R. Extra <b>${pct(m[12])}</b></span>`:''}${num(m[8])?`<span>Prioridad <b>${m[8]>0?'+':''}${m[8]}</b></span>`:''}<span>${esc(m[10])}</span>${m[13]&&m[13]!=='-'?`<span class="pill">${esc(m[13])}</span>`:''}`; }
+function moveMeta(f,mi,c,isOR){ const m=mi.m; return `${chip(m[2])} ${claseChip(m[3])} <span>${rankChip(m[5])}${isOR?' <span class="pill">OverRanked</span>':''}</span><span>Prec <b>${mi.prec}%</b></span><span>Daño <b>${mi.dice==='-'?'—':mi.dice+' + '+mi.atr}</b> ${mi.dice==='-'?'':attrChip(mi.ak)}${mi.stab?' <span class="pill">STAB</span>':''}</span>${typeof m[12]==='number'?`<span>R. Extra <b>${pct(m[12])}</b></span>`:''}${num(m[8])?`<span>Prioridad <b>${m[8]>0?'+':''}${m[8]}</b></span>`:''}<span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?`<span>Concurso ${socialChip(m[14])}</span>`:''}${m[13]&&m[13]!=='-'?`<span class="pill">${esc(m[13])}</span>`:''}`; }
+function restoreAll(f){ f.dano=0; f.cEsq=0; f.cTem=0; f.ic=0; f.bEv=0; f.prec=0; f.estF=''; f.estM=''; f.estFx={}; f.rep=null;
+  ATTR.forEach(k=>{ if(f.attr&&f.attr[k]) f.attr[k].b=0; }); return f; }
 function setPath(o,path,v){ const ks=path.split('.'); let t=o; for(let i=0;i<ks.length-1;i++){ const k=ks[i]; if(t[k]==null) t[k]= /^\d+$/.test(ks[i+1])?[]:{}; t=t[k]; } t[ks.at(-1)]=v; }
 function commit(full){
   putF(S.open,structuredClone(S.cur));
@@ -529,6 +550,7 @@ function onField(e){
   else if(/^mochila\.\d+\.eq$/.test(p)){ if(v) (f.mochila||[]).forEach(it=>{ if(it.eq===v) it.eq=''; }); setPath(f,p,v); full=true; }
   else if(p.startsWith('mochila.')){ setPath(f,p,v); fillMochila(); }
   else if(p.startsWith('tal.')||p==='cat'){ setPath(f,p,v); full=true; }
+  else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); full=true; }
   else setPath(f,p,v);
   commit(full);
 }
@@ -613,6 +635,10 @@ ${tbl(['Penalización por repetición','Starter','Beginner','Amateur','Elite','M
 ${tbl(['Índice de Crítico','{0}','{1}','{2}','{3}','{4}','{5}'],[['Ratio','1 %','20 %','40 %','60 %','80 %','99 %']])}
 <p><b>Daño = dado de la Clase de Daño + Atributo del movimiento − defensa del objetivo</b> (VIT contra Físico, SAB contra Especial). STAB +1 CD; cada relación de tipos ±1 CD (x0 = inmune); máximo CD 24. El crítico duplica el daño y aplica el estado del tipo del movimiento.</p>
 ${ej('Un Pokémon de tipo Fuego usa un movimiento Especial de Fuego con Precisión +1 y Base 3, sin modificador: su Precisión es 80 %. Saca 12 en el d100: conecta (12 ≤ 80) y, si el Rango Extra es 20 %, también aplica el efecto secundario (12 ≤ 20). Con IC {0} (1 %) no es crítico. La CD es 3 + 1 por STAB = 4, o sea 2d4. Con ENE 3 contra un rival de SAB 2, el daño es 2d4 + 3 − 2.')}`},
+{id:'tipos',t:'Tabla de tipos',h:()=>`<p>Fila: tipo del <b>movimiento</b>. Columna: tipo del <b>defensor</b>. Cada <b>+1</b> sube un paso la Clase de Dado (súper eficaz), cada <b>−1</b> la baja (poco eficaz) y <b>x0</b> deja inmune. Con dos tipos, se suman.</p>
+<div class="tw"><table class="typet"><thead><tr><th class="corner">Mov. \\ Def.</th>${D.types.map(t=>`<th><span class="tcol" style="background:#${TYPE_BG[t]||'CCCCCC'};color:${inkOn(TYPE_BG[t]||'CCCCCC')}" title="${esc(t)}">${esc(TYPE_ABBR(t))}</span></th>`).join('')}</tr></thead>
+<tbody>${D.types.map(a=>`<tr><th>${chip(a)}</th>${(D.chart[a]||[]).map((v,i)=>{ const cls=v==='x0'?'x0':v>0?'up':v<0?'dn':''; const txt=v==='x0'?'x0':typeof v==='number'&&v!==0?(v>0?'+'+v:'−'+(-v)):''; return `<td class="${cls}" title="${esc(a)} contra ${esc(D.types[i])}">${txt}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+${ej('Un movimiento de Agua contra un Pokémon Fuego/Roca: +1 (Fuego) +1 (Roca) = +2 pasos, así que una CD 4 (2d4) pasa a CD 6 (2d6).')}`},
 {id:'evasion',t:'Esquiva y Temple',h:()=>`<p>Esquivar es gratis y se decide justo después de ver la Precisión del atacante. <b>Esquiva</b> se usa contra movimientos Físicos, Especiales y trampas (atributo DES); <b>Temple</b> contra movimientos de Estado (atributo CAR).</p>
 <p><b>Evasión = 100 % − 15 % × intentos previos + 15 % × ⌊atributo ÷ 2⌋ + 15 % × Bono de Evasión</b>, entre 20 % y 100 %.</p>
 <p>Para esquivar, la tirada de 1d100 debe ser <b>menor o igual que la Evasión y también que la tirada de Precisión del atacante</b>. Por eso un crítico solo se esquiva con otro crítico.</p>
@@ -646,6 +672,7 @@ ${tbl(['Bono','Ball','Condición'],[['+0','Poké Ball','Siempre'],['+1','Super B
 ${tbl(['Bonguri (2 por Ball)','Bonus'],[['De color','+2 si su sabor es el favorito del Pokémon'],['Negro','+2 contra Rango superior al Entrenador'],['Blanco','+2 contra Rango inferior al Entrenador'],['Blanco + Negro','+1 en cualquier caso']])}
 ${ej('Un Entrenador Beginner con Precisión [S] (+1) y DES 4 lanza una Ultra Ball (+2) a un Pokémon Amateur al que dejó con un 30 % de PS (mérito +1). La dificultad es 20 + 5 (está un Rango por encima) = 25. Saca 15: 15 + 1 + 4 + 1 + 2 = 23, no lo captura.')}`}];
 let GLOS_OPEN='';
+const TYPE_ABBR=t=>({Electrico:'ELÉ',Psiquico:'PSÍ',Dragon:'DRA',Siniestro:'SIN',Fantasma:'FAN'}[t]||deacc(t).slice(0,3).toUpperCase());
 function glosHTML(){ return `<p class="note">Elige un tema en el índice para desplegarlo.</p>`+GLOS.map(g=>`<details class="card glos" id="g-${g.id}" ${GLOS_OPEN===g.id?'open':''}><summary>${g.t}</summary>${GLOS_OPEN===g.id?g.h():''}</details>`).join(''); }
 
 /* ---------- herramientas ---------- */
@@ -657,7 +684,7 @@ function visibleRefs(){
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
 const T = {atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
-  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos'}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
+  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
   return ({mov:toolMov,dex:toolDex,gen:toolGen,dados:toolDados}[S.tool]||toolDex)();
 }
@@ -754,6 +781,7 @@ function doTie(){
   const parts=[]; tied.forEach(x=>{ T.tie[x.k]=d(20); parts.push(`${charName(x.r.f)} ${T.tie[x.k]}`); });
   if(parts.length) logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null);
 }
+const MCOLS=[['Movimiento',1],['Tipo',2],['Clase',3],['Nivel',5],['Prec',6],['Base',7],['Atrib.',4],['Distancia',10],['R.E.',12]];
 const uniq=(i)=>[...new Set(D.atk.map(a=>a[i]).filter(x=>x&&x!=='-'))].sort();
 const CATS=[...new Set(D.atk.flatMap(a=>String(a[13]||'').split(/[,;]\s*/)).map(s=>s.trim()).filter(x=>x&&x!=='-'))].sort();
 function toolMov(){
@@ -764,12 +792,18 @@ function toolMov(){
     <label class="f">Nombre o efecto<input id="mq" value="${esc(T.q)}" placeholder="p. ej. Quemado"></label>
     ${sel('niv','Nivel',RANGOS)}${sel('tipo','Tipo',uniq(2))}${sel('clase','Clase',uniq(3))}${sel('atr','Atributo',uniq(4))}${sel('cat','Categoría',CATS)}${sel('con','Concurso',uniq(14))}
     <div class="f" style="justify-content:end"><span class="pill">${res.length} movimientos</span></div></div></div>
-    <div class="card"><div class="tw"><table class="mtable"><thead><tr><th>Movimiento</th><th>Tipo</th><th>Clase</th><th>Nivel</th><th>Prec</th><th>Base</th><th>Atrib.</th><th>Distancia</th><th>R.E.</th></tr></thead><tbody>`;
+    <div class="card"><div class="tw"><table class="mtable"><thead><tr>${MCOLS.map(([lbl,i])=>{ const on=T.msort.col===i&&T.msort.dir; return `<th><button class="sortbtn" data-msort="${i}" aria-sort="${on?(T.msort.dir>0?'ascending':'descending'):'none'}">${lbl}<span class="arw">${on?(T.msort.dir>0?' ▲':' ▼'):''}</span></button></th>`; }).join('')}</tr></thead><tbody>`;
+  if(T.msort.col!==''&&T.msort.dir){ const i=num(T.msort.col), dir=T.msort.dir; const key=a=>{ const v=i===5?ri(a[5]):a[i]; return v===''||v==='-'||v==null?null:v; };
+    res.sort((x,y)=>{ const A=key(x),B=key(y);
+      if(A===null||B===null){ if(A===null&&B===null) return x[1].localeCompare(y[1],'es'); return A===null?1:-1; }
+      const an=typeof A==='number', bn=typeof B==='number'; let r;
+      if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
   for(const a of res.slice(0,150)) h+=`<tr class="main"><td><b>${esc(a[1])}</b></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td></tr><tr class="fx"><td colspan="9">${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}</td></tr>`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
   return h;
 }
 /* Pokédex */
+const baseStats=r=>[9,10,11,12,13,14].reduce((a,i)=>a+num(r[i]),0);
 function dexFiltered(){
   const q=T.dq.toLowerCase(), fl=T.dfl, M=isMaster();
   return D.dex.filter(r=>{
@@ -785,6 +819,10 @@ function dexFiltered(){
     if(fl.region&&r[18]!==fl.region) return false;
     if(fl.tipo&&(!shown||!dexTypes(r).includes(fl.tipo))) return false;
     if(fl.rango&&(!shown||r[6]!==fl.rango)) return false;
+    if(fl.hab&&(!shown||![r[15],r[16],r[17]].some(h=>String(h||'').toLowerCase()===fl.hab.toLowerCase()))) return false;
+    if((fl.bmin!==''||fl.bmax!=='')&&!shown) return false;
+    if(fl.bmin!==''&&baseStats(r)<num(fl.bmin)) return false;
+    if(fl.bmax!==''&&baseStats(r)>num(fl.bmax)) return false;
     return true; });
 }
 function toolDex(){
@@ -798,6 +836,8 @@ function toolDex(){
     <label class="f">Tipo<select data-dfl="tipo">${opts(D.types,T.dfl.tipo,'Todos')}</select></label>
     <label class="f">Región<select data-dfl="region">${opts(D.regions,T.dfl.region,'Todas')}</select></label>
     <label class="f">Rango<select data-dfl="rango">${opts(RANGOS,T.dfl.rango,'Todos')}</select></label>
+    <label class="f">Habilidad<input data-dfl="hab" list="dl-hab" value="${esc(T.dfl.hab)}" placeholder="p. ej. Espesura"></label>
+    <label class="f">Puntos Base<div class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" min="0" data-dfl="bmin" value="${esc(T.dfl.bmin)}" placeholder="mín." aria-label="Puntos Base mínimos" style="width:50%"><input type="number" min="0" data-dfl="bmax" value="${esc(T.dfl.bmax)}" placeholder="máx." aria-label="Puntos Base máximos" style="width:50%"></div></label>
     ${M?`<label class="f">Estado<select data-dfl="estado"><option value="">Todas</option><option value="vis"${T.dfl.estado==='vis'?' selected':''}>Para todos</option><option value="parcial"${T.dfl.estado==='parcial'?' selected':''}>Para algunos jugadores</option><option value="oculto"${T.dfl.estado==='oculto'?' selected':''}>Ocultas</option></select></label>`:`<label class="f">Estado<select data-dfl="pest"><option value="todos"${T.dfl.pest==='todos'?' selected':''}>Desbloqueadas para todos</option><option value="mio"${T.dfl.pest==='mio'?' selected':''}>Desbloqueadas para mí</option><option value="bloq"${T.dfl.pest==='bloq'?' selected':''}>Bloqueadas</option><option value=""${!T.dfl.pest?' selected':''}>Pokédex completa</option></select></label>`}
     </div>${M&&S.canWrite?`<div class="row" style="margin-top:10px"><select id="dexFor" class="btn sm" aria-label="Para quién"><option value="">Para todos</option>${dexPlayers().map(u=>`<option value="${esc(u)}"${T.dfor===u?' selected':''}>Para ${esc(S.players[u].alias||'Jugador')}</option>`).join('')}</select><button class="btn sm" data-dexall="1">Desbloquear las ${res.length} filtradas</button><button class="btn sm" data-dexall="0">Ocultar las ${res.length} filtradas</button><span class="note">Toca la Poké Ball de una especie para elegir qué jugadores la ven.</span></div>`:(M?'':'<p class="note">El Master va desbloqueando especies a medida que las encuentran.</p>')}</div>`;
   const sel=T.dsel&&dexById.get(T.dsel); if(sel&&(M||visFor(sel[0]))) h+=dexDetail(sel);
@@ -812,7 +852,7 @@ function dexDetail(r){
   const hab=[...new Set([r[15],r[16],r[17]].filter(x=>x&&x!=='-'))];
   return `<div class="card"><h2>${esc(dexLabel(r))} <button class="btn sm" data-dsel="">Cerrar</button></h2><div class="grid g2">
     <div><div class="row">${dexTypes(r).map(chip).join(' ')}<span class="pill">${esc(r[18])}</span>${rankChip(r[6])}<span class="pill">${esc(r[5])}</span></div>
-    <p class="note">Movimiento: ${esc(r[7])} · ${r[8]} ft · PS en Starter: ${Math.ceil(15+(num(r[10])+num(r[14]))*(D.etapa[r[5]]??1))}</p>
+    <p class="note">Puntos Base ${baseStats(r)} · Movimiento: ${esc(r[7])} · ${r[8]} ft · PS en Starter: ${Math.ceil(15+(num(r[10])+num(r[14]))*(D.etapa[r[5]]??1))}</p>
     <div class="statbars">${ATTR.map((k,i)=>`${attrChip(k)}<i style="width:${Math.min(100,num(r[9+i])*11)}%;background:#${ATTR_BG[k]}"></i><b>${r[9+i]}</b>`).join('')}</div></div>
     <div>${hab.map(x=>`<div class="fx-box"><b>${esc(x)}</b> — ${esc(habMap.get(x)||'')}</div>`).join('')}</div></div></div>`;
 }
@@ -829,11 +869,12 @@ function genPool(){
     else if(g.t1||g.t2){ if(!ts.includes(g.t1||g.t2)) return false; }
     if(g.region&&r[18]!==g.region) return false; return true; });
 }
-function pickMove(level,cls,types,taken){
+function pickMove(level,cls,types,taken,stab){
   const isCls=a=>cls==='FE'?(a[3]==='Fisico'||a[3]==='Especial'):a[3]==='Estado';
   const ok=a=>a[0]!=='M0000'&&!taken.has(a[0])&&isCls(a);
   const Lv=ri(level);
-  const tries=[ a=>a[5]===level&&types.includes(a[2]), a=>ri(a[5])<=Lv&&ri(a[5])>=Lv-1&&types.includes(a[2]), a=>a[5]===level&&a[2]==='Normal', a=>ri(a[5])<=Lv&&types.includes(a[2]), a=>a[5]===level ];
+  const tries= stab ? [ a=>a[5]===level&&types.includes(a[2]) ]
+    : [ a=>a[5]===level&&a[2]!=='Sin Tipo', a=>ri(a[5])<=Lv&&ri(a[5])>=Lv-1 ];
   for(const t of tries){ const pool=D.atk.filter(a=>ok(a)&&t(a)); if(pool.length){ const m=pick(pool); taken.add(m[0]); return m[0]; } }
   return '';
 }
@@ -847,7 +888,7 @@ function generate(){
   const plan=[[['OR','FE'],[L(0),'FE'],[L(0),'Est']],[['OR','FE'],[L(1),'FE'],[L(0),'Est']],[['OR','FE'],[L(2),'FE'],[L(2),'Est'],[L(1),'FE']],
     [['OR','FE'],[L(3),'FE'],[L(3),'FE'],[L(3),'Est'],[L(2),'Est']],[['OR','FE'],[L(4),'FE'],[L(4),'FE'],[L(4),'Est'],[L(4),'Est'],[L(2),'FE']],
     [[L(5),'FE'],[L(5),'FE'],[L(5),'FE'],[L(5),'FE'],[L(5),'Est'],[L(5),'Est']]][R];
-  const moves=plan.map(([lvl,cls])=> lvl==='OR'? pickMove(L(R+1),'FE',types,taken) : pickMove(lvl,cls,types,taken)).filter(Boolean);
+  const moves=plan.map(([lvl,cls])=> lvl==='OR'? pickMove(L(R+1),'FE',types,taken,true) : pickMove(lvl,cls,types,taken,false)).filter(Boolean);
   while(moves.length<6) moves.push('');
   const hab=[...new Set([sp[15],sp[16],sp[17]].filter(x=>x&&x!=='-'))];
   T.gen={f:newPokemon({especie:sp[0],rango:T.g.rango,nat:pick(D.nat)[0],attr,moves,habilidad:pick(hab)||''})};
@@ -860,7 +901,7 @@ function toolGen(){
     <label class="f">Tipo 2<select data-g="t2">${opts(D.types,g.t2,'Cualquiera')}</select></label>
     <label class="f">Región<select data-g="region">${opts(D.regions,g.region,'Todas')}</select></label></div>
     <div class="row" style="margin-top:10px"><button class="btn pri" id="g-go">Generar</button><span class="note">${n} especies posibles${isMaster()?'':' (solo las desbloqueadas)'}. Con un tipo, sirve como primario o secundario; con dos, debe tener ambos.</span></div>
-    <p class="note">Especies de Rango igual o menor al elegido. Reparte ${ATTR_PTS[ri(g.rango)]} puntos de Atributo con techo ${esc(g.rango)}, elige naturaleza y habilidad al azar, y arma los movimientos con la distribución sugerida (OverRanked de su tipo). Como no hay datos de qué movimientos aprende cada especie, toma movimientos de su tipo o, si faltan, Normales.</p></div>`;
+    <p class="note">Especies de Rango igual o menor al elegido. Reparte ${ATTR_PTS[ri(g.rango)]} puntos de Atributo con techo ${esc(g.rango)}, elige naturaleza y habilidad al azar, y arma los movimientos con la distribución sugerida: el OverRanked es de su tipo (con STAB) y el resto son de tipos al azar.</p></div>`;
   if(T.gen?.error) h+=`<div class="card"><p class="ko">${esc(T.gen.error)}</p></div>`;
   else if(T.gen?.f){ const f=T.gen.f, c=calc(f), dx=dexById.get(f.especie), nat=natMap.get(f.nat);
     h+=`<div class="card"><h2>${esc(dexLabel(dx))} <span class="row">${c.tipos.map(chip).join(' ')}<span class="pill">${esc(dx[18])}</span></span></h2>
@@ -897,6 +938,7 @@ function bindTool(){
   document.querySelectorAll('[data-ini]').forEach(el=>el.addEventListener('change',e=>{const k=e.target.dataset.ini; e.target.checked?T.ini.add(k):T.ini.delete(k); renderSheet();}));
   document.querySelectorAll('[data-fl]').forEach(el=>el.addEventListener('change',e=>{T.fl[e.target.dataset.fl]=e.target.value; renderSheet();}));
   document.querySelectorAll('[data-dfl]').forEach(el=>el.addEventListener('change',e=>{T.dfl[e.target.dataset.dfl]=e.target.value; T.dpage=0; renderSheet();}));
+  document.querySelectorAll('[data-msort]').forEach(b=>b.addEventListener('click',()=>{ const c=b.dataset.msort; if(T.msort.col!==c) T.msort={col:c,dir:1}; else T.msort.dir=T.msort.dir===1?-1:T.msort.dir===-1?0:1; renderSheet(); }));
   document.querySelectorAll('[data-g]').forEach(el=>el.addEventListener('change',e=>{T.g[e.target.dataset.g]=e.target.value; renderSheet();}));
   on('g-go','click',()=>{generate();renderSheet();}); on('g-go2','click',()=>{generate();renderSheet();});
   on('mq','change',e=>{T.q=e.target.value;renderSheet();});
@@ -910,14 +952,14 @@ function bindTool(){
 
 /* ---------- combate ---------- */
 const PEN={Starter:0,Beginner:10,Amateur:20,Elite:30,Master:40,Legend:40};
-const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{}};
-const CBU={atk:'',mv:'',bonus:0,picking:false,targets:[]};
+const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null};
+const CBU={atk:'',mv:'',bon:{},picking:false,targets:[],colFor:''};
 let cbChain=Promise.resolve();
 function cbWrite(fields,full){
   for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx'].includes(k)) CB[k]={...CB[k],...v}; else CB[k]=v; }
   cbChain=cbChain.then(async()=>{ try{
       const ref=S.db.doc('combate/actual');
-      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx}); CB.exists=true; }
+      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null}); CB.exists=true; }
       else await ref.update(fields);
       setStatus('Guardado');
     }catch(e){ onWriteError(e); } });
@@ -934,15 +976,29 @@ function saveFicha(ref,f){
   queueSave(pathOf(ref),structuredClone(f),250);
   const k=refKey(ref); if(ref.src==='master'&&inCombat(k)) cbWrite({snaps:{[k]:snapOf(f)}});
 }
+/* Guarda una ficha en combate aunque sea de otro jugador o del Master (colisión, residuales, efectos) */
+function saveAny(x,f){
+  if(canEditRef(x)){ saveFicha(x,f); return; }
+  if(!S.canWrite||!inCombat(x.key)) return;
+  if(x.src==='master') cbWrite({snaps:{[x.key]:snapOf(f)}}); else putF(x,f);
+  if(S.open&&S.open.src===x.src&&S.open.id===x.id) S.cur=structuredClone(f);
+  const sb=window.__sb; if(!sb) return;
+  setStatus('Guardando…');
+  sb.rpc('guardar_ficha_combate',{fid:x.id,nueva:snapOf(f)}).then(({error})=>{ if(error) onWriteError({code:'invalid_argument',message:error.message}); else setStatus('Guardado'); });
+}
+function mutate(key,fn){ const x=combatant(key); if(!x) return null; const f=structuredClone(x.f); const out=fn(f); saveAny(x,f); return out; }
+function canGlove(x){ if(!S.canWrite||!x) return false; return isMaster() || (x.src==='jug'&&x.uid===S.uid); }
 function toggleGlove(k){
-  if(!isMaster()||!S.canWrite) return;
+  const [src,uid,id]=k.split('|'); if(!canGlove({src,uid:uid||null,id})) return;
   let parts=[...CB.parts], snaps={...CB.snaps};
   if(parts.includes(k)){ parts=parts.filter(x=>x!==k); delete snaps[k]; }
   else { parts.push(k); const c=combatant(k); if(c&&c.src==='master') snaps[k]=snapOf(c.f); }
-  cbWrite({parts,snaps},true); render();
+  if(isMaster()) cbWrite({parts,snaps},true); else cbWrite({parts});
+  render();
 }
 function gloveBtn(k){ const on=inCombat(k); return `<button class="glove" data-glove="${esc(k)}" aria-pressed="${on}" title="${on?'Quitar del combate':'Agregar al combate'}" aria-label="${on?'Quitar del combate':'Agregar al combate'}">🥊</button>`; }
 function combatants(){ return CB.parts.map(combatant).filter(Boolean); }
+const iAmIn=()=> isMaster() || CB.parts.some(k=>k.startsWith(`jug|${S.uid}|`));
 function cbOrder(){ return combatants().map(x=>({x,c:calc(x.f)})).sort((a,b)=>b.c.ini-a.c.ini||(CB.ties[b.x.key]||0)-(CB.ties[a.x.key]||0)); }
 function targetMode(m){ const b=m[9], dist=String(m[10]);
   if(b==='Usuario'||dist==='Propio') return 'none';
@@ -960,45 +1016,130 @@ function attackInfo(x,mv){
   if(c.em.noCrit){ critR=0; if(reR!==null) reR=0; }
   return {f,c,mi,n,rec,pen,prec,ic,critR,reR};
 }
+
+/* ---------- efectos automáticos de los movimientos ---------- */
+const EST_NAMES=D.estados.map(e=>e[0]);
+const EST_RX=new RegExp('\\b('+EST_NAMES.join('|')+')\\b','g');
+const FX_CACHE=new Map();
+function parseFx(m){
+  if(FX_CACHE.has(m[0])) return FX_CACHE.get(m[0]);
+  const ops=[]; const txt=String(m[11]||'');
+  for(let s of txt.split(/(?<=\.)\s+/)){ s=s.trim(); if(!s) continue;
+    if(/^(Si |Con |Requiere|Mientras|Durante|Tras usarlo|El siguiente|Cuando|Debe |Usa |Cancela|Esparce|Planta |Como |Cura |Evita|Ignora|Los movimientos)/i.test(s)) continue;
+    if(/(cada ronda|por cada|cada vez|al final de|en su lugar|según|a quien|\bsi (el|la|es|hay|en)\b|hasta el final|siguiente ronda|por punto|durante \d)/i.test(s)) continue;
+    const both=/(al Blanco y al usuario|incluido el usuario)/i.test(s);
+    const self=!both&&/(al usuario|del usuario|su Precisi[oó]n|a s[ií] mismo)/i.test(s)&&!/(al rival|al Blanco|del rival|a todos los rivales)/i.test(s);
+    if(!self&&!both&&/\ba sus aliados\b/i.test(s)) continue;
+    const who=both?'both':self?'self':'target';
+    const puede=/\b[Pp]uede\b/.test(s);
+    if(/(Inflige|inflige|[Pp]uede causar)/.test(s)){ const names=[...new Set(s.match(EST_RX)||[])]; if(names.length) ops.push({k:'est',names,rand:/al azar/i.test(s),who,ch:'re'}); }
+    const at={}; let mm; const rx=/([+-])(\d+)\s+(FUE|VIT|ENE|SAB|DES|CAR)\b/g;
+    while((mm=rx.exec(s))) at[mm[3]]=(at[mm[3]]||0)+(mm[1]==='-'?-1:1)*Number(mm[2]);
+    if((mm=/\+(\d+) a todos los atributos/.exec(s))) ATTR.forEach(k=>at[k]=(at[k]||0)+Number(mm[1]));
+    if((mm=/\+(\d+) a un atributo al azar/.exec(s))) at.__rand=Number(mm[1]);
+    if(Object.keys(at).length) ops.push({k:'attr',at,who,ch:puede?'re':'always'});
+    if((mm=/(Reduce|reduce|reducir|Aumenta|aumenta|aumentar)[^.]*?Precisi[oó]n[^.]*?en (\d+)\s*%/.exec(s))){ const v=Math.max(1,Math.round(Number(mm[2])/5))*(/^[Rr]educ/.test(mm[1])?-1:1); ops.push({k:'prec',v,who:/del rival/.test(s)?'target':who,ch:puede?'re':'always'}); }
+    if((mm=/Evasi[oó]n del rival en (\d+)\s*%/.exec(s))) ops.push({k:'bev',v:-Math.max(1,Math.round(Number(mm[1])/15)),who:'target',ch:puede?'re':'always'});
+    if((mm=/\(\+(\d+) al bono de Evasi[oó]n\)/i.exec(s))) ops.push({k:'bev',v:Number(mm[1]),who:'self',ch:'always'});
+  }
+  FX_CACHE.set(m[0],ops); return ops;
+}
+function setEstFx(f,cls,meta){ f.estFx={...(f.estFx||{})}; if(meta) f.estFx[cls]={r:meta.r||'Starter',by:meta.by||'',n:0,pr:0}; else delete f.estFx[cls]; }
+function giveEstado(f,name,ctx,force){
+  const e=estMap.get(name); if(!e) return '';
+  const cls=e[2]==='Fisico'?'F':'M', field=cls==='F'?'estF':'estM';
+  if(estImmune(f,name)) return `inmune a ${name}`;
+  if(f[field]&&!force) return f[field]===name?`ya estaba ${name}`:`ya tiene ${f[field]}, no se aplica ${name}`;
+  const prev=f[field]; f[field]=name; setEstFx(f,cls,{r:ctx.rank,by:ctx.by});
+  return prev&&prev!==name?`${name} (reemplaza a ${prev})`:name;
+}
+/* Aplica los efectos de un movimiento a una ficha. role: 'target' o 'self' */
+function applyOps(f,ops,role,ctx){
+  const notes=[];
+  for(const op of ops){
+    if(!(role==='all'||op.who===role||op.who==='both')) continue;
+    if(op.ch==='re'&&!ctx.re) continue;
+    if(op.k==='est'){ const n=op.rand?pick(op.names):op.names[0]; const t=giveEstado(f,n,ctx,false); if(t) notes.push(t); }
+    else if(op.k==='attr'){ const at={...op.at}; if(at.__rand){ at[pick(ATTR)]=(at[pick(ATTR)]||0)+at.__rand; delete at.__rand; }
+      f.attr ||= blankAttr();
+      for(const [k,v] of Object.entries(at)){ if(!ATTR.includes(k)) continue; f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b); const b1=clamp(b0+v,-6,6); f.attr[k].b=b1; if(b1!==b0) notes.push(`${b1-b0>0?'+':''}${b1-b0} ${k} (bono ${b1>0?'+':''}${b1})`); else notes.push(`${k} ya está en el tope (${b0>0?'+':''}${b0})`); } }
+    else if(op.k==='prec'){ const p0=num(f.prec), p1=clamp(p0+op.v,-6,6); f.prec=p1; notes.push(`Precisión ${p1-p0>0?'+':''}${(p1-p0)*5}% (mod ${p1>0?'+':''}${p1})`); }
+    else if(op.k==='bev'){ const b0=num(f.bEv), b1=clamp(b0+op.v,-3,3); f.bEv=b1; notes.push(`Bono de Evasión ${b1>0?'+':''}${b1}`); }
+  }
+  return notes;
+}
+function critEstado(m){ return D.estados.find(e=>e[1]===m[2])?.[0]||''; }
+
+/* ---------- orden de iniciativa y rondas ---------- */
 function cbOrderHTML(){
   const ord=cbOrder(); const tied=ord.filter(a=>ord.some(b=>b!==a&&b.c.ini===a.c.ini));
-  let h=`<div class="card"><h2>Orden de iniciativa <span class="row">${tied.length?'<button class="btn sm pri" data-cb="tie">Desempatar con 1d20</button>':''}${isMaster()&&CB.parts.length?'<button class="btn sm danger" data-cb="end">Terminar combate</button><span id="endConfirm"></span>':''}</span></h2>`;
-  if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'El Master todavía no eligió a los combatientes.'}</p></div>`;
-  h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e);return er?badge(e,TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
+  let h=`<div class="card"><h2><span>Orden de iniciativa <span class="ronda">Ronda ${num(CB.ronda)}</span></span><span class="row">${tied.length?'<button class="btn sm" data-cb="tie">Desempatar con 1d20</button>':''}${isMaster()&&CB.parts.length?'<button class="btn sm danger" data-cb="end">Terminar combate</button><span id="endConfirm"></span>':''}${CB.parts.length&&S.canWrite&&iAmIn()?'<button class="btn sm pri" data-cb="round">Finalizar Ronda</button><span id="roundConfirm"></span>':''}</span></h2>`;
+  if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
+  h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     return `<div class="r cbrow"><div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div></div>
-      <div style="text-align:right"><span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${isMaster()?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
-    <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20.</p></div>`;
-  return h;
+      <div style="text-align:right"><span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
+    <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones y quita los estados superados.</p>`;
+  const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
+  return h+`</div>`;
 }
+async function endRound(){
+  if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
+  const cur=num(CB.ronda); const sb=window.__sb;
+  if(sb){ const {data,error}=await sb.rpc('avanzar_ronda',{esperada:cur}); if(error){ onWriteError({code:'invalid_argument'}); return; } if(!data){ showBanner('Otra persona ya terminó esta ronda. Revisa el resumen.'); return; } }
+  CB.ronda=cur+1;
+  const lines=[], heals=[];
+  for(const x of combatants()){
+    const f=structuredClone(x.f); let changed=false; const name=charName(f);
+    for(const cls of ['F','M']){ const field=cls==='F'?'estF':'estM'; const est=f[field]; if(!est) continue; const e=estMap.get(est); if(!e) continue;
+      const fx={r:f.rango||'Starter',n:0,pr:0,...((f.estFx||{})[cls]||{})};
+      if(estImmune(f,est)){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: es inmune a ${est} por su tipo; se quita.`}); continue; }
+      if(e[4]==='-'||e[4]===''||e[4]==null){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: ${est} termina.`}); continue; }
+      const th=num(e[4])+num(e[5])*num(fx.n);
+      if(th>=100){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: su Salvación de ${est} llegó a ${th}; se libera sin residual.`}); continue; }
+      if(/Residual/i.test(e[3])){ const poison=est==='Envenenado'; const idx=clamp(ri(fx.r)+(poison?1+num(fx.pr):2),1,24); const dd=dice(idx); const rl=rollDice(dd);
+        f.dano=num(f.dano)+rl.t; changed=true;
+        lines.push({k:'ko',t:`${name}: residual de ${est} (${fx.r}${poison?`, ronda ${num(fx.pr)+1}`:''}) ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`});
+        if(est==='Drenado'&&fx.by&&fx.by!==x.key&&inCombat(fx.by)) heals.push({key:fx.by,val:rl.t,from:name});
+        if(poison) fx.pr=num(fx.pr)+1; }
+      const r=d(100);
+      if(r<=th){ f[field]=''; setEstFx(f,cls,null); lines.push({k:'ok',t:`${name}: Salvación de ${est} d100 [${r}] ≤ ${th} → se libera.`}); }
+      else { fx.n=num(fx.n)+1; f.estFx={...(f.estFx||{}),[cls]:fx}; lines.push({k:'',t:`${name}: Salvación de ${est} d100 [${r}] > ${th} → sigue (próxima: ${Math.min(100,th+num(e[5]))}).`}); }
+      changed=true; }
+    if(changed) saveAny(x,f);
+  }
+  for(const hl of heals){ mutate(hl.key,f=>{ f.dano=Math.max(0,num(f.dano)-hl.val); }); const t=combatant(hl.key); lines.push({k:'ok',t:`${t?charName(t.f):'Quien lo causó'} recupera ${hl.val} PS por el Drenado de ${hl.from}.`}); }
+  CB.rondaLog={n:CB.ronda,lines};
+  cbWrite({ronda:CB.ronda,rondaLog:CB.rondaLog});
+  logRoll('Fin de ronda',`Ronda ${cur} terminada${lines.length?' · '+lines.map(l=>l.t).join(' · '):' · sin estados'}`,null);
+  renderSheet();
+}
+
+/* ---------- atacar ---------- */
 function cbAttackHTML(){
   const mine=combatants().filter(x=>canEditRef(x));
   let h=`<div class="card"><h2>Atacar</h2>`;
   if(!mine.length) return h+`<p class="note">No controlas a ningún combatiente.</p></div>`;
-  if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; }
+  if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; CBU.picking=false; }
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
-  if(!mvs.includes(CBU.mv)) CBU.mv=mvs.includes(x.f.rep?.mv)?x.f.rep.mv:(mvs[0]||'');
-  h+=`<div class="grid g3"><label class="f">Atacante<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>
-    <label class="f">Movimiento<select data-cbf="mv">${mvs.map(id=>`<option value="${id}"${id===CBU.mv?' selected':''}>${esc(atkById.get(id)?.[1]||id)}</option>`).join('')||'<option value="">Sin movimientos</option>'}</select></label>
-    <div class="grid g2"><label class="f">Bonus CD<input type="number" data-cbf="bonus" value="${num(CBU.bonus)}"></label><label class="f">Repeticiones<input type="number" min="0" data-cbf="rep" value="${repOf(x.f,CBU.mv)}"></label></div></div>`;
-  const ai=CBU.mv?attackInfo(x,CBU.mv):null;
-  if(ai){ const m=ai.mi.m;
-    h+=`<div class="mv" style="margin-top:10px"><div class="meta">${moveMeta(ai.f,ai.mi,ai.c)}</div><div class="fx">${esc(m[11])}</div>
-      <div class="row"><span class="pill">Precisión final ${ai.prec}%${ai.pen?` (−${ai.pen} por ${ai.n} repetición${ai.n>1?'es':''})`:''}${ai.rec?' · Recurrente: sin penalización':''}</span><span class="pill">Crítico ${pct(ai.critR)}${hasCat(m,'Preciso')?' · Preciso +1 IC':''}</span>${ai.reR!==null?`<span class="pill">R. Extra ${pct(ai.reR)}</span>`:''}</div></div>`;
-    const mode=targetMode(m);
-    if(!CBU.picking) h+=`<div class="row" style="margin-top:10px"><button class="btn pri" data-cb="pick">Atacar</button><span class="note">${mode==='none'?'Movimiento propio: sin objetivo.':mode==='single'?'Eliges un objetivo.':'Eliges varios objetivos.'}</span></div>`;
-    else {
-      const others=combatants().filter(y=>y.key!==x.key);
-      if(mode==='none') h+=`<p class="note" style="margin-top:10px">Movimiento propio: no tiene objetivo.</p>`;
-      else h+=`<div style="margin-top:10px"><div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(charName(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div></div>`;
-      h+=`<div class="row" style="margin-top:10px"><button class="btn pri" data-cb="roll" ${mode!=='none'&&!CBU.targets.length?'disabled':''}>Lanzar dados</button><button class="btn" data-cb="cancel">Cancelar</button></div>`;
-    }
-  }
-  return h+`</div>`;
+  h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label></div>`;
+  if(!mvs.length) return h+`<p class="note">Este personaje no tiene movimientos.</p></div>`;
+  h+=`<div class="mvlist">`;
+  for(const id of mvs){ const ai=attackInfo(x,id); if(!ai) continue; const m=ai.mi.m; const on=CBU.picking&&CBU.mv===id; const mode=targetMode(m);
+    h+=`<div class="mvrow${on?' on':''}"><div class="mvhead"><button class="mvname" data-cb="pick" data-mv="${id}" title="Atacar con ${esc(m[1])}">${esc(m[1])}</button>
+        <label class="mini" title="Bonus a la Clase de Dado">CD <input type="number" data-cbf="bonus" data-mv="${id}" value="${num(CBU.bon[id])}" aria-label="Bonus CD de ${esc(m[1])}"></label>
+        <label class="mini" title="Repeticiones seguidas">Rep. <input type="number" min="0" data-cbf="rep" data-mv="${id}" value="${ai.n}" aria-label="Repeticiones de ${esc(m[1])}"></label></div>
+      <div class="mvdata">${chip(m[2])} ${claseChip(m[3])} <span>Prec <b>${ai.prec}%</b>${ai.pen?` <span class="ko">(−${ai.pen})</span>`:''}</span><span>CD <b>${ai.mi.dice==='-'?'—':ai.mi.dice}</b></span><span>Prio <b>${num(m[8])>0?'+':''}${num(m[8])}</b></span><span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?socialChip(m[14]):''}</div>
+      <div class="mvfx">${esc(m[11])}${ai.reR!==null?`<div class="re">R. Extra <b>${pct(ai.reR)}</b></div>`:''}</div>`;
+    if(on){ const others=combatants().filter(y=>y.key!==x.key);
+      h+=`<div class="mvpick">${mode==='none'?'':`<div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(charName(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div>`}
+        <div class="row" style="margin-top:8px"><button class="btn pri" data-cb="roll" ${mode!=='none'&&!CBU.targets.length?'disabled':''}>Lanzar dados</button><button class="btn" data-cb="cancel">Cancelar</button></div></div>`; }
+    h+=`</div>`; }
+  return h+`</div><p class="note">Clic en el nombre de un movimiento para atacar con él. La Precisión ya descuenta las repeticiones.</p></div>`;
 }
 function rollDamage(ai,target,crit,bonus){
-  const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion');
+  const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
   if(heal){ if(!isNum) return {heal:true,val:null,det:'Sin dado'}; const idx=clamp(m[7]+ai.mi.stab+num(bonus),1,24); const dd=dice(idx); const rl=rollDice(dd); let v=rl.t+(ai.mi.atr||0); if(crit) v*=2; return {heal:true,val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr||0}${crit?' × 2 (crítico)':''}`}; }
   const e=effectiveness(m[2],tc.tipos);
@@ -1012,8 +1153,9 @@ function rollDamage(ai,target,crit,bonus){
   return {val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr} ${ai.mi.ak}${def?' − '+def+(m[3]==='Fisico'?' VIT':' SAB'):''}${crit?' × 2 (crítico)':''}${ex?' · '+ex:''}`};
 }
 function doAttack(){
-  const x=combatant(CBU.atk); if(!x||!canEditRef(x)) return; const ai=attackInfo(x,CBU.mv); if(!ai) return; const m=ai.mi.m;
+  const x=combatant(CBU.atk); if(!x||!canEditRef(x)) return; const mvId=CBU.mv; const ai=attackInfo(x,mvId); if(!ai) return; const m=ai.mi.m;
   const mode=targetMode(m); let tkeys=mode==='none'?[]:CBU.targets.slice();
+  const bonus=num(CBU.bon[mvId]);
   const r=d(100); const steps=[]; const ts=Date.now();
   const hit=r<=ai.prec&&r!==100;
   steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}% → ${hit?'conecta':'falla'}`});
@@ -1027,30 +1169,59 @@ function doAttack(){
         if(cn.kind==='causante') steps.push({k:'wa',t:`${cn.est}: la tirada (${r}) supera ${cn.thr}, no puede atacar a quien se lo causó.`}); }
       else steps.push({k:'',t:`${cn.est}: la tirada (${r}) no supera ${cn.thr}, actúa con normalidad.`}); } }
   const res=[];
+  const nf=structuredClone(x.f); nf.rep={mv:mvId,n:ai.n+1};
+  let selfNow=false;
   if(go){ crit=r<=Math.round(ai.critR*100); steps.push({k:crit?'ok':'',t:`Crítico (${pct(ai.critR)}${hasCat(m,'Preciso')?', Preciso +1 IC':''}): ${crit?'¡sí!':'no'}`});
     if(ai.reR!==null){ re=r<=Math.round(ai.reR*100); steps.push({k:re?'ok':'',t:`Rango Extra ${pct(ai.reR)}: ${re?'se activa el efecto':'no se activa'}`}); }
     steps.push({k:'fx',t:`Efecto: ${m[11]}`});
-    const estT=crit?D.estados.find(e=>e[1]===m[2]):null;
-    if(mode==='none'||!tkeys.length){ const dr=rollDamage(ai,x,crit,CBU.bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:charName(x.f),...dr}); }
-    else for(const k of tkeys){ const t=combatant(k); if(!t) continue; const dr=rollDamage(ai,t,crit,CBU.bonus);
-      let est=''; if(estT&&!dr.heal){ const imm=t.f.tipo==='P'&&calc(t.f).tipos.includes(estT[1]); est=imm?`Inmune a ${estT[0]}`:`Aplica ${estT[0]}`; }
+    if(mode==='none'||!tkeys.length){
+      const dr=rollDamage(ai,x,crit,bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:charName(x.f),...dr,selfMove:true});
+      const notes=applyOps(nf,parseFx(m),'all',{re,rank:m[5],by:x.key});
+      if(notes.length) steps.push({k:'ok',t:`Efectos en ${charName(x.f)}: ${notes.join(' · ')}`});
+      selfNow=true; }
+    else for(const k of tkeys){ const t=combatant(k); if(!t) continue; const dr=rollDamage(ai,t,crit,bonus);
+      let est=''; if(crit&&!dr.heal){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
       res.push({key:k,name:charName(t.f),...dr,est,kind:m[3]==='Estado'?'tem':'esq'}); }
   }
-  const nf=structuredClone(x.f); nf.rep={mv:CBU.mv,n:ai.n+1}; saveFicha(x,nf);
-  const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],d100:r,prec:ai.prec,hit,crit,re,steps,res};
-  CBU.picking=false; CBU.targets=[];
-  CL.a=x.key; if(dmgMoves(x.f).includes(CBU.mv)) CL.am=CBU.mv; if(tkeys[0]&&tkeys[0]!==x.key){ CL.d=tkeys[0]; CL.dm=''; } CL.res=null;
+  saveFicha(x,nf);
+  const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
+  CBU.picking=false; CBU.targets=[]; CBU.colFor='';
+  CL.a=x.key; if(dmgMoves(x.f).includes(mvId)) CL.am=mvId; if(tkeys[0]&&tkeys[0]!==x.key){ CL.d=tkeys[0]; CL.dm=''; } CL.res=null;
   cbWrite({last});
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
 }
+/* El ataque conecta con un objetivo: daño (o curación), estado por crítico y efectos */
+function connectHit(L,z,extra){
+  const t=combatant(z.key); if(!t) return [];
+  const A=combatant(L.byKey); const m=atkById.get(L.mvId); const ops=m?parseFx(m):[]; const ctx={re:!!L.re,rank:L.rank,by:L.byKey};
+  const out=[];
+  mutate(z.key,f=>{
+    if(z.val){ if(z.heal) f.dano=Math.max(0,num(f.dano)-z.val); else f.dano=num(f.dano)+z.val; out.push(z.heal?`recupera ${z.val} PS`:`recibe ${z.val} de daño`); }
+    if(z.selfMove) return;
+    if(L.crit&&m&&!z.heal){ const ce=critEstado(m); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } }
+    const n=applyOps(f,ops,'target',ctx); out.push(...n);
+  });
+  if(m&&hasCat(m,'Drenaje')&&!z.heal&&num(z.val)>0&&A){ const hv=Math.floor(num(z.val)/2); if(hv){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-hv); }); out.push(`${charName(A.f)} recupera ${hv} PS (Drenaje)`); } }
+  if(!L.selfDone&&!z.selfMove&&A&&m){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
+  logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')||'sin efecto'}${extra?' · '+extra:''}`,z.val??null);
+  return out;
+}
 function cbLastHTML(){
   const L=CB.last; if(!L) return '';
   let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
-  if(L.res&&L.res.length) h+=`<div class="res" style="margin-top:10px">`+L.res.map(z=>{ const fx=CB.lastFx[`${L.ts}|${z.key}`]||{}; const t=combatant(z.key); const can=t&&canEditRef(t);
-    return `<div class="r"><div><div class="note">${z.heal?'Curación a':'Daño a'} ${esc(z.name)}${z.est?` · ${esc(z.est)}`:''}</div><div class="big ${fx.ev?'ko':''}">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${fx.evTxt?`<div class="${fx.ev?'ok':'ko'}">${esc(fx.evTxt)}</div>`:''}${fx.ap?`<div class="ok">${z.heal?'Curación aplicada':'Daño aplicado'}</div>`:''}</div>
-      <div class="row" style="justify-content:flex-end">${can&&!z.heal&&z.kind&&!fx.ev&&fx.ev!==false?`<button class="btn sm" data-cb="evade" data-k="${esc(z.key)}">Evadir (${z.kind==='tem'?'Temple':'Esquiva'})</button>`:''}${can&&z.val&&!fx.ap&&!fx.ev?`<button class="btn sm pri" data-cb="apply" data-k="${esc(z.key)}">${z.heal?'Aplicar curación':'Aplicar daño'}</button>`:''}</div></div>`; }).join('')+`</div>`;
-  return h+`<p class="note">Cada defensor decide si evade antes de aplicar el daño. Para evitar el ataque, su d100 debe ser ≤ su Evasión y ≤ ${L.d100}.</p></div>`;
+  if(L.res&&L.res.length) h+=`<div class="res" style="margin-top:10px">`+L.res.map(z=>{ const fk=`${L.ts}|${z.key}`; const fx=CB.lastFx[fk]||{}; const t=combatant(z.key); const can=t&&canEditRef(t)&&S.canWrite;
+    const canCol=!z.heal&&L.cls!=='Estado'&&t&&dmgMoves(t.f).length>0&&z.key!==L.byKey;
+    let btns='';
+    if(can&&!fx.done){
+      if(!z.heal&&z.kind) btns+=`<button class="btn sm" data-cb="evade" data-k="${esc(z.key)}">Evadir (${z.kind==='tem'?'Temple':'Esquiva'})</button>`;
+      if(canCol) btns+=`<button class="btn sm" data-cb="col" data-k="${esc(z.key)}" aria-expanded="${CBU.colFor===fk}">Colisionar</button>`;
+      btns+=`<button class="btn sm pri" data-cb="apply" data-k="${esc(z.key)}">${z.heal?'Aplicar curación':z.val?'Recibir':'Recibir efecto'}</button>`; }
+    let colPick='';
+    if(can&&!fx.done&&CBU.colFor===fk&&t){ colPick=`<div class="colpick"><div class="note">Elige el movimiento para colisionar (se tira su Precisión):</div><div class="row" style="margin-top:6px">${dmgMoves(t.f).map(id=>{ const ai=attackInfo(t,id); return ai?`<button class="btn sm" data-cb="colmv" data-k="${esc(z.key)}" data-mv="${id}">${esc(ai.mi.m[1])} <span class="note">${ai.prec}%${ai.pen?' (−'+ai.pen+')':''}</span></button>`:''; }).join('')}<button class="btn sm" data-cb="colno">Cancelar</button></div></div>`; }
+    return `<div class="r"><div><div class="note">${z.heal?'Curación a':'Daño a'} ${esc(z.name)}${z.est?` · ${esc(z.est)}`:''}</div><div class="big ${fx.ev?'ko':''}">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${(fx.log||[]).map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')}</div>
+      <div class="row" style="justify-content:flex-end;align-content:flex-start">${btns}</div>${colPick}</div>`; }).join('')+`</div>`;
+  return h+`<p class="note">Cada defensor elige: <b>Evadir</b> (su d100 debe ser ≤ su Evasión y ≤ ${L.d100}), <b>Colisionar</b> con un movimiento de daño, o <b>Recibir</b>. Si no logra evitarlo, el daño y los efectos se aplican solos.</p></div>`;
 }
 function combatHTML(){ return cbOrderHTML()+cbAttackHTML()+cbLastHTML()+cbClashHTML(); }
 /* ---------- colisión ---------- */
@@ -1135,34 +1306,78 @@ function clChange(el){
   else if(k==='ca'||k==='cd') CL[k]=el.checked;
   renderSheet();
 }
-
 function doEvade(ref,f,kind,against){
   const c=calc(f); const need=Math.round((kind==='esq'?c.esq:c.tem)*100); const r=d(100);
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100;
-  const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; saveFicha(ref,nf);
+  const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; if(ref.key) saveAny(ref,nf); else saveFicha(ref,nf);
   const txt=`Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?'lo evita':'no lo evita'}`;
   logRoll(charName(f),txt,r);
   return {r,ok,txt};
+}
+/* Colisión desde el último ataque */
+function doCollide(L,z,mv){
+  const t=combatant(z.key), A=combatant(L.byKey); if(!t||!A) return [];
+  const log=[]; const dai=attackInfo(t,mv); if(!dai) return [];
+  const dm=dai.mi.m; const r=d(100); const hit=r<=dai.prec&&r!==100;
+  mutate(t.key,f=>{ f.rep={mv,n:dai.n+1}; });
+  log.push({k:hit?'ok':'ko',t:`Colisiona con ${dm[1]}: d100 [${r}] contra ${dai.prec}% → ${hit?'conecta':'falla'}`});
+  if(!hit){ log.push({k:'ko',t:'Falla la Colisión: recibe el golpe completo y pierde su Acción.'}); const out=connectHit(L,z,`Colisión fallida con ${dm[1]}`); out.forEach(o=>log.push({k:'',t:o})); return log; }
+  const dcrit=r<=Math.round(dai.critR*100); const dre=dai.reR!==null&&r<=Math.round(dai.reR*100);
+  if(dcrit) log.push({k:'ok',t:'¡Crítico del defensor!'});
+  const SA=clashSide(A,L.mvId,mv,true,!!L.crit), SB=clashSide(t,mv,L.mvId,false,dcrit);
+  const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
+  log.push({k:'',t:`Puntos: ${charName(A.f)} ${SA.tot} · ${charName(t.f)} ${SB.tot} → ${win?`gana ${charName(win.x.f)} por ${ad}`:'empate'}`});
+  const avgDice=dice(Math.round((SA.mi.idx+SB.mi.idx)/2));
+  const avgHit=(S_,crit)=>{ const rl=rollDice(avgDice); const v=rl.t*(crit?2:1); mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${charName(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}]${crit?' × 2 por el crítico del ganador':''}).`}); };
+  if(!win){ avgHit(SA,false); avgHit(SB,false); log.push({k:'',t:'Empate: nadie aplica efectos secundarios.'}); }
+  else {
+    const wcrit=win===SA?!!L.crit:dcrit;
+    if(win===SA){ // gana el atacante: su golpe conecta con el defensor
+      if(ad<=3){ avgHit(SB,wcrit); const zz={...z,val:null}; connectHit(L,zz,'Colisión perdida').forEach(o=>log.push({k:'',t:o})); }
+      else { connectHit(L,z,'Colisión perdida por 4 o más').forEach(o=>log.push({k:'',t:o})); }
+    } else { // gana el defensor: su movimiento conecta con el atacante
+      const ctx={re:dre,rank:dm[5],by:t.key}; const ops=parseFx(dm); const out=[];
+      let val=null, det='';
+      if(ad<=3){ const rl=rollDice(avgDice); val=rl.t*(wcrit?2:1); det=`promedio de CD ${avgDice} [${rl.r.join(', ')}]${wcrit?' × 2':''}`; }
+      else { const dr=rollDamage(dai,A,wcrit,0); val=dr.val; det=dr.det; }
+      mutate(A.key,f=>{ if(val) f.dano=num(f.dano)+val; if(wcrit){ const ce=critEstado(dm); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } } out.push(...applyOps(f,ops,'target',ctx)); });
+      log.push({k:'ko',t:`${charName(A.f)} recibe ${val??0} (${det}).`}); if(out.length) log.push({k:'',t:`Efectos en ${charName(A.f)}: ${out.join(' · ')}`});
+      const so=[]; mutate(t.key,f=>{ so.push(...applyOps(f,ops,'self',ctx)); }); if(so.length) log.push({k:'',t:`Efectos en ${charName(t.f)}: ${so.join(' · ')}`});
+    }
+  }
+  logRoll('Colisión',`${charName(t.f)} colisiona ${L.mv} de ${L.by} con ${dm[1]} · `+log.map(l=>l.t).join(' · '),r);
+  return log;
 }
 function cbClick(b){
   const act=b.dataset.cb;
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; }
-  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{}},true); render(); }
-  else if(act==='pick'){ CBU.picking=true; CBU.targets=[]; renderSheet(); }
+  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null},true); render(); }
+  else if(act==='round'){ $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
+  else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; }
+  else if(act==='roundYes'){ b.disabled=true; endRound(); }
+  else if(act==='pick'){ const mv=b.dataset.mv; const x=combatant(CBU.atk); const m=atkById.get(mv); if(!x||!m) return; CBU.mv=mv; CBU.targets=[];
+    if(targetMode(m)==='none'){ CBU.picking=false; doAttack(); return; } CBU.picking=true; renderSheet(); }
   else if(act==='cancel'){ CBU.picking=false; CBU.targets=[]; renderSheet(); }
   else if(act==='roll'){ doAttack(); }
-  else if(act==='evade'||act==='apply'){ const L=CB.last; if(!L) return; const z=L.res.find(q=>q.key===b.dataset.k); const t=combatant(b.dataset.k); if(!z||!t||!canEditRef(t)) return; const fk=`${L.ts}|${z.key}`; const fx={...(CB.lastFx[fk]||{})};
-    if(act==='evade'){ const ev=doEvade(t,t.f,z.kind,{d100:L.d100,mv:L.mv,by:L.by}); fx.ev=ev.ok; fx.evTxt=ev.txt; }
-    else { const nf=structuredClone(t.f); nf.dano = z.heal? Math.max(0,num(nf.dano)-z.val) : num(nf.dano)+z.val; saveFicha(t,nf); fx.ap=true; logRoll(charName(t.f),z.heal?`Recupera ${z.val} PS (${L.mv})`:`Recibe ${z.val} de daño (${L.mv} de ${L.by})`,z.val); }
-    cbWrite({lastFx:{[fk]:fx}}); renderSheet(); }
+  else if(act==='colno'){ CBU.colFor=''; renderSheet(); }
+  else if(['evade','apply','col','colmv'].includes(act)){
+    const L=CB.last; if(!L) return; const z=L.res.find(q=>q.key===b.dataset.k); const t=combatant(b.dataset.k); if(!z||!t||!canEditRef(t)) return;
+    const fk=`${L.ts}|${z.key}`; const fx={...(CB.lastFx[fk]||{})}; if(fx.done) return; const log=[...(fx.log||[])];
+    if(act==='col'){ CBU.colFor=CBU.colFor===fk?'':fk; renderSheet(); return; }
+    if(act==='evade'){ const ev=doEvade(t,t.f,z.kind,{d100:L.d100,mv:L.mv,by:L.by}); log.push({k:ev.ok?'ok':'ko',t:ev.txt});
+      if(ev.ok){ fx.ev=true; fx.done=true; }
+      else { connectHit(L,z,'no logró evadir').forEach(o=>log.push({k:'',t:o})); fx.done=true; } }
+    else if(act==='apply'){ const out=connectHit(L,z,''); log.push({k:'ok',t:(z.heal?'Curación aplicada':'Recibido')+(out.length?': '+out.join(' · '):'')}); fx.done=true; }
+    else if(act==='colmv'){ log.push(...doCollide(L,z,b.dataset.mv)); fx.done=true; CBU.colFor=''; }
+    fx.log=log; cbWrite({lastFx:{[fk]:fx}}); renderSheet(); }
 }
 function cbChange(el){
-  const k=el.dataset.cbf; if(k==='atk'){ CBU.atk=el.value; CBU.mv=''; CBU.picking=false; CBU.targets=[]; }
-  else if(k==='mv'){ CBU.mv=el.value; CBU.picking=false; CBU.targets=[]; }
-  else if(k==='bonus'){ CBU.bonus=num(el.value); }
-  else if(k==='rep'){ const x=combatant(CBU.atk); if(x&&canEditRef(x)){ const nf=structuredClone(x.f); nf.rep={mv:CBU.mv,n:Math.max(0,num(el.value))}; saveFicha(x,nf); } }
+  const k=el.dataset.cbf;
+  if(k==='atk'){ CBU.atk=el.value; CBU.mv=''; CBU.picking=false; CBU.targets=[]; }
+  else if(k==='bonus'){ CBU.bon[el.dataset.mv]=num(el.value); }
+  else if(k==='rep'){ const x=combatant(CBU.atk); if(x&&canEditRef(x)){ const nf=structuredClone(x.f); nf.rep={mv:el.dataset.mv,n:Math.max(0,num(el.value))}; saveFicha(x,nf); } }
   renderSheet();
 }
 
@@ -1187,6 +1402,7 @@ document.addEventListener('toggle',e=>{ const k=e.target.dataset&&e.target.datas
 document.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-dsel]')){ e.preventDefault(); e.target.click(); }});
 document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
+  const tg=e.target.closest('[data-team]'); if(tg){ toggleTeam(tg.dataset.team); return; }
   const cb=e.target.closest('[data-cb]'); if(cb){ cbClick(cb); return; }
   const clb=e.target.closest('[data-cl]'); if(clb){ clClick(clb); return; }
   const dpp=e.target.closest('[data-dexpop]'); if(dpp){ e.stopPropagation(); T.dpop=T.dpop===dpp.dataset.dexpop?'':dpp.dataset.dexpop; renderSheet(); return; }
@@ -1220,7 +1436,9 @@ document.addEventListener('click',async e=>{
   else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
   else if(act==='addMove'&&S.cur&&!S.ro){ const mv=[...(S.cur.moves||[])]; while(mv.length<6) mv.push(''); mv.push(''); S.cur.moves=mv; commit(true); }
   else if(act==='rmMove'&&S.cur&&!S.ro){ S.cur.moves.splice(num(a.dataset.i),1); commit(true); }
-  else if(act==='evreset'&&S.cur&&!S.ro){ S.cur[a.dataset.k]=0; commit(true); }
+  else if(act==='restore'&&S.cur&&!S.ro){ const c=$('#restoreConfirm'); if(c) c.innerHTML='<button class="btn sm pri" data-act="restoreYes">Sí, restaurar</button> <button class="btn sm" data-act="restoreNo">Cancelar</button>'; }
+  else if(act==='restoreNo'){ const c=$('#restoreConfirm'); if(c) c.innerHTML=''; }
+  else if(act==='restoreYes'&&S.cur&&!S.ro){ restoreAll(S.cur); commit(true); logRoll(charName(S.cur),'Restaurar Todo: daño, intentos, IC, bonos, estados y repeticiones a 0',null); }
   else if(act==='evade'&&S.cur&&!S.ro){ const L=CB.last; const ev=doEvade(S.open,S.cur,a.dataset.k,L?{d100:L.d100,mv:L.mv,by:L.by}:null); renderSheet(); openRP({kind:'res',title:a.dataset.k==='esq'?'Esquiva':'Temple',res:{v:ev.r,cls:ev.ok?'ok':'ko',html:esc(ev.txt)}}); }
   else if(act==='addItem'&&S.cur&&!S.ro){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
   else if(act==='rmItem'&&S.cur&&!S.ro){ S.cur.mochila.splice(num(a.dataset.i),1); commit(true); }
@@ -1318,7 +1536,7 @@ async function boot(){
   
   setStatus('Conectado');
   db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
-  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{};
+  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null;
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
   db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   db.collection('tiradas').onSnapshot(snap=>{ const m=snapMap(snap); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
