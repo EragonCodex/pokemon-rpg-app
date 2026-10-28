@@ -29,7 +29,7 @@ async function loadEspecies(){
   buildDexList(); if(S.db) render();
 }
 const dexTypes = d=>[d[3],d[4]].filter((t,i,a)=>t&&t!=='-'&&a.indexOf(t)===i);
-// atk: 0 id,1 nombre,2 tipo,3 clase,4 atributo,5 nivel,6 prec,7 base,8 prio,9 blanco,10 dist,11 efecto,12 RE,13 categoria,14 concurso,15 costos
+// atk: 0 id,1 nombre,2 tipo,3 clase,4 atributo,5 nivel,6 prec,7 base,8 prio,9 blanco,10 dist,11 efecto,12 RE,13 categoria,14 concurso,15 costos,16 precio MT
 const atkById = new Map(D.atk.map(r=>[r[0],r]));
 const atkByName = new Map(D.atk.map(r=>[r[1].toLowerCase(),r[0]]));
 const habMap = new Map(D.hab.map(r=>[r[0],r[1]]));
@@ -787,7 +787,7 @@ function doTie(){
   const parts=[]; tied.forEach(x=>{ T.tie[x.k]=d(20); parts.push(`${charName(x.r.f)} ${T.tie[x.k]}`); });
   if(parts.length) logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null);
 }
-const MCOLS=[['Movimiento',1],['Tipo',2],['Clase',3],['Nivel',5],['Prec',6],['Base',7],['Atrib.',4],['Distancia',10],['R.E.',12]];
+const MCOLS=[['Movimiento',1],['Tipo',2],['Clase',3],['Nivel',5],['Prec',6],['Base',7],['Atrib.',4],['Distancia',10],['R.E.',12],['Precio MT',16]];
 const uniq=(i)=>[...new Set(D.atk.map(a=>a[i]).filter(x=>x&&x!=='-'))].sort();
 const CATS=[...new Set(D.atk.flatMap(a=>String(a[13]||'').split(/[,;]\s*/)).map(s=>s.trim()).filter(x=>x&&x!=='-'))].sort();
 function toolMov(){
@@ -804,7 +804,7 @@ function toolMov(){
       if(A===null||B===null){ if(A===null&&B===null) return x[1].localeCompare(y[1],'es'); return A===null?1:-1; }
       const an=typeof A==='number', bn=typeof B==='number'; let r;
       if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
-  for(const a of res.slice(0,150)) h+=`<tr class="main"><td><b>${esc(a[1])}</b></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td></tr><tr class="fx"><td colspan="9">${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}</td></tr>`;
+  for(const a of res.slice(0,150)) h+=`<tr class="main"><td><b>${esc(a[1])}</b></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr><tr class="fx"><td colspan="10">${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}</td></tr>`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
   return h;
 }
