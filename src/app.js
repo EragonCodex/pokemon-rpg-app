@@ -22,7 +22,7 @@ let especiesTimer=null;
 function reloadEspecies(){ clearTimeout(especiesTimer); especiesTimer=setTimeout(loadEspecies,300); }
 async function loadEspecies(){
   const sb=window.__sb; if(!sb) return;
-  const { data, error } = await sb.from('especies').select('id,data');
+  const { data, error } = await window.__selectAll('especies', 'id,data', ['id']);
   if(error){ console.warn(error); return; }
   for(const row of data){ const t=dexById.get(row.id); if(t&&Array.isArray(row.data)) row.data.forEach((v,i)=>{ t[i]=v; }); }
   dexByLabel.clear(); D.dex.forEach(r=>{ if(r[1]) dexByLabel.set(dexLabel(r),r[0]); });

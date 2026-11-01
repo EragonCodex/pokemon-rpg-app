@@ -1,5 +1,5 @@
 import './style.css';
-import { sb, db, makeUser } from './supabase.js';
+import { sb, db, makeUser, selectAll } from './supabase.js';
 
 const gate = document.getElementById('gate');
 const logos = `<img class="logo-big logo-l" src="/logo-claro.png" alt="Pokémon RPG"><img class="logo-big logo-d" src="/logo-oscuro.png" alt="Pokémon RPG">`;
@@ -43,7 +43,7 @@ async function start() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { showLogin(); return; }
   await maybeClaim(session);
-  window.__sb = sb;
+  window.__sb = sb; window.__selectAll = selectAll;
   const user = makeUser(session);
   window.claude = { use: async n => (n === 'db' ? db : n === 'user' ? user : null) };
   gate.hidden = true;

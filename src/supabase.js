@@ -4,6 +4,19 @@ import { createClient } from '@supabase/supabase-js';
 
 export const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
+/* Supabase entrega como máximo 1000 filas por consulta: lee por páginas hasta traer todo. */
+export async function selectAll(table, cols, order) {
+  const out = [], step = 1000;
+  for (let from = 0; ; from += step) {
+    let q = sb.from(table).select(cols);
+    for (const c of order) q = q.order(c, { ascending: true, nullsFirst: true });
+    const { data, error } = await q.range(from, from + step - 1);
+    if (error) return { data: null, error };
+    out.push(...data);
+    if (data.length < step) return { data: out, error: null };
+  }
+}
+
 /* ---------- tiempo real: un canal por tabla, refresca a quien escucha ---------- */
 const listeners = {};
 const channels = {};
@@ -85,7 +98,7 @@ async function readDoc(r) {
   }
   if (r.kind === 'pokedex') {
     const [{ data: rows, error: e1 }, { data: cfg, error: e2 }] = await Promise.all([
-      sb.from('pokedex_visible').select('especie_id,user_id'),
+      selectAll('pokedex_visible', 'especie_id,user_id', ['especie_id', 'user_id']),
       sb.from('config').select('valor').eq('clave', 'pokedex_evento').maybeSingle()]);
     fail(e1); fail(e2);
     const ids = [], jug = {};
@@ -130,7 +143,7 @@ async function writeDoc(r, data, uidActual) {
       return;
     }
     case 'pokedex': {
-      const { data: cur, error } = await sb.from('pokedex_visible').select('especie_id,user_id'); fail(error);
+      const { data: cur, error } = await selectAll('pokedex_visible', 'especie_id,user_id', ['especie_id', 'user_id']); fail(error);
       const key = (e, u) => e + '|' + (u || '');
       const have = new Set(cur.map(x => key(x.especie_id, x.user_id)));
       const want = new Set([...(data.ids || []).map(e => key(e, null)), ...Object.entries(data.jug || {}).flatMap(([u, l]) => l.map(e => key(e, u)))]);
