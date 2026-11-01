@@ -112,7 +112,8 @@ function calc(f){
   const dx=f.tipo==='P'?dexById.get(f.especie):null;
   let ps;
   if(f.tipo==='E') ps=Math.ceil(0.8*hpBase(f.rango)+1.5*(A0.VIT+A0.CAR));
-  else ps=dx?Math.ceil(hpBase(f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0;
+  // Megaevolución: la Vida usa el HP Base de un Rango más (tope Legend); los atributos no cambian
+  else ps=dx?Math.ceil(hpBase(dx[5]==='Mega'&&ri(f.rango)>=0?RANGOS[Math.min(RANGOS.length-1,ri(f.rango)+1)]:f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0;
   const base = f.tipo==='E'?25:(dx?num(dx[8])||25:25);
   const vel = clamp(base+num(D.speed[f.velMod||'Normal']),10,60);
   const ev=(c,a,x)=>clamp(1-0.15*num(c)+0.15*Math.floor(a/2)+0.15*num(f.bEv)+x,0.2,1);
@@ -130,11 +131,13 @@ function moveInfo(f,id,c){
   const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(m[2])]),1,24):0;
   return {m, stab, prec, dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak};
 }
-function effectiveness(mtype, defTypes){
+/* movimientos que alcanzan a un tipo que sería inmune (Luz Devastadora alcanza a los tipo Hada) */
+const IGNORA_INMUNIDAD={M0832:['Hada']};
+function effectiveness(mtype, defTypes, mvId){
   const row=D.chart[mtype]; if(!row) return {steps:0,immune:false};
-  let s=0, imm=false;
+  let s=0, imm=false; const ign=IGNORA_INMUNIDAD[mvId]||[];
   for(const t of defTypes){ const i=D.types.indexOf(t); if(i<0) continue; const v=row[i];
-    if(v==='x0') imm=true; else if(typeof v==='number') s+=v; }
+    if(v==='x0'){ if(!ign.includes(t)) imm=true; } else if(typeof v==='number') s+=v; }
   return {steps:s, immune:imm};
 }
 /* límites de Creación de Personaje */
@@ -712,7 +715,7 @@ function toolDano(){
     if(rr){ const cc=calc(rr.f); [t1,t2]=[cc.tipos[0]||'',cc.tipos[1]||'']; vit=cc.A.VIT; sab=cc.A.SAB; }
     let eff='—', dmg='—';
     if(mi && (t1||t2||r.k||vit||sab)){
-      const e=effectiveness(mi.m[2],[t1,t2].filter(Boolean));
+      const e=effectiveness(mi.m[2],[t1,t2].filter(Boolean),mi.m[0]);
       const isNum=typeof mi.m[7]==='number'&&mi.m[7]>0;
       if(e.immune){ eff='<span class="ko">Inmune</span>'; dmg='0'; }
       else { eff = e.steps>0?`<span class="ok">Súper eficaz +${e.steps}</span>`:e.steps<0?`<span class="wa">Poco eficaz ${e.steps}</span>`:'Normal';
@@ -737,7 +740,7 @@ function doRoll(){
   const res=[];
   T.riv.forEach((r,i)=>{ const rr=refByKey(r.k); let types=[r.t1,r.t2].filter(Boolean), vit=r.vit, sab=r.sab;
     if(rr){ const cc=calc(rr.f); types=cc.tipos; vit=cc.A.VIT; sab=cc.A.SAB; }
-    const e=effectiveness(mi.m[2],types); const name=rr?charName(rr.f):`Rival ${i+1}`;
+    const e=effectiveness(mi.m[2],types,mi.m[0]); const name=rr?charName(rr.f):`Rival ${i+1}`;
     if(!hit) return;
     if(e.immune){ res.push({name,dmg:0,det:'Inmune'}); return; }
     if(!(typeof mi.m[7]==='number' && mi.m[7]>0)) return;
@@ -1148,7 +1151,7 @@ function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
   if(heal){ if(!isNum) return {heal:true,val:null,det:'Sin dado'}; const idx=clamp(m[7]+ai.mi.stab+num(bonus),1,24); const dd=dice(idx); const rl=rollDice(dd); let v=rl.t+(ai.mi.atr||0); if(crit) v*=2; return {heal:true,val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr||0}${crit?' × 2 (crítico)':''}`}; }
-  const e=effectiveness(m[2],tc.tipos);
+  const e=effectiveness(m[2],tc.tipos,m[0]);
   if(e.immune) return {val:0,det:'Inmune',immune:true};
   if(!isNum){ if(m[3]==='Estado'&&crit){ const ak=short(m[4]); const v=ai.c.A[ak]||0; return {val:v,det:`Crítico de Estado: daño igual a ${ak} (${v})`}; } return {val:null,det:'Sin daño'}; }
   const own=num(ai.c.em.cdOwn[deacc(m[2])]), recv=num(tc.em.cdRecv[deacc(m[2])]);
