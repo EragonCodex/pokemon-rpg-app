@@ -121,7 +121,7 @@ function estModsOf(name){ const e=estMap.get(name); if(!e) return null; const t=
   if(/Rango Cr[ií]tico y el Rango Extra a 0/.test(t)) o.noCrit=true;
   return o; }
 function estImmune(f,name){ const e=estMap.get(name); return !!(e&&f.tipo==='P'&&tiposDe(f).includes(e[1])); }
-function estEffects(f){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:{},cancel:[],noCrit:false,src:{}};
+function estEffects(f,key){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:{},cancel:[],noCrit:false,src:{},vel:0,ic:0,resid:{},skipSalv:[],noEst:'',cn:[]};
   for(const n of [f.estF,f.estM].filter(Boolean)){ if(estImmune(f,n)) continue; const m=estModsOf(n); if(!m) continue;
     for(const [k,v] of Object.entries(m.attr)){ o.attr[k]=(o.attr[k]||0)+v; (o.src[k] ||= []).push(n); }
     o.prec+=m.prec; o.esq+=m.esq; o.tem+=m.tem; Object.assign(o.cdOwn,m.cdOwn); Object.assign(o.cdRecv,m.cdRecv); o.cancel.push(...m.cancel); o.noCrit=o.noCrit||m.noCrit; }
@@ -131,7 +131,145 @@ function estEffects(f){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:{},c
     if(k.startsWith('cdRecv:')){ const t=k.slice(7); o.cdRecv[t]=num(o.cdRecv[t])+num(v); o.resist.push(`${n}: ${sg(v)} CD de ${t}`); }
     else if(k.startsWith('salv:')){ const e=k.slice(5); o.salv[e]=num(o.salv[e])+num(v); o.resist.push(`${n}: Salvación de ${e} ${sg(v)}`); }
     else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); } }
+  /* climas, campos y entornos: solo en combate */
+  const K=key||condKeyOf(f); if(K&&inCombat(K)){ o.cond=condPara(f,K); condAplica(o,f,o.cond); condEquipo(o,f,o.cond); }
   return o; }
+
+/* ---------- climas, campos y entornos (Condiciones de campo) ---------- */
+const COND_TIPO={'Tormenta de Arena':'Roca',Granizo:'Hielo',Llovizna:'Agua','Sol Intenso':'Fuego',Miasma:'Veneno',Plaga:'Bicho',Penumbra:'Siniestro',Ectoplasma:'Fantasma','Campo Eléctrico':'Electrico','Campo de Hierba':'Planta','Campo Psíquico':'Psiquico','Campo de Niebla':'Hada','Campo Magnético':'Acero',Alboroto:'Normal','Turbulencia Ancestral':'Dragon','Arena de Combate':'Lucha',Lodazal:'Tierra','Viento Afín':'Volador','Arcoíris':''};
+const COND_CLS={clima:'Clima',campo:'Campo',entorno:'Entorno'};
+/* +1 CD al primer tipo y −1 CD al segundo */
+const COND_CD={Llovizna:['Agua','Fuego'],'Sol Intenso':['Fuego','Agua'],Plaga:['Bicho','Fantasma'],Penumbra:['Siniestro','Bicho'],Ectoplasma:['Fantasma','Siniestro'],'Campo Eléctrico':['Electrico'],'Campo de Hierba':['Planta'],'Campo Psíquico':['Psiquico'],'Campo de Niebla':['Hada','Dragon'],'Turbulencia Ancestral':['Dragon','Hada']};
+const COND_EV={Plaga:'Siniestro',Penumbra:'Fantasma',Ectoplasma:'Bicho'};
+const condRow=n=>CONDS.find(r=>r[0]===n);
+const condsDe=cls=>CONDS.filter(r=>r[1].startsWith(COND_CLS[cls]));
+const condCls=n=>{ const r=condRow(n); return !r?'':r[1].startsWith('Clima')?'clima':r[1].startsWith('Campo')?'campo':'entorno'; };
+const condDur=n=>/^(Viento Afín|Arcoíris)$/.test(n)?4:5;
+const sideOf=k=>String(k||'').split('|')[0]==='master'?'master':'jug';
+/* Habilidad activa (Mareado la anula) */
+const habDe=f=>f&&f.tipo==='P'&&f.estM!=='Mareado'?deacc(f.habilidad||'').toLowerCase():'';
+const CKEY=new WeakMap();
+function condKeyOf(f){ if(!f) return ''; const k=CKEY.get(f); if(k) return k; if(f===S.cur&&S.open&&S.open.src!=='hist') return refKey(S.open); return ''; }
+function condActivas(){ const C=CB.cond||{}, o={}; for(const k of ['clima','campo','entorno']) if(C[k]&&C[k].n) o[k]=C[k]; return o; }
+const anulaClima=()=>combatants().find(x=>['aclimatacion','esclusadeaire'].includes(habDe(x.f)));
+function condPara(f,key){
+  const A=condActivas(), h=habDe(f);
+  const clima=A.clima&&!anulaClima()?A.clima.n:'';
+  const campo=A.campo&&h!=='levitacion'?A.campo.n:''; /* Levitación no recibe los efectos de los campos */
+  const enSuelo=f.tipo==='P'&&!tiposDe(f).includes('Volador')&&h!=='levitacion';
+  const ent=A.entorno||null;
+  return {clima, campo, entorno:ent?ent.n:'', aliado:ent&&ent.by?sideOf(key)===sideOf(ent.by):null, enSuelo, h, key, climaMov:h==='megasolar'?'Sol Intenso':clima};
+}
+function condAplica(o,f,P){
+  const T=tiposDe(f), h=P.h, isP=f.tipo==='P';
+  const add=(k,v,why)=>{ o.attr[k]=(o.attr[k]||0)+v; (o.src[k] ||= []).push(why); o.cn.push(`${why} ${sg(v)} ${k}`); };
+  const ev=(v,why)=>{ o.esq+=v; o.tem+=v; o.cn.push(`${why} ${v>0?'+':'−'}${Math.abs(v*100)} % Evasión`); };
+  const cd=(t,v,why)=>{ o.cdOwn[t]=num(o.cdOwn[t])+v; };
+  const est=n=>[f.estF,f.estM].includes(n);
+  if(isP){
+    if(P.clima==='Tormenta de Arena'&&T.includes('Roca')) add('SAB',2,'Tormenta de Arena');
+    if(P.clima==='Granizo'&&T.includes('Hielo')) add('SAB',2,'Granizo');
+    if(P.campo==='Campo Magnético'&&T.includes('Acero')){ add('VIT',1,'Campo Magnético'); add('SAB',1,'Campo Magnético'); }
+    if(COND_EV[P.clima]&&T.includes(COND_EV[P.clima])) ev(-0.10,P.clima);
+    if(P.campo==='Arena de Combate'){ o.ic+=1; o.cn.push('Arena de Combate +1 IC'); }
+  }
+  for(const n of [P.clima,P.campo]){ const t=COND_CD[n]; if(!t) continue; cd(t[0],1,n); if(t[1]) cd(t[1],-1,n); }
+  if(P.entorno==='Viento Afín'&&P.aliado){ add('DES',3,'Viento Afín'); o.vel+=10; }
+  if(P.entorno==='Lodazal'&&P.aliado===false) o.cn.push('Lodazal: se desplaza a la mitad');
+  /* potencia al estado */
+  if(P.entorno==='Lodazal'&&est('Enlodado')) add('DES',-2,'Lodazal (Enlodado)');
+  if(P.clima==='Penumbra'&&est('Cegado')){ o.prec-=10; o.cn.push('Penumbra (Cegado) −10 % Precisión'); }
+  if(P.entorno==='Viento Afín'&&est('Mareado')){ o.prec-=10; o.cn.push('Viento Afín (Mareado) −10 % Precisión'); }
+  const thr={Paralizado:P.campo==='Campo Eléctrico'?30:0,Adormilado:P.campo==='Campo Psíquico'?30:0,Infestado:P.clima==='Plaga'?40:0};
+  o.cancel=o.cancel.map(c=>thr[c.est]?{...c,thr:thr[c.est]}:c);
+  if(P.campo==='Campo Magnético'&&est('Magnetizado')) for(const t of ['Electrico','Roca']) o.cdRecv[t]=num(o.cdRecv[t])+1;
+  if(P.clima==='Granizo') o.salv.Congelado=num(o.salv.Congelado)-10;
+  if(P.campo==='Turbulencia Ancestral') o.salv.Aterrado=num(o.salv.Aterrado)-10;
+  if(P.clima==='Tormenta de Arena') o.resid.Aprisionado=1;
+  if(P.clima==='Sol Intenso') o.resid.Quemado=1;
+  if(P.clima==='Miasma') o.resid.Envenenado=1;
+  if(P.clima==='Ectoplasma') o.resid.Maldito=1;
+  if(P.clima==='Llovizna') o.skipSalv.push('Empapado');
+  if(P.campo==='Campo de Niebla') o.skipSalv.push('Encantado');
+  if(P.campo==='Arena de Combate') o.skipSalv.push('Provocado');
+  /* Habilidades que dependen del clima o del campo */
+  if(!h) return;
+  const name=(D.hab.find(r=>deacc(r[0]).toLowerCase()===h)||[f.habilidad])[0];
+  const up=(c,k,v)=>{ if(c) add(k,v,name); };
+  up(P.clima==='Sol Intenso'&&h==='clorofila','DES',3); up(P.clima==='Llovizna'&&h==='nadorapido','DES',3);
+  up(P.clima==='Granizo'&&h==='quitanieves','DES',3); up(P.clima==='Tormenta de Arena'&&h==='impetuarena','DES',3);
+  up(P.campo==='Campo Eléctrico'&&h==='colasurf','DES',3); up(P.clima==='Sol Intenso'&&h==='latidooricalco','FUE',2);
+  up(P.campo==='Campo Eléctrico'&&h==='motorhadronico','ENE',2); up(P.clima==='Sol Intenso'&&h==='podersolar','ENE',2);
+  up(P.entorno==='Viento Afín'&&h==='surcavientos','FUE',1);
+  if((P.campo==='Campo Eléctrico'&&h==='cargacuark')||(P.clima==='Sol Intenso'&&h==='paleosintesis')){ const A=attrs(f)||{}; const best=ATTR.reduce((a,k)=>num(A[k])>num(A[a])?k:a,ATTR[0]); add(best,2,name); }
+  if(P.clima==='Granizo'&&h==='mantoniveo') ev(0.10,name);
+  if(P.clima==='Tormenta de Arena'&&h==='veloarena') ev(0.10,name);
+  if(P.clima==='Tormenta de Arena'&&h==='poderarena') ['Tierra','Roca','Acero'].forEach(t=>cd(t,1,name));
+  if(P.clima==='Sol Intenso'&&h==='defensahoja') o.noEst=name;
+  if(P.clima==='Sol Intenso'&&combatants().some(x=>sideOf(x.key)===sideOf(P.key)&&habDe(x.f)==='mantofrondoso')) o.noEst='Manto Frondoso';
+}
+/* Don Floral alcanza al usuario y a sus aliados */
+function condEquipo(o,f,P){ if(P.clima!=='Sol Intenso'||f.tipo!=='P') return;
+  if(combatants().some(x=>sideOf(x.key)===sideOf(P.key)&&habDe(x.f)==='donfloral')){ for(const k of ['FUE','SAB']){ o.attr[k]=(o.attr[k]||0)+1; (o.src[k] ||= []).push('Don Floral'); } o.cn.push('Don Floral +1 FUE y +1 SAB'); } }
+/* ¿La condición impide recibir este estado? */
+function condInmune(f,name){ const em=estEffects(f); const P=em.cond; if(!P) return ''; const e=estMap.get(name);
+  if(em.noEst) return em.noEst;
+  if(name==='Adormilado'&&P.campo==='Alboroto') return 'Alboroto';
+  if(name==='Adormilado'&&P.campo==='Campo Eléctrico'&&P.enSuelo) return 'Campo Eléctrico';
+  if(e&&e[2]==='Fisico'&&P.campo==='Campo de Niebla'&&P.enSuelo) return 'Campo de Niebla';
+  return ''; }
+/* Efecto del clima o del campo en un movimiento concreto (Precisión, CD, bloqueo) */
+function condMov(m,P){ const o={cd:0,prec:0,x2:false,block:'',notes:[]}; if(!P) return o; const t=String(m[11]||''); let r;
+  const act=n=>[P.climaMov,P.campo,P.entorno].includes(n.trim());
+  if(P.campo==='Alboroto'&&hasCat(m,'Sonido')){ o.cd+=1; o.notes.push('Alboroto +1 CD'); }
+  if((r=/Con ([^,;]+?), aumenta su Precisi[oó]n en (\d+)\s*%; con otro clima, la reduce en (\d+)\s*%/.exec(t))){ if(act(r[1])){ o.prec+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} % Precisión`); } else if(P.climaMov){ o.prec-=Number(r[3]); o.notes.push(`${P.climaMov} −${r[3]} % Precisión`); } }
+  if((r=/Con ([^,;]+?), aumenta la Clase de Dado \(CD\) en (\d+)/.exec(t))&&act(r[1])){ o.cd+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} CD`); }
+  if((r=/Con ([^;]+?), reduce la Clase de Dado \(CD\) en (\d+)/.exec(t))&&r[1].split(/,\s*|\s+o\s+/).some(act)){ o.cd-=Number(r[2]); o.notes.push(`${P.climaMov} −${r[2]} CD`); }
+  if((r=/Con ([^,;]+?), \+(\d+) CD; con otro (clima|Campo), −(\d+) CD/.exec(t))){ if(act(r[1])){ o.cd+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} CD`); } else if(r[3]==='clima'?P.climaMov:P.campo){ o.cd-=Number(r[4]); o.notes.push(`${r[3]==='clima'?P.climaMov:P.campo} −${r[4]} CD`); } }
+  if((r=/El da[ñn]o es doble con ([^.]+)\./.exec(t))&&act(r[1])){ o.x2=true; o.notes.push(`${r[1]}: daño doble`); }
+  const C=(CB.cond||{}).clima; if(C&&C.anula&&m[2]===C.anula&&P.clima) o.block=`${C.n} anula los movimientos de tipo ${C.anula}`;
+  if(P.campo==='Campo Psíquico'&&num(m[8])>0) o.block='Campo Psíquico bloquea los movimientos con Prioridad';
+  return o; }
+/* Condición que crea un movimiento o una Habilidad (texto del efecto) */
+function condDeTexto(t){ t=String(t||''); let r;
+  if(/elimina el clima y la condici[oó]n de campo/i.test(t)) return {clear:true};
+  if((r=/(?:[Cc]ambia el clima a|[Cc]rea la condici[oó]n de campo|[Cc]rea el entorno) ([A-ZÁÉÍÓÚ][^.(;]*?)(?: \(\w+\))? (?:durante (\d+) rondas|mientras siga)/.exec(t))){ const n=r[1].trim(); if(!condRow(n)) return null;
+    const an=/anula los movimientos de tipo (\w+)/.exec(t); return {n,r:r[2]?Number(r[2]):null,anula:an?an[1]:''}; }
+  return null; }
+const condDeMov=m=>m[0]==='M0830'?{n:'Viento Afín',r:4}:m[0]==='M0364'?{n:'Alboroto',r:2}:condDeTexto(m[11]);
+function setCond(cls,n,r,by,anula){
+  const prev=((CB.cond||{})[cls]||{}).n||''; const v=n?{n,r:r===undefined?condDur(n):r,by:by||'',anula:anula||''}:null;
+  cbWrite({cond:{[cls]:v}});
+  if(prev!==(n||'')) prediccion();
+  return v; }
+/* Una condición creada por un combatiente (movimiento o Habilidad) */
+function crearCond(c,key,lines,why){
+  if(c.clear){ setCond('clima',''); setCond('campo',''); lines.push(`${why}: elimina el clima y el campo.`); return; }
+  const cls=condCls(c.n); if(!cls) return; setCond(cls,c.n,c.r,key,c.anula);
+  lines.push(`${why}: ${cls==='clima'?'el clima pasa a':cls==='campo'?'crea el campo':'crea el entorno'} ${c.n}${c.r?` (${c.r} rondas)`:' (mientras siga en combate)'}.`); }
+/* Predicción: Castform cambia de forma según el clima */
+function prediccion(){ if(!S.canWrite) return; const cl=((CB.cond||{}).clima||{}).n||''; const clima=anulaClima()?'':cl;
+  const want=clima==='Sol Intenso'?/Sol/:clima==='Llovizna'?/Lluvia/:clima==='Granizo'?/Nieve/:null;
+  for(const x of combatants()){ if(habDe(x.f)!=='prediccion') continue; const dx=dexById.get(x.f.especie); if(!dx) continue;
+    const all=[dx,...formasDe(dx)]; const to=want?all.find(r=>want.test(r[2])):all.find(r=>!/Sol|Lluvia|Nieve/.test(r[2]));
+    if(to&&to[0]!==dx[0]&&canWriteCombat(x)) mutate(x.key,f=>{ f.especie=to[0]; }); } }
+const canWriteCombat=x=>canEditRef(x)||(S.canWrite&&inCombat(x.key));
+function cbCondHTML(){
+  const C=CB.cond||{}; const M=isMaster()&&S.canWrite; const an=anulaClima();
+  const box=(cls,lbl,none)=>{ const c=C[cls]; const n=c&&c.n||''; const row=condRow(n);
+    const sel=M?`<select data-cond="${cls}" aria-label="${lbl}"><option value="">${none}</option>${condsDe(cls).map(r=>`<option${r[0]===n?' selected':''}>${esc(r[0])}</option>`).join('')}</select>`:`<div class="cond-ro">${esc(n||none)}</div>`;
+    let ex='';
+    if(n&&row){ const by=c.by?combatant(c.by):null;
+      ex+=`<div class="cond-meta">${M&&c.r!=null?`<label class="mini">Rondas <input type="number" min="1" max="20" data-condr="${cls}" value="${num(c.r)}"></label>`:`<span>${c.r==null?'Mientras siga su causante':`Quedan ${c.r} ${c.r===1?'ronda':'rondas'}`}</span>`}`;
+      if(cls==='entorno'&&M) ex+=`<label class="mini">Causante <select data-condby="${cls}"><option value="">—</option>${combatants().map(y=>`<option value="${esc(y.key)}"${y.key===c.by?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>`;
+      else if(by||cls==='entorno') ex+=`<span>Causante: ${by?esc(charName(by.f)):'—'}</span>`;
+      ex+=`</div><div class="cond-fx">${esc(row[2])}${row[3]&&row[3]!=='—'?`<br>Potencia: ${esc(row[3])}`:''}${c.anula?`<br>Anula los movimientos de tipo ${esc(c.anula)}.`:''}${cls==='clima'&&an?`<br><b>${esc(charName(an.f))}</b> anula los efectos del clima.`:''}</div>`; }
+    return `<div class="cond-box${n?' on':''}"${n&&COND_TIPO[n]?` style="--ct:#${TYPE_BG[COND_TIPO[n]]||'CCCCCC'}"`:''}><div class="k">${lbl}</div>${sel}${ex}</div>`; };
+  return `<div class="cond-grid">${box('clima','Clima','Sin Clima')}${box('campo','Campo','Sin Campo')}${box('entorno','Entorno','Sin Entorno')}</div>`; }
+/* Fondo de Combate: color del tipo del clima; si no hay, del campo; si no, del entorno */
+function cbTint(){ const b=document.body; const C=CB.cond||{}; const n=S.view==='combate'?((C.clima||{}).n||(C.campo||{}).n||(C.entorno||{}).n||''):'';
+  b.classList.toggle('cb-tint',!!n&&!!COND_TIPO[n]); b.classList.toggle('cb-rainbow',n==='Arcoíris');
+  if(n&&COND_TIPO[n]) b.style.setProperty('--cb-tint','#'+(TYPE_BG[COND_TIPO[n]]||'CCCCCC')); else b.style.removeProperty('--cb-tint'); }
 function tiposDe(f){ if(f.tipo==='E') return (f.tipos||[]).filter(Boolean); const dx=dexById.get(f.especie); return dx?dexTypes(dx):[]; }
 function calc(f){
   const A0=attrs(f)||{FUE:0,VIT:0,ENE:0,SAB:0,DES:0,CAR:0};
@@ -142,12 +280,12 @@ function calc(f){
   // Megaevolución: la Vida usa el HP Base de un Rango más (tope Legend); los atributos no cambian
   else ps=dx?Math.ceil(hpBase(dx[5]==='Mega'&&ri(f.rango)>=0?RANGOS[Math.min(RANGOS.length-1,ri(f.rango)+1)]:f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0;
   const base = f.tipo==='E'?25:(dx?num(dx[8])||25:25);
-  const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v,10,60);
+  const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v+num(em.vel),10,60);
   const ev=(c,a,x)=>clamp(1-0.15*num(c)+0.15*Math.floor(a/2)+0.15*num(f.bEv)+x,0.2,1);
   const talB = f.tipo==='E'&&f.iniTal? talBonus(f,f.iniTal) : 0;
   const pdMax = f.tipo==='E'? Math.max(0,3+rasgoAuto(f,'pd').v) : 0;
   return {A, A0, em, ps, act:ps-num(f.dano), vel, talB, pdMax, ini: vel/5+A.DES+A.SAB+talB,
-    esq:ev(f.cEsq,A.DES,em.esq), tem:ev(f.cTem,A.CAR,em.tem), crit:em.noCrit?0:D.crit[clamp(num(f.ic),0,5)], prec:clamp(clamp(75+5*num(f.prec),30,100)+em.prec,0,100), tipos:tiposDe(f)};
+    esq:ev(f.cEsq,A.DES,em.esq), tem:ev(f.cTem,A.CAR,em.tem), crit:em.noCrit?0:D.crit[clamp(num(f.ic)+num(em.ic),0,5)], prec:clamp(clamp(75+5*num(f.prec),30,100)+em.prec,0,100), tipos:tiposDe(f)};
 }
 const dice = idx=>D.dados[clamp(idx,1,24)-1];
 function moveInfo(f,id,c){
@@ -156,8 +294,9 @@ function moveInfo(f,id,c){
   const prec = clamp(clamp(75+5*(num(m[6])+num(f.prec)),30,100)+(c.em?c.em.prec:0),0,100);
   const isNum = typeof m[7]==='number' && m[7]>0;
   const ak = short(m[4]);
-  const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(m[2])]),1,24):0;
-  return {m, stab, prec, dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak};
+  const cm = condMov(m, c.em&&c.em.cond);
+  const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(m[2])])+cm.cd,1,24):0;
+  return {m, stab, prec:clamp(prec+cm.prec,0,100), dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak, cm};
 }
 /* movimientos que alcanzan a un tipo que sería inmune (Luz Devastadora alcanza a los tipo Hada) */
 const IGNORA_INMUNIDAD={M0832:['Hada']};
@@ -440,7 +579,7 @@ function field(lbl,path,val,kind,extra=''){
   return `<label class="f">${lbl}<input data-f="${path}" ${kind==='num'?'type="number"':kind==='date'?'type="date"':''} value="${esc(val)}" ${extra} ${dis}></label>`;
 }
 function renderSheet(){
-  const el=$('#sheet');
+  const el=$('#sheet'); cbTint();
   if(S.view==='tools'){ el.innerHTML=renderTool(); bindTool(); return; }
   if(S.view==='glos'){ el.innerHTML=glosHTML(); return; }
   if(S.view==='combate'){ el.innerHTML=combatHTML(); return; }
@@ -1141,15 +1280,15 @@ function bindTool(){
 
 /* ---------- combate ---------- */
 const PEN={Starter:0,Beginner:10,Amateur:20,Elite:30,Master:40,Legend:40};
-const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null};
+const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null};
 const CBU={atk:'',mv:'',bon:{},picking:false,targets:[],colFor:''};
 let cbChain=Promise.resolve();
 function cbWrite(fields,full){
-  for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx'].includes(k)) CB[k]={...CB[k],...v}; else CB[k]=v; }
+  for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx','cond'].includes(k)) CB[k]={...(CB[k]||{}),...v}; else CB[k]=v; }
   cbChain=cbChain.then(async()=>{ try{
       const ref=S.db.doc('combate/actual');
-      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null}); CB.exists=true; }
-      else await ref.update(fields);
+      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null,cond:CB.cond||{},voto:CB.voto||null}); CB.exists=true; }
+      else await ref.update('cond' in fields?{...fields,cond:CB.cond}:fields); /* la condición se manda completa */
       setStatus('Guardado');
     }catch(e){ onWriteError(e); } });
 }
@@ -1157,6 +1296,7 @@ const snapOf=f=>{ const o=structuredClone(f); delete o.img; return o; };
 const inCombat=k=>CB.parts.includes(k);
 function combatant(k){ if(!k) return null; const [src,uid,id]=k.split('|'); const ref={src,uid:uid||null,id};
   let f = src==='master' ? (isMaster()? S.master[id] : CB.snaps[k]) : (S.fichas[uid]||{})[id];
+  if(f) CKEY.set(f,k);
   return f?{...ref,key:k,f}:null; }
 function ownerLabel(x){ return x.src==='master'?'Master':(S.players[x.uid]?.alias||''); }
 function saveFicha(ref,f){
@@ -1175,14 +1315,20 @@ function saveAny(x,f){
   setStatus('Guardando…');
   sb.rpc('guardar_ficha_combate',{fid:x.id,nueva:snapOf(f)}).then(({error})=>{ if(error) onWriteError({code:'invalid_argument',message:error.message}); else setStatus('Guardado'); });
 }
-function mutate(key,fn){ const x=combatant(key); if(!x) return null; const f=structuredClone(x.f); const out=fn(f); saveAny(x,f); return out; }
+function mutate(key,fn){ const x=combatant(key); if(!x) return null; const f=structuredClone(x.f); CKEY.set(f,key); const out=fn(f); saveAny(x,f); return out; }
 function canGlove(x){ if(!S.canWrite||!x) return false; return isMaster() || (x.src==='jug'&&x.uid===S.uid); }
 function toggleGlove(k){
   const [src,uid,id]=k.split('|'); if(!canGlove({src,uid:uid||null,id})) return;
   let parts=[...CB.parts], snaps={...CB.snaps};
   if(parts.includes(k)){ parts=parts.filter(x=>x!==k); delete snaps[k]; }
   else { parts.push(k); const c=combatant(k); if(c&&c.src==='master') snaps[k]=snapOf(c.f); }
+  const entra=!CB.parts.includes(k);
   if(isMaster()) cbWrite({parts,snaps},true); else cbWrite({parts});
+  if(entra){ const c=combatant(k); const h=c&&c.f.tipo==='P'?c.f.habilidad:''; const ht=h?habMap.get(h):'';
+    if(ht&&/^Al entrar en combate/.test(ht)){ const nc=condDeTexto(ht); if(nc){ const cl=[]; crearCond(nc,k,cl,`${charName(c.f)} (${h})`); logRoll('Condición',cl.join(' '),null); } }
+    if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion(); }
+  else { for(const cls of ['clima','campo','entorno']){ const c=(CB.cond||{})[cls]; if(c&&c.by===k&&c.r==null){ setCond(cls,''); logRoll('Condición',`${c.n} termina: su causante salió del combate.`,null); } }
+    prediccion(); }
   render();
 }
 function gloveBtn(k){ const on=inCombat(k); return `<button class="glove" data-glove="${esc(k)}" aria-pressed="${on}" title="${on?'Quitar del combate':'Agregar al combate'}" aria-label="${on?'Quitar del combate':'Agregar al combate'}">🥊</button>`; }
@@ -1191,6 +1337,7 @@ const iAmIn=()=> isMaster() || CB.parts.some(k=>k.startsWith(`jug|${S.uid}|`));
 function cbOrder(){ return combatants().map(x=>({x,c:calc(x.f)})).sort((a,b)=>b.c.ini-a.c.ini||(CB.ties[b.x.key]||0)-(CB.ties[a.x.key]||0)); }
 function targetMode(m){ const b=m[9], dist=String(m[10]);
   if(b==='Usuario'||dist==='Propio') return 'none';
+  if(m[3]==='Estado'&&condDeMov(m)) return 'none'; /* crea un clima, campo o entorno */
   if(['Area','Oponentes','Equipo','Campo','Aliados'].includes(b)) return 'multi';
   return 'single'; }
 const hasCat=(m,c)=>String(m[13]||'').split(/[;,]\s*/).map(x=>x.trim().toLowerCase()).includes(c.toLowerCase());
@@ -1200,8 +1347,9 @@ function attackInfo(x,mv){
   const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente');
   const pen = rec?0:n*(PEN[mi.m[5]]||0);
   const prec=clamp(mi.prec-pen,0,100);
-  let ic=clamp(num(f.ic)+(hasCat(mi.m,'Preciso')?1:0),0,5);
+  let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
+  if(reR!==null&&c.em.cond&&c.em.cond.entorno==='Arcoíris'&&c.em.cond.aliado) reR=Math.min(1,reR*2); /* Arcoíris duplica el Rango Extra del equipo */
   if(c.em.noCrit){ critR=0; if(reR!==null) reR=0; }
   return {f,c,mi,n,rec,pen,prec,ic,critR,reR};
 }
@@ -1238,6 +1386,7 @@ function giveEstado(f,name,ctx,force){
   const e=estMap.get(name); if(!e) return '';
   const cls=e[2]==='Fisico'?'F':'M', field=cls==='F'?'estF':'estM';
   if(estImmune(f,name)) return `inmune a ${name}`;
+  const ci=condInmune(f,name); if(ci) return `${ci}: no puede quedar ${name}`;
   if(f[field]&&!force) return f[field]===name?`ya estaba ${name}`:`ya tiene ${f[field]}, no se aplica ${name}`;
   const prev=f[field]; f[field]=name; setEstFx(f,cls,{r:ctx.rank,by:ctx.by});
   return prev&&prev!==name?`${name} (reemplaza a ${prev})`:name;
@@ -1263,16 +1412,33 @@ function critEstado(m){ return D.estados.find(e=>e[1]===m[2])?.[0]||''; }
 function cbOrderHTML(){
   const ord=cbOrder(); const tied=ord.filter(a=>ord.some(b=>b!==a&&b.c.ini===a.c.ini));
   let h=`<div class="card"><h2><span>Orden de iniciativa <span class="ronda">Ronda ${num(CB.ronda)}</span></span><span class="row">${tied.length?'<button class="btn sm" data-cb="tie">Desempatar con 1d20</button>':''}${isMaster()&&CB.parts.length?'<button class="btn sm danger" data-cb="end">Terminar combate</button><span id="endConfirm"></span>':''}${CB.parts.length&&S.canWrite&&iAmIn()?'<button class="btn sm pri" data-cb="round">Finalizar Ronda</button><span id="roundConfirm"></span>':''}</span></h2>`;
+  h+=cbCondHTML();
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     return `<div class="r cbrow"><div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
-      <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div></div>
+      <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}</div>
       <div style="text-align:right"><span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
-    <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones y quita los estados superados.</p>`;
+    <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones, quita los estados superados y descuenta las rondas del clima, el campo y el entorno. El Master los elige a mano; los jugadores los crean con un movimiento o una Habilidad.</p>`;
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
   return h+`</div>`;
 }
+/* Efectos de fin de ronda del clima y el campo sobre un Pokémon */
+function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P||f.tipo!=='P') return false; const T=tiposDe(f), h=P.h; let ch=false;
+  const idx=clamp(ri(f.rango)+2,1,24);
+  const pierde=why=>{ const dd=dice(idx), rl=rollDice(dd); f.dano=num(f.dano)+rl.t; ch=true; lines.push({k:'ko',t:`${name}: ${why}, residual ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`}); };
+  const gana=why=>{ const dd=dice(idx), rl=rollDice(dd); const v=Math.min(num(f.dano),rl.t); f.dano=num(f.dano)-v; ch=true; lines.push({k:'ok',t:`${name}: ${why}, recupera ${dd} [${rl.r.join(', ')}] = ${v} PS.`}); };
+  const sinDanoClima=['funda','muromagico'].includes(h);
+  if(P.clima==='Tormenta de Arena'&&!T.some(t=>['Roca','Tierra','Acero'].includes(t))&&!sinDanoClima&&!['poderarena','veloarena'].includes(h)) pierde('Tormenta de Arena');
+  if(P.clima==='Granizo'){ if(h==='gelido') gana('Gélido con Granizo'); else if(!T.includes('Hielo')&&!sinDanoClima) pierde('Granizo'); }
+  if(P.clima==='Llovizna'&&(h==='curalluvia'||h==='pielseca')) gana(`${f.habilidad} con Llovizna`);
+  if(P.clima==='Sol Intenso'&&(h==='pielseca'||h==='podersolar')) pierde(`${f.habilidad} con Sol Intenso`);
+  if(P.clima==='Llovizna'&&h==='hidratacion'&&(f.estF||f.estM)){ lines.push({k:'ok',t:`${name}: Hidratación con Llovizna, se libera de ${[f.estF,f.estM].filter(Boolean).join(' y ')}.`}); f.estF=''; f.estM=''; f.estFx={}; ch=true; }
+  if(P.campo==='Campo de Hierba'&&P.enSuelo&&num(f.dano)>0) gana('Campo de Hierba');
+  if(P.clima==='Miasma'&&!T.includes('Veneno')&&!f.estF){ const e=estMap.get('Envenenado'); const r=d(100);
+    if(r<=num(e[4])) lines.push({k:'ok',t:`${name}: Miasma, Salvación d100 [${r}] ≤ ${num(e[4])} → no queda Envenenado.`});
+    else { const t=giveEstado(f,'Envenenado',{rank:f.rango||'Starter',by:''},false); ch=true; lines.push({k:'ko',t:`${name}: Miasma, Salvación d100 [${r}] > ${num(e[4])} → ${t}.`}); } }
+  return ch; }
 async function endRound(){
   if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
   const cur=num(CB.ronda); const sb=window.__sb;
@@ -1280,27 +1446,33 @@ async function endRound(){
   CB.ronda=cur+1;
   const lines=[], heals=[];
   for(const x of combatants()){
-    const f=structuredClone(x.f); let changed=false; const name=charName(f);
+    const f=structuredClone(x.f); CKEY.set(f,x.key); let changed=false; const name=charName(f); const em=estEffects(f,x.key);
     for(const cls of ['F','M']){ const field=cls==='F'?'estF':'estM'; const est=f[field]; if(!est) continue; const e=estMap.get(est); if(!e) continue;
       const fx={r:f.rango||'Starter',n:0,pr:0,...((f.estFx||{})[cls]||{})};
       if(estImmune(f,est)){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: es inmune a ${est} por su tipo; se quita.`}); continue; }
       if(e[4]==='-'||e[4]===''||e[4]==null){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: ${est} termina.`}); continue; }
-      const th=num(e[4])+num(e[5])*num(fx.n)+num((estEffects(f).salv||{})[est]); /* + resistencias pasivas */
+      const th=num(e[4])+num(e[5])*num(fx.n)+num((em.salv||{})[est]); /* + resistencias pasivas y condiciones */
       if(th>=100){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: su Salvación de ${est} llegó a ${th}; se libera sin residual.`}); continue; }
-      if(/Residual/i.test(e[3])){ const poison=est==='Envenenado'; const idx=clamp(ri(fx.r)+(poison?1+num(fx.pr):2),1,24); const dd=dice(idx); const rl=rollDice(dd);
+      if(/Residual/i.test(e[3])){ const poison=est==='Envenenado'; const up=num(em.resid[est]); const idx=clamp(ri(fx.r)+(poison?1+num(fx.pr):2)+up,1,24); const dd=dice(idx); const rl=rollDice(dd);
         f.dano=num(f.dano)+rl.t; changed=true;
-        lines.push({k:'ko',t:`${name}: residual de ${est} (${fx.r}${poison?`, ronda ${num(fx.pr)+1}`:''}) ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`});
-        if(est==='Drenado'&&fx.by&&fx.by!==x.key&&inCombat(fx.by)) heals.push({key:fx.by,val:rl.t,from:name});
+        lines.push({k:'ko',t:`${name}: residual de ${est} (${fx.r}${poison?`, ronda ${num(fx.pr)+1}`:''}${up?`, +${up} Rango por ${em.cond.clima}`:''}) ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`});
+        const hierba=((CB.cond||{}).campo||{}).n==='Campo de Hierba';
+        if(est==='Drenado'&&fx.by&&fx.by!==x.key&&inCombat(fx.by)) heals.push({key:fx.by,val:hierba?rl.t*2:rl.t,from:name+(hierba?' (doble por Campo de Hierba)':'')});
         if(poison) fx.pr=num(fx.pr)+1; }
+      if(em.skipSalv.includes(est)&&!fx.sk){ fx.sk=1; f.estFx={...(f.estFx||{}),[cls]:fx}; changed=true; lines.push({k:'',t:`${name}: ${est} evita la Salvación esta ronda (${em.cond.clima==='Llovizna'&&est==='Empapado'?'Llovizna':em.cond.campo}).`}); continue; }
       const r=d(100);
       if(r<=th){ f[field]=''; setEstFx(f,cls,null); lines.push({k:'ok',t:`${name}: Salvación de ${est} d100 [${r}] ≤ ${th} → se libera.`}); }
       else { fx.n=num(fx.n)+1; f.estFx={...(f.estFx||{}),[cls]:fx}; lines.push({k:'',t:`${name}: Salvación de ${est} d100 [${r}] > ${th} → sigue (próxima: ${Math.min(100,th+num(e[5]))}).`}); }
       changed=true; }
+    if(condFinRonda(f,em,name,lines)) changed=true;
     if(f.tipo==='P'&&f.habilidad==='Mutapetito'){ const dx=dexById.get(f.especie); const alt=formasDe(dx).find(r=>/Saciada|Voraz/i.test(r[2]));
       if(alt){ f.especie=alt[0]; changed=true; lines.push({k:'',t:`${name}: Mutapetito, pasa a ${alt[2]}.`}); } }
     if(changed) saveAny(x,f);
   }
   for(const hl of heals){ mutate(hl.key,f=>{ f.dano=Math.max(0,num(f.dano)-hl.val); }); const t=combatant(hl.key); lines.push({k:'ok',t:`${t?charName(t.f):'Quien lo causó'} recupera ${hl.val} PS por el Drenado de ${hl.from}.`}); }
+  /* duración de climas, campos y entornos */
+  for(const cls of ['clima','campo','entorno']){ const c=(CB.cond||{})[cls]; if(!c||!c.n||c.r==null) continue;
+    if(num(c.r)<=1){ setCond(cls,''); lines.push({k:'',t:`${c.n} termina.`}); } else { cbWrite({cond:{[cls]:{...c,r:num(c.r)-1}}}); lines.push({k:'',t:`${c.n}: quedan ${num(c.r)-1} rondas.`}); } }
   CB.rondaLog={n:CB.ronda,lines};
   cbWrite({ronda:CB.ronda,rondaLog:CB.rondaLog});
   logRoll('Fin de ronda',`Ronda ${cur} terminada${lines.length?' · '+lines.map(l=>l.t).join(' · '):' · sin estados'}`,null);
@@ -1332,16 +1504,17 @@ function cbAttackHTML(){
 function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
-  if(heal){ if(!isNum) return {heal:true,val:null,det:'Sin dado'}; const idx=clamp(m[7]+ai.mi.stab+num(bonus),1,24); const dd=dice(idx); const rl=rollDice(dd); let v=rl.t+(ai.mi.atr||0); if(crit) v*=2; return {heal:true,val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr||0}${crit?' × 2 (crítico)':''}`}; }
+  if(heal){ if(!isNum) return {heal:true,val:null,det:'Sin dado'}; const idx=clamp(m[7]+ai.mi.stab+num(bonus)+ai.mi.cm.cd,1,24); const dd=dice(idx); const rl=rollDice(dd); let v=rl.t+(ai.mi.atr||0); if(crit) v*=2; return {heal:true,val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr||0}${crit?' × 2 (crítico)':''}`}; }
   const e=effectiveness(m[2],tc.tipos,m[0]);
   if(e.immune) return {val:0,det:'Inmune',immune:true};
   if(!isNum){ if(m[3]==='Estado'&&crit){ const ak=short(m[4]); const v=ai.c.A[ak]||0; return {val:v,det:`Crítico de Estado: daño igual a ${ak} (${v})`}; } return {val:null,det:'Sin daño'}; }
   const own=num(ai.c.em.cdOwn[deacc(m[2])]), recv=num(tc.em.cdRecv[deacc(m[2])]);
-  const idx=clamp(m[7]+ai.mi.stab+e.steps+num(bonus)+own+recv,1,24); const dd=dice(idx); const rl=rollDice(dd);
+  const cm=ai.mi.cm;
+  const idx=clamp(m[7]+ai.mi.stab+e.steps+num(bonus)+own+recv+cm.cd,1,24); const dd=dice(idx); const rl=rollDice(dd);
   const def=m[3]==='Fisico'?tc.A.VIT:m[3]==='Especial'?tc.A.SAB:0;
-  let v=Math.max(0,rl.t+ai.mi.atr-def); if(crit) v*=2;
-  const ex=[e.steps>0?`súper eficaz +${e.steps}`:e.steps<0?`poco eficaz ${e.steps}`:'',own?`estado propio ${own} CD`:'',recv?`estado del objetivo +${recv} CD`:''].filter(Boolean).join(', ');
-  return {val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr} ${ai.mi.ak}${def?' − '+def+(m[3]==='Fisico'?' VIT':' SAB'):''}${crit?' × 2 (crítico)':''}${ex?' · '+ex:''}`};
+  let v=Math.max(0,rl.t+ai.mi.atr-def); if(crit) v*=2; if(cm.x2) v*=2;
+  const ex=[e.steps>0?`súper eficaz +${e.steps}`:e.steps<0?`poco eficaz ${e.steps}`:'',own?`propio ${own>0?'+':''}${own} CD (estado o condición)`:'',recv?`objetivo ${recv>0?'+':''}${recv} CD`:'',...cm.notes].filter(Boolean).join(', ');
+  return {val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr} ${ai.mi.ak}${def?' − '+def+(m[3]==='Fisico'?' VIT':' SAB'):''}${crit?' × 2 (crítico)':''}${cm.x2?' × 2':''}${ex?' · '+ex:''}`};
 }
 function doAttack(){
   const x=combatant(CBU.atk); if(!x||!canEditRef(x)) return; const mvId=CBU.mv; const ai=attackInfo(x,mvId); if(!ai) return; const m=ai.mi.m;
@@ -1352,7 +1525,8 @@ function doAttack(){
   steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}% → ${hit?'conecta':'falla'}`});
   if(r===1) steps.push({k:'ok',t:'01 natural: +1 al Bono de Evasión y algo a decisión del Narrador.'});
   if(r===100) steps.push({k:'ko',t:'100: fallo crítico, −1 al Bono de Evasión y algo a decisión del Narrador.'});
-  let go=hit, crit=false, re=false;
+  let go=hit, crit=false, re=false, postCond=null;
+  if(go&&ai.mi.cm.block){ steps.push({k:'ko',t:ai.mi.cm.block+': el movimiento no tiene efecto.'}); go=false; }
   if(go){ for(const cn of ai.c.em.cancel){
       if(cn.kind==='aturdido'){ steps.push({k:'ko',t:`${cn.est}: pierde su Acción.`}); go=false; break; }
       if(r>cn.thr){ if(cn.kind==='pierde'){ steps.push({k:'ko',t:`${cn.est}: la tirada (${r}) supera ${cn.thr}, pierde la acción.`}); go=false; break; }
@@ -1360,11 +1534,17 @@ function doAttack(){
         if(cn.kind==='causante') steps.push({k:'wa',t:`${cn.est}: la tirada (${r}) supera ${cn.thr}, no puede atacar a quien se lo causó.`}); }
       else steps.push({k:'',t:`${cn.est}: la tirada (${r}) no supera ${cn.thr}, actúa con normalidad.`}); } }
   const res=[];
-  const nf=structuredClone(x.f); nf.rep={mv:mvId,n:ai.n+1};
+  const nf=structuredClone(x.f); CKEY.set(nf,x.key); nf.rep={mv:mvId,n:ai.n+1};
   let selfNow=false;
   if(go){ crit=r<=Math.round(ai.critR*100); steps.push({k:crit?'ok':'',t:`Crítico (${pct(ai.critR)}${hasCat(m,'Preciso')?', Preciso +1 IC':''}): ${crit?'¡sí!':'no'}`});
     if(ai.reR!==null){ re=r<=Math.round(ai.reR*100); steps.push({k:re?'ok':'',t:`Rango Extra ${pct(ai.reR)}: ${re?'se activa el efecto':'no se activa'}`}); }
     steps.push({k:'fx',t:`Efecto: ${m[11]}`});
+    if(ai.mi.cm.notes.length) steps.push({k:'',t:`Condición: ${ai.mi.cm.notes.join(' · ')}`});
+    const cl=[]; const nc=condDeMov(m); if(nc) postCond=()=>crearCond(nc,x.key,cl,m[1]);
+    if(/^Voto (Agua|Fuego|Planta)$/.test(m[1])){ const V=CB.voto; const ally=V&&num(V.ronda)===num(CB.ronda)&&V.key!==x.key&&V.mv!==mvId&&sideOf(V.key)===sideOf(x.key)&&inCombat(V.key);
+      if(ally) postCond=()=>crearCond({n:'Arcoíris',r:4},x.key,cl,`${V.name} y ${charName(x.f)} combinan sus Voto`);
+      cbWrite({voto:ally?null:{ronda:num(CB.ronda),key:x.key,mv:mvId,name:charName(x.f)}}); }
+    if(postCond) steps.push({k:'ok',t:'',cl});
     if(mode==='none'||!tkeys.length){
       const dr=rollDamage(ai,x,crit,bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:charName(x.f),...dr,selfMove:true});
       const notes=applyOps(nf,parseFx(m),'all',{re,rank:m[5],by:x.key});
@@ -1375,6 +1555,8 @@ function doAttack(){
       res.push({key:k,name:charName(t.f),...dr,est,kind:m[3]==='Estado'?'tem':'esq'}); }
   }
   saveFicha(x,nf);
+  /* la condición se crea después de guardar al atacante (Predicción puede cambiar su forma) */
+  if(postCond){ postCond(); const i=steps.findIndex(z=>z.cl); const cl=steps[i].cl; steps.splice(i,1,...cl.map(t=>({k:'ok',t}))); }
   const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
   if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
@@ -1395,6 +1577,8 @@ function connectHit(L,z,extra){
   });
   if(m&&hasCat(m,'Drenaje')&&!z.heal&&num(z.val)>0&&A){ const hv=Math.floor(num(z.val)/2); if(hv){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-hv); }); out.push(`${charName(A.f)} recupera ${hv} PS (Drenaje)`); } }
   if(!L.selfDone&&!z.selfMove&&A&&m){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
+  if(!z.heal&&num(z.val)>0&&z.key!==L.byKey){ const tf=(combatant(z.key)||{}).f; const h=tf&&tf.tipo==='P'&&tf.estM!=='Mareado'?tf.habilidad:''; const ht=h?habMap.get(h):'';
+    if(ht&&/^Cuando recibe un ataque/.test(ht)){ const c=condDeTexto(ht); if(c){ const cl=[]; crearCond(c,z.key,cl,h); out.push(...cl); } } }
   logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')||'sin efecto'}${extra?' · '+extra:''}`,z.val??null);
   return out;
 }
@@ -1529,7 +1713,7 @@ function cbClick(b){
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; }
-  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null},true); render(); }
+  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null},true); render(); }
   else if(act==='round'){ $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
   else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; }
   else if(act==='roundYes'){ b.disabled=true; endRound(); }
@@ -1570,6 +1754,9 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.dexj){ setVis([e.target.dataset.id],e.target.checked,e.target.dataset.dexj); return; }
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
+  if(e.target.dataset.cond&&isMaster()){ const cls=e.target.dataset.cond, n=e.target.value; setCond(cls,n,n?condDur(n):undefined,''); logRoll('Condición',n?`El Master define ${COND_CLS[cls].toLowerCase()}: ${n} (${condDur(n)} rondas).`:`El Master quita ${COND_CLS[cls].toLowerCase()==='clima'?'el clima':COND_CLS[cls].toLowerCase()==='campo'?'el campo':'el entorno'}.`,null); renderSheet(); return; }
+  if(e.target.dataset.condr&&isMaster()){ const cls=e.target.dataset.condr; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,r:clamp(num(e.target.value),1,20)}}}); renderSheet(); return; }
+  if(e.target.dataset.condby&&isMaster()){ const cls=e.target.dataset.condby; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,by:e.target.value}}}); renderSheet(); return; }
   if(e.target.dataset.clf){ clChange(e.target); return; }
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
@@ -1719,7 +1906,7 @@ async function boot(){
   setStatus('Conectado');
   if(window.__PRUEBAS) showBanner('Versión de pruebas en Claude: aquí se revisan los cambios antes de pasarlos a la app de la mesa. Las fichas de esta versión no son las de la web.');
   db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
-  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null;
+  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null;
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
   db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   db.collection('tiradas').onSnapshot(snap=>{ const m=snapMap(snap); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
