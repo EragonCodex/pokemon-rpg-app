@@ -37,6 +37,27 @@ const natMap = new Map(D.nat.map(r=>[r[0],r]));
 const estMap = new Map(D.estados.map(r=>[r[0],r]));
 const EST_F = D.estados.filter(r=>r[2]==='Fisico').map(r=>r[0]);
 const EST_M = D.estados.filter(r=>r[2]==='Mental').map(r=>r[0]);
+/* Méritos y Defectos del Entrenador. rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
+   rasgoFx: 0 rasgo,1 clave (tal:X, attr:X, vel, ps%, pd, cdRecv:Tipo, salv:Estado, salvM, all, talSoc, nota),2 mod,3 automático,4 condición,5 campo */
+const RASGOS = new Map((D.rasgos||[]).map(r=>[r[0],r]));
+const RFX = D.rasgoFx||[];
+const N_DEF=3, N_MER=6, PTS_LIBRES=3;
+const sg = v=>(num(v)>0?'+':num(v)<0?'−':'')+Math.abs(num(v));
+const TAL_SOC=['Presencia','Manipulacion','Perspicacia','Interpretacion'];
+const nivelGrupo = n=>{ const m=/^(.*) (I{1,3})(?: \(.*\))?$/.exec(n); return m?m[1]:null; };
+function rasgosDe(f){ if(!f||f.tipo!=='E') return []; return [...(f.defectos||[]),...(f.meritos||[])].filter(n=>RASGOS.has(n)); }
+function rasgoFxDe(f){ const s=new Set(rasgosDe(f)); return RFX.filter(x=>s.has(x[0])); }
+/* suma automática de una clave (sin preguntar) y los rasgos que la causan */
+function rasgoAuto(f,key){ let v=0; const src=[]; for(const x of rasgoFxDe(f)) if(x[3]&&x[1]===key){ v+=num(x[2]); src.push(`${x[0]} ${sg(x[2])}`); } return {v,src}; }
+/* efectos condicionales que se consultan al tirar */
+function rasgoCond(f,keys){ return rasgoFxDe(f).filter(x=>!x[3]&&keys.includes(x[1])&&num(x[2])!==0); }
+const condKeysTal = t=>['tal:'+t].concat(TAL_SOC.includes(t)?['talSoc']:[]);
+/* bonus de un Talento: su Rango + los rasgos automáticos */
+const talBonus = (f,t)=> rb((f.tal||{})[t]) + (f.tipo==='E'?rasgoAuto(f,'tal:'+t).v:0);
+/* marca de color: verde si sube, rojo si baja (automático), amarillo si hay condicional */
+function rasgoMark(f,autoKey,condKeys){ const a=autoKey?rasgoAuto(f,autoKey):{v:0,src:[]}; const c=condKeys?rasgoCond(f,condKeys):[];
+  const tip=[...a.src,...c.map(x=>`${x[0]} ${x[2]===-99?'falla':sg(x[2])}${x[4]?' ('+x[4]+')':''}: se consulta al tirar`)].join(' · ');
+  const cls=a.v>0?'rs-up':a.v<0?'rs-down':c.length?'rs-cond':''; return {cls, tip, auto:a.v, cond:c}; }
 
 /* ---------- utilidades ---------- */
 const $ = s=>document.querySelector(s);
@@ -104,6 +125,12 @@ function estEffects(f){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:{},c
   for(const n of [f.estF,f.estM].filter(Boolean)){ if(estImmune(f,n)) continue; const m=estModsOf(n); if(!m) continue;
     for(const [k,v] of Object.entries(m.attr)){ o.attr[k]=(o.attr[k]||0)+v; (o.src[k] ||= []).push(n); }
     o.prec+=m.prec; o.esq+=m.esq; o.tem+=m.tem; Object.assign(o.cdOwn,m.cdOwn); Object.assign(o.cdRecv,m.cdRecv); o.cancel.push(...m.cancel); o.noCrit=o.noCrit||m.noCrit; }
+  /* resistencias pasivas de los Méritos: −1 CD al daño recibido de un tipo y + a la Salvación de un estado */
+  o.salv={}; o.resist=[];
+  for(const x of rasgoFxDe(f)){ const [n,k,v]=x;
+    if(k.startsWith('cdRecv:')){ const t=k.slice(7); o.cdRecv[t]=num(o.cdRecv[t])+num(v); o.resist.push(`${n}: ${sg(v)} CD de ${t}`); }
+    else if(k.startsWith('salv:')){ const e=k.slice(5); o.salv[e]=num(o.salv[e])+num(v); o.resist.push(`${n}: Salvación de ${e} ${sg(v)}`); }
+    else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); } }
   return o; }
 function tiposDe(f){ if(f.tipo==='E') return (f.tipos||[]).filter(Boolean); const dx=dexById.get(f.especie); return dx?dexTypes(dx):[]; }
 function calc(f){
@@ -111,14 +138,15 @@ function calc(f){
   const em=estEffects(f); const A={...A0}; for(const [k,v] of Object.entries(em.attr)) A[k]+=v;
   const dx=f.tipo==='P'?dexById.get(f.especie):null;
   let ps;
-  if(f.tipo==='E') ps=Math.ceil(0.8*hpBase(f.rango)+1.5*(A0.VIT+A0.CAR));
+  if(f.tipo==='E') ps=Math.ceil((0.8*hpBase(f.rango)+1.5*(A0.VIT+A0.CAR))*(1+rasgoAuto(f,'ps%').v/100));
   // Megaevolución: la Vida usa el HP Base de un Rango más (tope Legend); los atributos no cambian
   else ps=dx?Math.ceil(hpBase(dx[5]==='Mega'&&ri(f.rango)>=0?RANGOS[Math.min(RANGOS.length-1,ri(f.rango)+1)]:f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0;
   const base = f.tipo==='E'?25:(dx?num(dx[8])||25:25);
-  const vel = clamp(base+num(D.speed[f.velMod||'Normal']),10,60);
+  const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v,10,60);
   const ev=(c,a,x)=>clamp(1-0.15*num(c)+0.15*Math.floor(a/2)+0.15*num(f.bEv)+x,0.2,1);
-  const talB = f.tipo==='E'&&f.iniTal? rb((f.tal||{})[f.iniTal]) : 0;
-  return {A, A0, em, ps, act:ps-num(f.dano), vel, talB, ini: vel/5+A.DES+A.SAB+talB,
+  const talB = f.tipo==='E'&&f.iniTal? talBonus(f,f.iniTal) : 0;
+  const pdMax = f.tipo==='E'? Math.max(0,3+rasgoAuto(f,'pd').v) : 0;
+  return {A, A0, em, ps, act:ps-num(f.dano), vel, talB, pdMax, ini: vel/5+A.DES+A.SAB+talB,
     esq:ev(f.cEsq,A.DES,em.esq), tem:ev(f.cTem,A.CAR,em.tem), crit:em.noCrit?0:D.crit[clamp(num(f.ic),0,5)], prec:clamp(clamp(75+5*num(f.prec),30,100)+em.prec,0,100), tipos:tiposDe(f)};
 }
 const dice = idx=>D.dados[clamp(idx,1,24)-1];
@@ -149,10 +177,33 @@ function checkSheet(f,c){
   out.attrUsed=used; out.attrMax=ATTR_PTS[R];
   if(used>ATTR_PTS[R]) out.attr.push(`Usas ${used} puntos y el máximo es ${ATTR_PTS[R]}.`);
   if(over.length) out.attr.push(`${over.join(', ')} supera${over.length>1?'n':''} el techo (${f.rango}).`);
-  if(!isP){ let tu=0; const to=[]; ALL_TAL.forEach(t=>{const r=(f.tal||{})[t]; tu+=rb(r); if(rb(r)>R+1) to.push(TAL_LABEL(t));});
-    out.talUsed=tu; out.talMax=TAL_PTS[R];
-    if(tu>TAL_PTS[R]) out.tal.push(`Usas ${tu} puntos y el máximo es ${TAL_PTS[R]}.`);
-    if(to.length) out.tal.push(`${to.join(', ')} supera${to.length>1?'n':''} el techo (${f.rango}).`); }
+  if(!isP){ let tu=0; const to=[], or=[];
+    /* Talento OverRanked: uno solo puede quedar 1 Rango sobre el del Entrenador; ese nivel extra es un punto adicional */
+    ALL_TAL.forEach(t=>{const r=(f.tal||{})[t]; tu+=rb(r); const ex=ri(r)-R; if(ex===1) or.push(TAL_LABEL(t)); else if(ex>1) to.push(TAL_LABEL(t));});
+    out.talOR=or.length; out.talUsed=tu; out.talMax=TAL_PTS[R]+(or.length?1:0);
+    if(tu>out.talMax) out.tal.push(`Usas ${tu} puntos y el máximo es ${out.talMax}${or.length?' (incluye el punto OverRanked)':''}.`);
+    if(or.length>1) out.tal.push(`Solo 1 Talento puede ser OverRanked y hay ${or.length}: ${or.join(', ')}.`);
+    if(to.length) out.tal.push(`${to.join(', ')} supera${to.length>1?'n':''} el techo (${f.rango}) en más de 1 Rango.`);
+    /* Méritos y Defectos: 3 puntos libres + Defectos − Méritos; avisos sin bloquear */
+    const elegidos=rasgosDe(f), rs=[];
+    const desconocidos=[...(f.defectos||[]),...(f.meritos||[])].filter(n=>n&&!RASGOS.has(n));
+    const dPts=(f.defectos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+Math.abs(num(RASGOS.get(n)[3])),0);
+    const mPts=(f.meritos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+num(RASGOS.get(n)[3]),0);
+    out.rasLibres=PTS_LIBRES; out.rasDef=dPts; out.rasMer=mPts; out.rasSaldo=PTS_LIBRES+dPts-mPts;
+    if(out.rasSaldo<0) rs.push(`Los Méritos cuestan ${mPts} y tienes ${PTS_LIBRES+dPts} puntos (3 libres + ${dPts} de Defectos).`);
+    if(desconocidos.length) rs.push(`${desconocidos.join(', ')}: no está en la lista.`);
+    (f.defectos||[]).forEach(n=>{ const r=RASGOS.get(n); if(r&&r[1]!=='D') rs.push(`${n} es un Mérito, no un Defecto.`); });
+    (f.meritos||[]).forEach(n=>{ const r=RASGOS.get(n); if(r&&r[1]!=='M') rs.push(`${n} es un Defecto, no un Mérito.`); });
+    const norm=s=>deacc(String(s)).toLowerCase().trim();
+    const vistos=new Set();
+    for(const a of elegidos){ for(const b of elegidos){ if(a>=b) continue; const k=a+'|'+b; if(vistos.has(k)) continue; vistos.add(k);
+      const ga=nivelGrupo(a), gb=nivelGrupo(b);
+      if(a===b || (ga&&ga===gb)){ rs.push(`${a} y ${b}: solo se toma un nivel de ${ga||a}.`); continue; }
+      const hits=(x,y)=>{ const items=String(RASGOS.get(x)[6]||'').split(/[,()]/).map(norm).filter(Boolean); const ny=norm(y), gy=norm(nivelGrupo(y)||y);
+        return items.some(it=>it===ny||it===gy||it.startsWith(ny+' ')||it.startsWith(gy+' ')); };
+      if(hits(a,b)||hits(b,a)) rs.push(`${a} y ${b} son incompatibles (el Narrador puede hacer una excepción).`); } }
+    if(elegidos.length!==new Set(elegidos).size) rs.push('Hay un rasgo repetido.');
+    out.ras=rs; }
   const mv=(f.moves||[]).slice(0,6).map(id=>atkById.get(id)).filter(Boolean);
   const ors=mv.filter(m=>ri(m[5])===R+1), bad=mv.filter(m=>ri(m[5])>R+1), free=mv.filter(m=>ri(m[5])<=R);
   out.orN=ors.length; out.freeN=free.length; out.freeMax=R===5?6:FREE_MV[R];
@@ -261,7 +312,7 @@ function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=moch
 
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
-function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
+function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,defectos:['','',''],meritos:['','','','','',''],dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
 function newPokemon(extra={}){ return Object.assign({tipo:'P',genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
@@ -402,7 +453,7 @@ function renderSheet(){
   let h='';
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
-  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b>${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="3" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
+  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
     <div class="kind">${kind}${S.ro?' · solo lectura':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
@@ -448,7 +499,7 @@ function renderSheet(){
     <div class="grid g2" style="margin-top:10px">
       ${field('Estado físico','estF',estOpts(EST_F,f.estF),'sel')}
       ${field('Estado mental','estM',estOpts(EST_M,f.estM),'sel')}
-    </div><div data-c="estfx"></div></div>`;
+    </div><div data-c="estfx"></div><div data-c="rascomb"></div></div>`;
   let habOpts;
   if(isP && dx){ habOpts=[...new Set([dx[15],dx[16],dx[17]].filter(x=>x&&x!=='-'))]; }
   h+=`<div class="card"><h2>Habilidad</h2><div class="grid g2">`;
@@ -458,7 +509,8 @@ function renderSheet(){
   // atributos
   h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th class="wide">Entrenado</th><th>Bonus</th><th>Rango</th><th>Total</th><th>Tirar</th></tr></thead><tbody>`;
   ATTR.forEach(k=>{ const a=(f.attr||{})[k]||{};
-    h+=`<tr><td class="attr-name"><span class="attrdot" style="background:#${ATTR_BG[k]}"></span>${ATTR_FULL[k]}</td>${isP?`<td class="num" data-c="sp${k}"></td><td class="num" data-c="nt${k}"></td>`:''}
+    const amk=isP?{cls:'',tip:''}:rasgoMark(f,null,['attr:'+k]);
+    h+=`<tr><td class="attr-name"><span class="attrdot" style="background:#${ATTR_BG[k]}"></span><span class="${amk.cls}"${amk.tip?` title="${esc(amk.tip)}"`:''}>${ATTR_FULL[k]}</span></td>${isP?`<td class="num" data-c="sp${k}"></td><td class="num" data-c="nt${k}"></td>`:''}
       <td><select data-f="attr.${k}.r" ${S.ro?'disabled':''} aria-label="Rango de ${ATTR_FULL[k]}">${opts(RANGOS,a.r,'—')}</select></td>
       <td><input type="number" data-f="attr.${k}.b" value="${num(a.b)}" ${S.ro?'disabled':''} aria-label="Bonus de ${ATTR_FULL[k]}"></td>
       <td class="num" data-c="rk${k}"></td><td class="tot" data-c="at${k}"></td><td><button class="d20btn" data-rollattr="${k}" title="Tirar 1d20 + ${ATTR_FULL[k]}" aria-label="Tirar 1d20 + ${ATTR_FULL[k]}">${D20_SVG}</button></td></tr>`; });
@@ -466,9 +518,11 @@ function renderSheet(){
   if(!isP){
     h+=`<div class="card"><h2>Talentos <span class="pill" data-c="talPts"></span></h2><div class="tal">`;
     for(const [cat,col,list] of TALENTOS){ h+=`<div><div class="cat" style="color:${col}">${cat}</div>`;
-      for(const t of list){ const r=(f.tal||{})[t]||''; h+=`<div class="t"><button class="linkbtn" data-rolltal="${t}">${TAL_LABEL(t)}</button><select data-f="tal.${t}" ${S.ro?'disabled':''} aria-label="Rango de ${TAL_LABEL(t)}">${optsCode(r)}</select><b>${rb(r)}</b></div>`; }
+      for(const t of list){ const r=(f.tal||{})[t]||''; const mk=rasgoMark(f,'tal:'+t,condKeysTal(t)); const or=ri(r)-ri(f.rango)===1;
+        h+=`<div class="t"><button class="linkbtn ${mk.cls}" data-rolltal="${t}"${mk.tip?` title="${esc(mk.tip)}"`:''}>${TAL_LABEL(t)}${or?' <span class="pill or">OR</span>':''}</button><select data-f="tal.${t}" ${S.ro?'disabled':''} aria-label="Rango de ${TAL_LABEL(t)}">${optsCode(r)}</select><b class="${mk.auto>0?'rs-up':mk.auto<0?'rs-down':''}">${talBonus(f,t)}</b></div>`; }
       h+=`</div>`; }
-    h+=`</div><div class="check" data-c="talChk"></div><p class="note">Clic en un talento para tirar 1d20 + talento + el atributo que elijas.</p></div>`;
+    h+=`</div><div class="check" data-c="talChk"></div><p class="note">Clic en un talento para tirar 1d20 + talento + el atributo que elijas. Puedes subir 1 Talento un Rango sobre el tuyo (OverRanked), con un punto adicional. Rasgos: <span class="rs-up">verde</span> suma solo, <span class="rs-down">rojo</span> resta solo, <span class="rs-cond">amarillo</span> se consulta al tirar.</p></div>`;
+    h+=rasgosCardHTML(f);
   }
   h+=`<div class="card"><h2>Movimientos <span class="pill" data-c="mvPts"></span></h2><div class="moves">`;
   const nMv=Math.max(6,(f.moves||[]).length);
@@ -487,6 +541,20 @@ function renderSheet(){
   if(!S.ro) h+=`<div class="row">${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
   el.innerHTML=h; fillComputed(); fillMochila(); colorSelects();
   const im=$('#imgIn'); if(im) im.addEventListener('change',onImage);
+}
+const AP_CLS={'Ficha (automático)':'ap-auto','Situacional':'ap-sit','Combate':'ap-comb','Creación':'ap-crea','Narrativo':'ap-narr'};
+function rasgosCardHTML(f){
+  const def=[...(f.defectos||[])]; while(def.length<N_DEF) def.push('');
+  const mer=[...(f.meritos||[])]; while(mer.length<N_MER) mer.push('');
+  const slot=(kind,i,n)=>{ const r=RASGOS.get(n); const isD=kind==='defectos';
+    return `<div class="ras ${isD?'def':'mer'}"><input data-f="${kind}.${i}" list="dl-${isD?'def':'mer'}" value="${esc(n||'')}" placeholder="${isD?'Defecto':'Mérito'} ${i+1}" ${S.ro?'disabled':''} aria-label="${isD?'Defecto':'Mérito'} ${i+1}">${r?`<div class="meta"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span><span>${esc(r[2])}</span></div><div class="fx">${esc(r[5])}</div>`:''}</div>`; };
+  const nM=mer.length, last3=mer.slice(-3).every(x=>!x);
+  return `<div class="card"><h2>Méritos y Defectos <span class="pill" data-c="rasPts"></span></h2>
+    <h3 class="subh" style="margin-top:0">Defectos · máximo ${N_DEF}</h3><div class="ras-grid">${def.slice(0,N_DEF).map((n,i)=>slot('defectos',i,n)).join('')}</div>
+    <h3 class="subh">Méritos</h3><div class="ras-grid">${mer.map((n,i)=>slot('meritos',i,n)).join('')}</div>
+    ${S.ro?'':`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="addMer">+3 Méritos</button>${nM>N_MER&&last3?'<button class="btn sm" data-act="rmMer">Quitar 3 vacíos</button>':''}</div>`}
+    <div class="check" data-c="rasChk"></div>
+    <p class="note">Se eligen al crear el personaje: 3 puntos libres más los de tus Defectos, para comprar Méritos. Los que no se contradicen se avisan en rojo, pero el Narrador puede hacer excepciones.</p></div>`;
 }
 function noteHTML(f){
   const isBit=S.open.src==='bit';
@@ -513,7 +581,7 @@ function fillComputed(){
   set('eqItem', eqItemHTML(f));
   set('esq',pct(c.esq)); set('tem',pct(c.tem)); set('bEv',(num(f.bEv)>0?'+':'')+num(f.bEv)); set('crit',pct(c.crit)); set('prec',c.prec+'%');
   const imm = isP? c.tipos.map(t=>D.estados.find(e=>e[1]===t)?.[0]).filter(Boolean):[];
-  const ef=[f.estF,f.estM].filter(Boolean).map(e=>{const rr=estMap.get(e);return rr?`<div class="fx-box"><b>${esc(e)}</b> (${esc(rr[1])}) — ${esc(rr[3])} <span class="note">Salvación ${esc(rr[4])}${rr[5]!=='-'?' · +'+esc(rr[5])+' por ronda':''}</span>${imm.includes(e)?' <b class="ko">Es inmune a este estado por su tipo.</b>':''}</div>`:''}).join('');
+  const ef=[f.estF,f.estM].filter(Boolean).map(e=>{const rr=estMap.get(e);return rr?`<div class="fx-box"><b>${esc(e)}</b> (${esc(rr[1])}) — ${esc(rr[3])} <span class="note">Salvación ${esc(rr[4])}${num((c.em.salv||{})[e])?` <span class="rs-up">${sg(c.em.salv[e])} por rasgo</span>`:''}${rr[5]!=='-'?' · +'+esc(rr[5])+' por ronda':''}</span>${imm.includes(e)?' <b class="ko">Es inmune a este estado por su tipo.</b>':''}</div>`:''}).join('');
   const ap=[...Object.entries(c.em.attr).map(([k,v])=>`${v} ${k}`), c.em.prec?`${c.em.prec}% Precisión`:'', c.em.esq?`${Math.round(c.em.esq*100)}% Esquiva`:'', c.em.tem?`${Math.round(c.em.tem*100)}% Temple`:'', c.em.noCrit?'Crítico 0%':''].filter(Boolean);
   set('estfx',ef+(ap.length?`<p class="note">Ya aplicado en la ficha: ${ap.join(' · ')}.</p>`:'')+(imm.length?`<p class="note">Inmune por su tipo: ${imm.join(', ')}.</p>`:''));
   const nat=natMap.get(f.nat);
@@ -526,6 +594,19 @@ function fillComputed(){
   set('attrChk',list(ck.attr));
   if(ck.talMax!==undefined){ set('talPts',`${ck.talUsed}/${ck.talMax} pts`); document.querySelector('[data-c="talPts"]')?.classList.toggle('ko',ck.tal.length>0); }
   set('talChk',list(ck.tal||[]));
+  if(!isP){
+    if(ck.talMax!==undefined) set('talPts',`${ck.talUsed}/${ck.talMax} pts · OR ${Math.min(1,ck.talOR)}/1`);
+    const sal=ck.rasSaldo; set('rasPts',`${ck.rasLibres} libres + ${ck.rasDef} Defectos − ${ck.rasMer} Méritos = ${sal}`);
+    document.querySelector('[data-c="rasPts"]')?.classList.toggle('ko',(ck.ras||[]).length>0);
+    set('rasChk',list(ck.ras||[]));
+    const mark=(k,key)=>{ const a=rasgoAuto(f,key); document.querySelectorAll(`[data-c="${k}"]`).forEach(e=>{ e.classList.toggle('rs-up',a.v>0); e.classList.toggle('rs-down',a.v<0); e.title=a.src.join(' · '); }); };
+    mark('ps','ps%'); mark('vel','vel'); mark('pdv','pd');
+    set('pdv',`${num(f.pd)}/${c.pdMax}`);
+    const comb=rasgosDe(f).map(n=>RASGOS.get(n)).filter(r=>r[4]==='Combate'&&!RFX.some(x=>x[0]===r[0]&&/^(cdRecv|salv)/.test(x[1])));
+    const res=c.em.resist||[];
+    set('rascomb',(res.length?`<p class="note">Resistencias pasivas (se aplican solas): ${res.map(x=>`<span class="rs-up">${esc(x)}</span>`).join(' · ')}.</p>`:'')
+      +(comb.length?`<p class="note">Rasgos de combate: ${comb.map(r=>`<span class="rs-cond" title="${esc(r[5])}">${esc(r[0])}</span>`).join(' · ')}.</p>`:''));
+  }
   if(ck.freeMax!==undefined){ set('mvPts',`OverRanked ${ck.orN}/${ri(f.rango)===5?0:1} · libres ${ck.freeN}/${ck.freeMax}`); document.querySelector('[data-c="mvPts"]')?.classList.toggle('ko',ck.mv.length>0); }
   set('mvChk',list(ck.mv));
   const R=ri(f.rango);
@@ -559,6 +640,9 @@ function onField(e){
   else if(/^mochila\.\d+\.eq$/.test(p)){ if(v) (f.mochila||[]).forEach(it=>{ if(it.eq===v) it.eq=''; }); setPath(f,p,v); full=true; }
   else if(p.startsWith('mochila.')){ setPath(f,p,v); fillMochila(); }
   else if(p.startsWith('tal.')||p==='cat'){ setPath(f,p,v); full=true; }
+  else if(/^(defectos|meritos)\.\d+$/.test(p)){ v=v.trim(); const r=RASGOS.get(v); const want=p.startsWith('defectos')?'D':'M';
+    if(v&&(!r||r[1]!==want)){ el.setCustomValidity(r?(want==='D'?'Ese es un Mérito: va en Méritos':'Ese es un Defecto: va en Defectos'):'No está en la lista de '+(want==='D'?'Defectos':'Méritos')); el.reportValidity(); return; }
+    el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; full=true; }
   else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); full=true; }
   else setPath(f,p,v);
   commit(full);
@@ -589,6 +673,9 @@ function genderBtn(f){ let g=f.genero||'M'; if(f.tipo!=='P'&&g==='N') g='M';
 const D20_SVG='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><path d="M12 6.5 17.5 15h-11z"/><path d="M12 2v4.5M21 7l-3.5 8M3 7l3.5 8M6.5 15 3 17M17.5 15 21 17M6.5 15 12 22l5.5-7"/></svg>';
 function charName(f){ const dx=f.tipo==='P'?dexById.get(f.especie):null; return f.nombre||(dx?dx[1]:'Sin nombre'); }
 function openRP(o){ RP=o; renderRP(); }
+/* consultas de rasgos para una tirada d20: las del Talento y del Atributo elegidos y las que valen para cualquier tirada */
+function rpConsultas(f){ if(!f||f.tipo!=='E') return []; const keys=['all','attr:'+RP.attr].concat(RP.tal?condKeysTal(RP.tal):[]);
+  return rasgoFxDe(f).map((r,i)=>({r,id:r[0]+'|'+r[1]+'|'+r[4]})).filter(x=>!x.r[3]&&keys.includes(x.r[1])&&num(x.r[2])!==0); }
 function renderRP(){
   const el=$('#rp'); if(!RP||!S.cur){ el.hidden=true; return; }
   if(RP.kind==='res'){ el.innerHTML=`<h4>${esc(RP.title)} <button class="btn sm" data-rp="close" aria-label="Cerrar">✕</button></h4><div class="out"><span class="big ${RP.res.cls}">${RP.res.v}</span><span class="note" style="text-align:right">${RP.res.html}</span></div>`; el.hidden=false; return; }
@@ -597,13 +684,17 @@ function renderRP(){
     const isE=f.tipo==='E';
     h+=`<h4>Tirada 1d20 <button class="btn sm" data-rp="close" aria-label="Cerrar">✕</button></h4><div class="note"><b>${esc(charName(f))}</b></div>`;
     h+=`<div class="grid g2"><label class="f">Atributo<select id="rpA">${ATTR.map(k=>`<option value="${k}"${RP.attr===k?' selected':''}>${ATTR_FULL[k]} (${c.A[k]>=0?'+':''}${c.A[k]})</option>`).join('')}${RP.kind==='tal'?'':''}</select></label>`;
-    h+= isE?`<label class="f">Talento<select id="rpT"><option value="">Ninguno</option>${ALL_TAL.map(t=>`<option value="${t}"${RP.tal===t?' selected':''}>${TAL_LABEL(t)} (+${rb((f.tal||{})[t])})</option>`).join('')}</select></label>`:'<div></div>';
-    h+=`</div><label class="f">Bonus extra<input type="number" id="rpX" value="${num(RP.x)}"></label><button class="btn pri" data-rp="roll">Tirar</button>`;
+    h+= isE?`<label class="f">Talento<select id="rpT"><option value="">Ninguno</option>${ALL_TAL.map(t=>`<option value="${t}"${RP.tal===t?' selected':''}>${TAL_LABEL(t)} (${talBonus(f,t)>=0?'+':''}${talBonus(f,t)})</option>`).join('')}</select></label>`:'<div></div>';
+    h+=`</div>`;
+    const cq=rpConsultas(f); RP.cq=cq; RP.chk ||= {};
+    if(cq.length) h+=`<div class="rs-ask"><div class="k">¿Aplica algún rasgo?</div>${cq.map((x,i)=>`<label><input type="checkbox" data-rc="${i}"${RP.chk[x.id]?' checked':''}> <b class="rs-cond">${esc(x.r[0])}</b> ${x.r[2]===-99?'falla automáticamente':sg(x.r[2])}${x.r[4]?` <span class="note">(${esc(x.r[4])})</span>`:''}</label>`).join('')}</div>`;
+    h+=`<label class="f">Bonus extra<input type="number" id="rpX" value="${num(RP.x)}"></label><button class="btn pri" data-rp="roll">Tirar</button>`;
   } else if(RP.kind==='move'){
     const mi=moveInfo(f,(f.moves||[])[RP.i],c); if(!mi){ el.hidden=true; return; }
     h+=`<h4>${esc(mi.m[1])} <button class="btn sm" data-rp="close" aria-label="Cerrar">✕</button></h4>
       <div class="row"><span class="pill">Precisión ${mi.prec}%</span><span class="pill">R. Extra ${typeof mi.m[12]==='number'?pct(mi.m[12]):'—'}</span><span class="pill">Crítico ${pct(c.crit)}</span></div>
       <button class="btn pri" data-rp="roll">Tirar d100</button>`;
+    if(f.tipo==='E'){ const comb=rasgosDe(f).map(n=>RASGOS.get(n)).filter(r=>r[4]==='Combate'); if(comb.length) h+=`<div class="rs-ask"><div class="k">Rasgos de combate</div>${comb.map(r=>`<div><b class="rs-cond">${esc(r[0])}</b> <span class="note">${esc(r[5])}</span></div>`).join('')}</div>`; }
   }
   if(RP.res) h+=`<div class="out"><span class="big ${RP.res.cls||''}">${RP.res.v}</span><span class="note" style="text-align:right">${RP.res.html}</span></div>`;
   el.innerHTML=h; el.hidden=false;
@@ -612,10 +703,11 @@ function doRP(){
   const f=S.cur, c=calc(f);
   if(RP.kind==='attr'||RP.kind==='tal'){
     RP.attr=$('#rpA').value; RP.tal=$('#rpT')?$('#rpT').value:''; RP.x=num($('#rpX').value);
-    const r=d(20); const a=c.A[RP.attr]; const t=RP.tal?rb((f.tal||{})[RP.tal]):0; const tot=r+a+t+RP.x;
-    const nat = r===20?'<b class="ok">20 natural: éxito</b>':r===1?'<b class="ko">1 natural: fallo</b>':'';
-    const txt=`1d20 [${r}] + ${RP.attr} ${a}${RP.tal?` + ${TAL_LABEL(RP.tal)} ${t}`:''}${RP.x?` + ${RP.x}`:''}`;
-    RP.res={v:tot,cls:r===20?'ok':r===1?'ko':'',html:esc(txt)+(nat?'<br>'+nat:'')};
+    const cq=(RP.cq||[]).filter(x=>RP.chk&&RP.chk[x.id]); const fail=cq.some(x=>x.r[2]===-99); const rmod=cq.filter(x=>x.r[2]!==-99).reduce((s,x)=>s+num(x.r[2]),0);
+    const r=d(20); const a=c.A[RP.attr]; const t=RP.tal?(f.tipo==='E'?talBonus(f,RP.tal):rb((f.tal||{})[RP.tal])):0; const tot=r+a+t+rmod+RP.x;
+    const nat = fail?'<b class="ko">Falla automáticamente por un rasgo</b>':r===20?'<b class="ok">20 natural: éxito</b>':r===1?'<b class="ko">1 natural: fallo</b>':'';
+    const txt=`1d20 [${r}] + ${RP.attr} ${a}${RP.tal?` + ${TAL_LABEL(RP.tal)} ${t}`:''}${cq.filter(x=>x.r[2]!==-99).map(x=>` ${x.r[2]<0?'−':'+'} ${Math.abs(x.r[2])} ${x.r[0]}`).join('')}${RP.x?` + ${RP.x}`:''}${fail?' · '+cq.filter(x=>x.r[2]===-99).map(x=>x.r[0]).join(', ')+': falla':''}`;
+    RP.res={v:tot,cls:fail||r===1?'ko':r===20?'ok':'',html:esc(txt)+(nat?'<br>'+nat:'')};
     logRoll(charName(f),txt+(r===20?' · 20 natural':r===1?' · 1 natural':''),tot);
   } else {
     const mi=moveInfo(f,(f.moves||[])[RP.i],c); const r=d(100);
@@ -629,6 +721,9 @@ function doRP(){
   }
   renderRP();
 }
+document.getElementById('rp').addEventListener('change',e=>{ if(!RP) return; const el=e.target;
+  if(el.dataset.rc!==undefined){ const x=(RP.cq||[])[num(el.dataset.rc)]; if(x){ RP.chk ||= {}; RP.chk[x.id]=el.checked; } return; }
+  if(el.id==='rpA'||el.id==='rpT'){ RP.attr=$('#rpA').value; RP.tal=$('#rpT')?$('#rpT').value:''; RP.x=num($('#rpX')?.value); renderRP(); } });
 document.getElementById('rp').addEventListener('click',e=>{ const b=e.target.closest('[data-rp]'); if(!b) return; if(b.dataset.rp==='close'){ RP=null; renderRP(); } else doRP(); });
 
 /* ---------- glosario ---------- */
@@ -1116,7 +1211,7 @@ async function endRound(){
       const fx={r:f.rango||'Starter',n:0,pr:0,...((f.estFx||{})[cls]||{})};
       if(estImmune(f,est)){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: es inmune a ${est} por su tipo; se quita.`}); continue; }
       if(e[4]==='-'||e[4]===''||e[4]==null){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: ${est} termina.`}); continue; }
-      const th=num(e[4])+num(e[5])*num(fx.n);
+      const th=num(e[4])+num(e[5])*num(fx.n)+num((estEffects(f).salv||{})[est]); /* + resistencias pasivas */
       if(th>=100){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: su Salvación de ${est} llegó a ${th}; se libera sin residual.`}); continue; }
       if(/Residual/i.test(e[3])){ const poison=est==='Envenenado'; const idx=clamp(ri(fx.r)+(poison?1+num(fx.pr):2),1,24); const dd=dice(idx); const rl=rollDice(dd);
         f.dano=num(f.dano)+rl.t; changed=true;
@@ -1438,6 +1533,8 @@ document.addEventListener('click',async e=>{
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
   else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
   else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
+  else if(act==='addMer'&&S.cur&&!S.ro){ const m=[...(S.cur.meritos||[])]; while(m.length<N_MER) m.push(''); m.push('','',''); S.cur.meritos=m; commit(true); }
+  else if(act==='rmMer'&&S.cur&&!S.ro){ const m=[...(S.cur.meritos||[])]; if(m.length>N_MER&&m.slice(-3).every(x=>!x)) m.splice(-3,3); S.cur.meritos=m; commit(true); }
   else if(act==='addMove'&&S.cur&&!S.ro){ const mv=[...(S.cur.moves||[])]; while(mv.length<6) mv.push(''); mv.push(''); S.cur.moves=mv; commit(true); }
   else if(act==='rmMove'&&S.cur&&!S.ro){ S.cur.moves.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='restore'&&S.cur&&!S.ro){ const c=$('#restoreConfirm'); if(c) c.innerHTML='<button class="btn sm pri" data-act="restoreYes">Sí, restaurar</button> <button class="btn sm" data-act="restoreNo">Cancelar</button>'; }
@@ -1500,7 +1597,7 @@ async function saveMasters(){ render(); try{ await S.db.doc('config/mesa').set({
 function mkDL(id,list){ let dl=document.getElementById(id); if(!dl){ dl=document.createElement('datalist'); dl.id=id; document.body.appendChild(dl);} dl.innerHTML=list.map(v=>`<option value="${esc(v)}">`).join(''); }
 function buildDexList(){ mkDL('dl-dex',D.dex.filter(r=>speciesAllowed(r[0])).map(dexLabel)); }
 function buildFolderList(){ mkDL('dl-fold',[...new Set(Object.values(S.master).map(f=>f.carpeta).filter(Boolean))].sort()); }
-buildDexList(); mkDL('dl-atk',D.atk.map(a=>a[1])); mkDL('dl-hab',D.hab.map(h=>h[0]));
+buildDexList(); mkDL('dl-atk',D.atk.map(a=>a[1])); mkDL('dl-hab',D.hab.map(h=>h[0])); mkDL('dl-def',(D.rasgos||[]).filter(r=>r[1]==='D').map(r=>r[0])); mkDL('dl-mer',(D.rasgos||[]).filter(r=>r[1]==='M').map(r=>r[0]));
 
 /* ---------- conexión ---------- */
 function busy(){ const a=document.activeElement; return !!(a&&a.closest&&a.closest('#sheet')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
@@ -1539,6 +1636,7 @@ async function boot(){
   if(!S.uid) showBanner('Entra con tu cuenta de Google para crear fichas.');
   
   setStatus('Conectado');
+  if(window.__PRUEBAS) showBanner('Versión de pruebas en Claude: aquí se revisan los cambios antes de pasarlos a la app de la mesa. Las fichas de esta versión no son las de la web.');
   db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
   db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null;
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));

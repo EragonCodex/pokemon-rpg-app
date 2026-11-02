@@ -284,3 +284,22 @@ details.rlog .steps-res{margin-top:6px}
 .ditem.dragging>h3,.ditem.dragging>summary{color:var(--teal)}
 body.is-dragging{user-select:none;cursor:grabbing}
 .grp>h3 .grip,details.fold>summary .grip{display:inline-block;width:auto;letter-spacing:-1px;margin-right:8px;vertical-align:middle}
+/* Méritos y Defectos: verde suma solo, rojo resta solo, amarillo se consulta al tirar */
+.rs-up{color:var(--good)!important;font-weight:600}
+.rs-down{color:var(--bad)!important;font-weight:600}
+.rs-cond{color:var(--warn)!important;font-weight:600;background:color-mix(in srgb,var(--warn) 16%,transparent);border-radius:3px;padding:0 3px}
+.linkbtn.rs-cond{text-decoration-color:var(--warn)}
+.pill.or{font-size:10px;padding:1px 4px;color:var(--accent);margin-left:2px}
+.ras-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:700px){.ras-grid{grid-template-columns:minmax(0,1fr)}}
+.ras{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;background:var(--sunk);display:flex;flex-direction:column;gap:6px;min-width:0}
+.ras.def{border-left:3px solid var(--bad)}
+.ras.mer{border-left:3px solid var(--good)}
+.ras input{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:4px 7px;width:100%;font-weight:600;min-width:0}
+.ras .meta{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;color:var(--muted);align-items:center}
+.ras .meta b{font-family:var(--f-mono)}
+.ras .fx{font-size:12.5px;line-height:1.4}
+.pill.ap-auto{color:var(--good)} .pill.ap-sit{color:var(--warn)} .pill.ap-comb{color:var(--accent)} .pill.ap-crea{color:var(--teal)}
+.rs-ask{display:flex;flex-direction:column;gap:4px;font-size:13px;background:var(--sunk);border-radius:var(--r);padding:8px 10px}
+.rs-ask .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.rs-ask label{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
