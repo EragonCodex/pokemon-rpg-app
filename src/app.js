@@ -425,7 +425,7 @@ function renderList(){
   } else if(S.view==='glos'){
     h+=`<div class="grp"><h3>Glosario</h3><div class="items">${GLOS.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></div>`;
   } else {
-    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['dados','Dados']];
+    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['dados','Dados']];
     h+=`<div class="grp"><h3>Herramientas</h3><div class="items">${tools.map(([k,n])=>`<button class="item" data-tool="${k}" aria-current="${S.tool===k}"><span class="n">${n}</span></button>`).join('')}</div></div>`;
   }
   L.innerHTML=h;
@@ -505,7 +505,7 @@ function renderSheet(){
   h+=`<div class="card"><h2>Habilidad</h2><div class="grid g2">`;
   if(habOpts) h+=field('De su especie','habilidad',opts(habOpts.includes(f.habilidad)||!f.habilidad?habOpts:[...habOpts,f.habilidad],f.habilidad,'—'),'sel');
   else h+=`<label class="f">Habilidad<input data-f="habilidad" list="dl-hab" value="${esc(f.habilidad||'')}" placeholder="Escribe una habilidad" ${S.ro?'disabled':''}></label>`;
-  h+=`</div><div class="fx-box" data-c="habfx"></div></div>`;
+  h+=`</div><div class="fx-box" data-c="habfx"></div>${isP?formaHTML(f,dx):''}</div>`;
   // atributos
   h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th class="wide">Entrenado</th><th>Bonus</th><th>Rango</th><th>Total</th><th>Tirar</th></tr></thead><tbody>`;
   ATTR.forEach(k=>{ const a=(f.attr||{})[k]||{};
@@ -543,6 +543,18 @@ function renderSheet(){
   const im=$('#imgIn'); if(im) im.addEventListener('change',onImage);
 }
 const AP_CLS={'Ficha (automático)':'ap-auto','Situacional':'ap-sit','Combate':'ap-comb','Creación':'ap-crea','Narrativo':'ap-narr'};
+/* Cambios de forma: cambian la especie (ID de la Pokédex) y conservan todo lo demás */
+const FORMA_HAB={Mododaruma:'ps50',Fuerteafecto:'master+ps50',Escudolimitado:'ps50',Agrupamiento:'ps50',Banco:'banco',Cambioheroico:'',Cambiotactico:'',Mutapetito:'',Teracambio:'',Disfraz:'',Caradehielo:''};
+const formasDe = dx => dx? D.dex.filter(r=>r[1]===dx[1]&&r[0]!==dx[0]&&r[5]!=='Mega') : [];
+function formaLista(f,c,dx){ const k=FORMA_HAB[f.habilidad]; if(!k||!dx) return false; const pr=c.ps?c.act/c.ps:1, M=ri(f.rango)>=4;
+  if(k==='ps50') return pr<0.5 && !/Daruma|Completa|N[uú]cleo|V[ií]nculo/i.test(dx[2]);
+  if(k==='master+ps50') return M&&pr<0.5 && !/V[ií]nculo/i.test(dx[2]);
+  if(k==='banco') return (M&&pr>0.25)!==/Banco/i.test(dx[2]);
+  return false; }
+function formaHTML(f,dx){ if(!(f.habilidad in FORMA_HAB)) return ''; const fs=formasDe(dx); if(!fs.length) return '';
+  let h=`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="formas" data-c="formaBtn" ${S.ro?'disabled':''}>Cambiar forma</button><span class="note" data-c="formaHint"></span></div>`;
+  if(S.formOpen&&!S.ro){ h+=`<div class="row" style="margin-top:6px">${fs.map(r=>`<button class="btn sm" data-act="setForma" data-id="${esc(r[0])}" title="${esc(dexTypes(r).join(' / '))}">${esc(r[2]||r[1])}${fs.filter(x=>x[2]===r[2]).length>1?` (${esc(dexTypes(r).join('/'))})`:''}</button>`).join('')}${f.habilidad==='Escudolimitado'?'<button class="btn sm pri" data-act="setForma" data-id="__nucleo">Núcleo al azar</button>':''}</div>`; }
+  return h; }
 function rasgosCardHTML(f){
   const def=[...(f.defectos||[])]; while(def.length<N_DEF) def.push('');
   const mer=[...(f.meritos||[])]; while(mer.length<N_MER) mer.push('');
@@ -588,6 +600,7 @@ function fillComputed(){
   ATTR.forEach((k,i)=>{ set('at'+k, (attrs(f)?c.A[k]+(c.em.attr[k]?` <span class="ko" style="font-size:12px" title="${esc((c.em.src[k]||[]).join(', '))}">(${c.em.attr[k]} ${esc((c.em.src[k]||[]).join(', '))})</span>`:''):'—')); set('rk'+k,'+'+rb(f.rango));
     if(isP){ set('sp'+k, dx?dx[9+i]:'—'); set('nt'+k, nat?(nat[2]===k?'<span class="ok">+1</span>':nat[3]===k?'<span class="ko">−1</span>':'0'):'0'); }});
   set('habfx', f.habilidad? esc(habMap.get(f.habilidad)||'Habilidad fuera de la lista.') : '<span class="note">Sin habilidad elegida.</span>');
+  if(isP){ const fb=document.querySelector('[data-c="formaBtn"]'); if(fb){ const ok=formaLista(f,c,dx); fb.classList.toggle('pri',ok); set('formaHint',ok?'Se cumple la condición para cambiar de forma.':''); } }
   const ck=checkSheet(f,c);
   const list=a=>a.map(x=>`<span class="ko">${esc(x)}</span>`).join('');
   if(ck.attrMax!==undefined){ set('attrPts',`${ck.attrUsed}/${ck.attrMax} pts`); document.querySelector('[data-c="attrPts"]')?.classList.toggle('ko',ck.attr.length>0); }
@@ -765,7 +778,7 @@ ${tbl(['Atributo social','Sabor favorito','Bonguri','Sabores neutros','Sabores q
 ${ej('Un Pokémon Alegre gana +1 DES y pierde 1 ENE. Su atributo social es Belleza: su sabor favorito es el Amargo, y una Ball hecha con Bonguris Azules le da +2 por cada uno.')}`},
 {id:'estados',t:'Estados Alterados',h:()=>`<p>18 estados, uno por tipo. Cada criatura puede tener <b>uno Físico y uno Mental</b> a la vez; uno nuevo de la misma clase no reemplaza al anterior, salvo con un crítico. <b>Cada Pokémon es inmune al estado de su propio tipo.</b></p>
 <ul><li><b>Salvación X (+Y):</b> al final de cada ronda tira 1d100 y se libera con un resultado ≤ X; cada fallo suma Y.</li><li><b>Daño residual</b> según el Nivel del movimiento que lo causó: Starter 1d6 · Beginner 1d8 · Amateur 2d4 · Elite 1d10 · Master 2d6 · Legend 3d4.</li></ul>
-${tbl(['Estado','Tipo','Clase','Efecto','Salvación'],D.estados.map(e=>[esc(e[0]),chip(e[1]),e[2]==='Fisico'?'Físico':esc(e[2]),esc(e[3]),e[4]==='-'?'—':`${e[4]} (+${e[5]})`]))}
+${tbl(['Estado','Tipo','Clase','Efecto','Salvación'],D.estados.map(e=>[esc(e[0])+(e[0]==='Aturdido'?' <span class="note">(Retroceso)</span>':''),chip(e[1]),e[2]==='Fisico'?'Físico':esc(e[2]),esc(e[3]),e[4]==='-'?'—':`${e[4]} (+${e[5]})`]))}
 ${ej('Un Pokémon queda Quemado (Salvación 15 +30). Al final de la ronda 1 recibe el residual y tira 1d100: saca 40, falla. En la ronda 2 necesita 45 o menos; saca 33 y se libera. Un Pokémon de tipo Fuego nunca podría quedar Quemado.')}`},
 {id:'campo',t:'Condiciones de Campo',h:()=>`<p>Climas, campos y entornos que afectan a todo el terreno. Duran 5 rondas salvo que se indique otra cosa, y potencian al estado alterado afín.</p>
 ${tbl(['Condición','Tipo','Clase','Efecto general','Potencia al estado'],CONDS.map(r=>[r[0],condTipo(r[3]),r[1],r[2],r[3]]))}
@@ -788,20 +801,17 @@ ${tbl(['Terreno','Consecuencia'],[['Tierra firme','Cae: pierde PS iguales al da�
 ${ej('Un Entrenador con DES 3 y Acrobacias [B] (+2) se trepa a un Mudsdale (Grande, 30 ft) para cruzar una montaña: Media +1 (Montaña) = Desafiante (21); necesita 16 o más en el d20. Si falla, rueda por la ladera y pierde el doble del daño residual de su Rango. Con una Silla de montar (Mudsdale tiene FUE 3 o más), la tirada es Natural (5).')}`}];
 /* Rasgos: explicación y tablas de Méritos y Defectos (datos de D.rasgos) */
 const RAS_CAT=['Físico','Mental','Social','Sobrenatural'];
-const rasTabla=tipo=>tbl([tipo==='M'?'Mérito':'Defecto','Valor','Categoría','Efecto','Incompatible con'],
-  (D.rasgos||[]).filter(r=>r[1]===tipo).sort((a,b)=>RAS_CAT.indexOf(a[2])-RAS_CAT.indexOf(b[2])||Math.abs(a[3])-Math.abs(b[3])||a[0].localeCompare(b[0],'es'))
-    .map(r=>[esc(r[0]),`<b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b>`,esc(r[2]),esc(r[5]),esc(r[6]||'—')]));
 GLOS.push({id:'rasgos',t:'Rasgos',h:()=>`<p>Los <b>Méritos</b> y <b>Defectos</b> son rasgos opcionales del Entrenador que dan más detalle a su historia y a sus capacidades. Se eligen <b>solo al crear el personaje</b>, en la sección Méritos y Defectos de su ficha.</p>
 <ul><li><b>Puntos:</b> cada jugador parte con <b>${PTS_LIBRES} puntos</b> para Méritos y puede tomar <b>hasta ${N_DEF} Defectos</b>, que suman sus puntos. Con el total compra los Méritos que le alcancen.</li>
 <li><b>Valores:</b> un Mérito cuesta de +1 a +6 y un Defecto aporta de −1 a −6. Hay 4 categorías: Físicos, Mentales, Sociales y Sobrenaturales.</li>
 <li><b>Coherencia:</b> no se toman rasgos que se contradigan (columna «Incompatible con»). De los rasgos con niveles (I, II, III) se toma uno solo. La ficha lo avisa en rojo, y el Narrador puede hacer excepciones.</li>
 <li><b>Bonos de Talento:</b> un Mérito que siempre aplica da <b>+1</b>; uno que aplica solo en cierta situación da <b>+2</b>.</li>
+<li><b>Atributos:</b> un rasgo que afecta un Atributo solo en cierta situación da <b>±1</b>; si lo afecta siempre, cuesta u otorga <b>2 puntos</b>.</li>
 <li><b>En la ficha:</b> lo que se suma solo se ve en <span class="rs-up">verde</span> si sube y en <span class="rs-down">rojo</span> si baja (Talentos, PS, Velocidad, Puntos de Destino). Lo condicional se pinta en <span class="rs-cond">amarillo</span> y, al tirar, el panel pregunta si el rasgo aplica.</li>
 <li><b>Resistencias pasivas:</b> se aplican solas: −1 CD al daño recibido del tipo y +20 a la Salvación de su estado.</li>
 <li><b>Narrativos:</b> los demás los maneja el Narrador en la historia (Favor, Enemigo, Aristócrata, Pobre…).</li></ul>
 ${ej(`Un Entrenador toma Cojera (−3) y Timidez (−2): suma ${PTS_LIBRES} + 5 = ${PTS_LIBRES+5} puntos. Compra Rastreador (+1), Suerte (+3) y Resistencia al Calor (+2), y le sobran 4. Su Velocidad baja 10 ft y su Atletismo y Acrobacias −2 (rojo), sus Talentos sociales −1 (rojo), su máximo de Puntos de Destino sube a 4 (verde) y, al tirar Supervivencia, el panel pregunta si aplica Rastreador (+2).`)}
-<h3 class="subh">Méritos</h3>${rasTabla('M')}
-<h3 class="subh">Defectos</h3>${rasTabla('D')}`});
+<p>Las listas completas, con filtros, están en <b>Herramientas › Méritos y Defectos</b>.</p>`});
 /* el índice del Glosario va en orden alfabético */
 GLOS.sort((a,b)=>a.t.localeCompare(b.t,'es'));
 let GLOS_OPEN='';
@@ -816,10 +826,10 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
-  return ({mov:toolMov,dex:toolDex,gen:toolGen,dados:toolDados}[S.tool]||toolDex)();
+  return ({mov:toolMov,hab:toolHab,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados}[S.tool]||toolDex)();
 }
 function toolDano(){
   const refs=visibleRefs().filter(r=>r.f.tipo==='E'||dexById.get(r.f.especie));
@@ -933,6 +943,44 @@ function toolMov(){
       if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
   for(const a of res.slice(0,150)) h+=`<tr class="main"><td><b>${esc(a[1])}</b></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr><tr class="fx"><td colspan="10">${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}</td></tr>`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
+  return h;
+}
+/* Buscadores de Habilidades y de Méritos y Defectos: mismos filtros y orden por columna que Movimientos */
+const listOpts=(rows,i)=>[...new Set(rows.map(r=>r[i]).filter(x=>x!==''&&x!=null&&x!=='-'))].sort((a,b)=>String(a).localeCompare(String(b),'es',{numeric:true}));
+function sortRows(rows,st,nameIdx){ if(st.col===''||!st.dir) return rows; const i=num(st.col), dir=st.dir;
+  return rows.sort((x,y)=>{ const A=x[i],B=y[i]; const an=typeof A==='number', bn=typeof B==='number'; let r;
+    if(an&&bn) r=A-B; else r=String(A??'').localeCompare(String(B??''),'es',{sensitivity:'base',numeric:true}); return r*dir||String(x[nameIdx]).localeCompare(String(y[nameIdx]),'es'); }); }
+const sortHead=(cols,st,attr)=>cols.map(([lbl,i])=>{ const on=String(st.col)===String(i)&&st.dir; return `<th><button class="sortbtn" data-${attr}="${i}" aria-sort="${on?(st.dir>0?'ascending':'descending'):'none'}">${lbl}<span class="arw">${on?(st.dir>0?' ▲':' ▼'):''}</span></button></th>`; }).join('');
+const AP_HAB={'Ficha (automático)':'ap-auto','Combate (pasiva)':'ap-auto','Situacional':'ap-sit','Evento':'ap-comb','Regla especial':'ap-comb','Forma':'ap-crea','Narrativo':''};
+// hab: 0 nombre,1 efecto RPG,2 grupo,3 aplicación,4 disparador,5 condición,6 efecto en ficha,7 especies
+const HCOLS=[['Habilidad',0],['Grupo',2],['Aplicación',3],['Disparador',4],['Especies',7]];
+function toolHab(){
+  const fl=T.hfl, q=T.hq.toLowerCase();
+  const res=sortRows(D.hab.filter(h=>(!q||h[0].toLowerCase().includes(q)||String(h[1]).toLowerCase().includes(q))&&(!fl.g||h[2]===fl.g)&&(!fl.a||h[3]===fl.a)&&(!fl.d||h[4]===fl.d)),T.hsort,0);
+  const sel=(k,lbl,i)=>`<label class="f">${lbl}<select data-hfl="${k}">${opts(listOpts(D.hab,i),fl[k],'Todos')}</select></label>`;
+  let h=`<div class="card"><h2>Buscador de habilidades</h2><div class="grid g4">
+    <label class="f">Nombre o efecto<input id="hq" value="${esc(T.hq)}" placeholder="p. ej. Llovizna"></label>
+    ${sel('g','Grupo',2)}${sel('a','Aplicación',3)}${sel('d','Disparador',4)}
+    <div class="f" style="justify-content:end"><span class="pill">${res.length} habilidades</span></div></div></div>
+    <div class="card"><div class="tw"><table class="mtable"><thead><tr>${sortHead(HCOLS,T.hsort,'hsort')}</tr></thead><tbody>`;
+  for(const r of res.slice(0,150)) h+=`<tr class="main"><td><b>${esc(r[0])}</b></td><td>${esc(r[2])}</td><td><span class="pill ${AP_HAB[r[3]]||''}">${esc(r[3])}</span></td><td>${esc(r[4]||'—')}${r[5]?` <span class="note">(${esc(r[5])})</span>`:''}</td><td class="num">${num(r[7])}</td></tr><tr class="fx"><td colspan="5">${esc(r[1])}${r[6]?` <span class="note">· En la ficha: ${esc(r[6])}</span>`:''}</td></tr>`;
+  h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran las primeras 150. Afina los filtros para ver el resto.</p>':''}</div>`;
+  return h;
+}
+// rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
+const RCOLS=[['Rasgo',0],['Tipo',1],['Valor',3],['Categoría',2],['Aplicación',4]];
+function toolRas(){
+  const fl=T.rfl, q=T.rq.toLowerCase(), R=D.rasgos||[];
+  const res=sortRows(R.filter(r=>(!q||r[0].toLowerCase().includes(q)||String(r[5]).toLowerCase().includes(q))&&(!fl.t||r[1]===fl.t)&&(!fl.c||r[2]===fl.c)&&(!fl.a||r[4]===fl.a)&&(!fl.v||String(Math.abs(r[3]))===fl.v)),T.rsort,0);
+  if(T.rsort.col===''||!T.rsort.dir) res.sort((a,b)=>a[1].localeCompare(b[1])*-1||RAS_CAT.indexOf(a[2])-RAS_CAT.indexOf(b[2])||Math.abs(a[3])-Math.abs(b[3])||a[0].localeCompare(b[0],'es'));
+  const sel=(k,lbl,list,labels)=>`<label class="f">${lbl}<select data-rfl="${k}"><option value="">Todos</option>${list.map((o,i)=>`<option value="${esc(o)}"${o===fl[k]?' selected':''}>${esc(labels?labels[i]:o)}</option>`).join('')}</select></label>`;
+  let h=`<div class="card"><h2>Méritos y Defectos</h2><div class="grid g4">
+    <label class="f">Nombre o efecto<input id="rq" value="${esc(T.rq)}" placeholder="p. ej. Fuerza"></label>
+    ${sel('t','Tipo',['M','D'],['Méritos','Defectos'])}${sel('c','Categoría',RAS_CAT)}${sel('a','Aplicación',listOpts(R,4))}${sel('v','Valor',['1','2','3','4','5','6'])}
+    <div class="f" style="justify-content:end"><span class="pill">${res.length} rasgos</span></div></div><p class="note">Cómo funcionan: Glosario › Rasgos.</p></div>
+    <div class="card"><div class="tw"><table class="mtable"><thead><tr>${sortHead(RCOLS,T.rsort,'rsort')}</tr></thead><tbody>`;
+  for(const r of res) h+=`<tr class="main"><td><b>${esc(r[0])}</b></td><td>${r[1]==='M'?'Mérito':'Defecto'}</td><td class="num"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b></td><td>${esc(r[2])}</td><td><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span></td></tr><tr class="fx"><td colspan="5">${esc(r[5])}${r[6]?` <span class="note">· Incompatible con: ${esc(r[6])}</span>`:''}</td></tr>`;
+  h+=`</tbody></table></div></div>`;
   return h;
 }
 /* Pokédex */
@@ -1077,6 +1125,12 @@ function bindTool(){
   document.querySelectorAll('[data-g]').forEach(el=>el.addEventListener('change',e=>{T.g[e.target.dataset.g]=e.target.value; renderSheet();}));
   on('g-go','click',()=>{generate();renderSheet();}); on('g-go2','click',()=>{generate();renderSheet();});
   on('mq','change',e=>{T.q=e.target.value;renderSheet();});
+  on('hq','change',e=>{T.hq=e.target.value;renderSheet();}); on('rq','change',e=>{T.rq=e.target.value;renderSheet();});
+  document.querySelectorAll('[data-hfl]').forEach(el=>el.addEventListener('change',e=>{T.hfl[e.target.dataset.hfl]=e.target.value; renderSheet();}));
+  document.querySelectorAll('[data-rfl]').forEach(el=>el.addEventListener('change',e=>{T.rfl[e.target.dataset.rfl]=e.target.value; renderSheet();}));
+  const cyc=(st,c)=>{ if(String(st.col)!==String(c)){ st.col=c; st.dir=1; } else st.dir=st.dir===1?-1:st.dir===-1?0:1; };
+  document.querySelectorAll('[data-hsort]').forEach(b=>b.addEventListener('click',()=>{ cyc(T.hsort,b.dataset.hsort); renderSheet(); }));
+  document.querySelectorAll('[data-rsort]').forEach(b=>b.addEventListener('click',()=>{ cyc(T.rsort,b.dataset.rsort); renderSheet(); }));
   on('dq','change',e=>{T.dq=e.target.value;T.dpage=0;renderSheet();});
   const quien=()=> (S.players[S.uid]?.alias||S.me?.name||'Dados');
   document.querySelectorAll('[data-dice]').forEach(b=>b.addEventListener('click',()=>{const r=rollExpr(b.dataset.dice); logRoll(quien(),r.txt,r.tot);}));
@@ -1242,6 +1296,8 @@ async function endRound(){
       if(r<=th){ f[field]=''; setEstFx(f,cls,null); lines.push({k:'ok',t:`${name}: Salvación de ${est} d100 [${r}] ≤ ${th} → se libera.`}); }
       else { fx.n=num(fx.n)+1; f.estFx={...(f.estFx||{}),[cls]:fx}; lines.push({k:'',t:`${name}: Salvación de ${est} d100 [${r}] > ${th} → sigue (próxima: ${Math.min(100,th+num(e[5]))}).`}); }
       changed=true; }
+    if(f.tipo==='P'&&f.habilidad==='Mutapetito'){ const dx=dexById.get(f.especie); const alt=formasDe(dx).find(r=>/Saciada|Voraz/i.test(r[2]));
+      if(alt){ f.especie=alt[0]; changed=true; lines.push({k:'',t:`${name}: Mutapetito, pasa a ${alt[2]}.`}); } }
     if(changed) saveAny(x,f);
   }
   for(const hl of heals){ mutate(hl.key,f=>{ f.dano=Math.max(0,num(f.dano)-hl.val); }); const t=combatant(hl.key); lines.push({k:'ok',t:`${t?charName(t.f):'Quien lo causó'} recupera ${hl.val} PS por el Drenado de ${hl.from}.`}); }
@@ -1553,6 +1609,11 @@ document.addEventListener('click',async e=>{
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
   else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
   else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
+  else if(act==='formas'&&S.cur&&!S.ro){ S.formOpen=!S.formOpen; renderSheet(); }
+  else if(act==='setForma'&&S.cur&&!S.ro){ const f=S.cur, dx=dexById.get(f.especie); let id=a.dataset.id;
+    if(id==='__nucleo'){ const ns=formasDe(dx).filter(r=>/N[uú]cleo/i.test(r[2])); if(!ns.length) return; id=pick(ns)[0]; }
+    const nx=dexById.get(id); if(!nx) return; f.especie=id; S.formOpen=false; commit(true);
+    logRoll(charName(f),`${f.habilidad}: cambia a ${nx[2]||nx[1]}`,null); }
   else if(act==='addMer'&&S.cur&&!S.ro){ const m=[...(S.cur.meritos||[])]; while(m.length<N_MER) m.push(''); m.push('','',''); S.cur.meritos=m; commit(true); }
   else if(act==='rmMer'&&S.cur&&!S.ro){ const m=[...(S.cur.meritos||[])]; if(m.length>N_MER&&m.slice(-3).every(x=>!x)) m.splice(-3,3); S.cur.meritos=m; commit(true); }
   else if(act==='addMove'&&S.cur&&!S.ro){ const mv=[...(S.cur.moves||[])]; while(mv.length<6) mv.push(''); mv.push(''); S.cur.moves=mv; commit(true); }

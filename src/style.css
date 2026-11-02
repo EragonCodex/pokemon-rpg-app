@@ -302,3 +302,5 @@ body.is-dragging{user-select:none;cursor:grabbing}
 .rs-ask{display:flex;flex-direction:column;gap:4px;font-size:13px;background:var(--sunk);border-radius:var(--r);padding:8px 10px}
 .rs-ask .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .rs-ask label{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+/* lista de fichas: el equipo de un entrenador va sangrado bajo él, con una guía a la izquierda */
+.team{margin-left:26px;padding-left:10px;border-left:2px solid var(--line)}
