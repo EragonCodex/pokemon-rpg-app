@@ -786,6 +786,24 @@ ${tbl(['Montura','Plazas','Tamaño mín.','FUE mín.','Tipo de viaje','Resistenc
 ${tbl(['Terreno','Consecuencia'],[['Tierra firme','Cae: pierde PS iguales al daño residual.'],['Montaña','Rueda por la ladera: el doble del daño residual.'],['Arena','Caída blanda: sin daño, queda Enlodado y pierde el rumbo.'],['Nieve y hielo','Daño residual y queda Congelado.'],['Agua','Cae al agua: queda Empapado y se estropea lo que no resista el agua.'],['Corrientes y cascadas','Lo arrastra la corriente: daño residual, Empapado y separado de su Pokémon.'],['Aire','Cae desde la altura: el triple del daño residual y queda Mareado, salvo que el Narrador permita un rescate.'],['Bajo el agua','Le falta el aire: daño residual cada ronda hasta salir a la superficie.'],['Subterráneo','Derrumbe: daño residual y queda Aprisionado hasta que lo saquen.']])}
 <p>Si la montura recibe un peligro que no está en sus Resistencias, o el jinete saca un <b>1 natural</b> usándola, la montura <b>se rompe</b> y no sirve hasta repararla.</p>
 ${ej('Un Entrenador con DES 3 y Acrobacias [B] (+2) se trepa a un Mudsdale (Grande, 30 ft) para cruzar una montaña: Media +1 (Montaña) = Desafiante (21); necesita 16 o más en el d20. Si falla, rueda por la ladera y pierde el doble del daño residual de su Rango. Con una Silla de montar (Mudsdale tiene FUE 3 o más), la tirada es Natural (5).')}`}];
+/* Rasgos: explicación y tablas de Méritos y Defectos (datos de D.rasgos) */
+const RAS_CAT=['Físico','Mental','Social','Sobrenatural'];
+const rasTabla=tipo=>tbl([tipo==='M'?'Mérito':'Defecto','Valor','Categoría','Efecto','Incompatible con'],
+  (D.rasgos||[]).filter(r=>r[1]===tipo).sort((a,b)=>RAS_CAT.indexOf(a[2])-RAS_CAT.indexOf(b[2])||Math.abs(a[3])-Math.abs(b[3])||a[0].localeCompare(b[0],'es'))
+    .map(r=>[esc(r[0]),`<b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b>`,esc(r[2]),esc(r[5]),esc(r[6]||'—')]));
+GLOS.push({id:'rasgos',t:'Rasgos',h:()=>`<p>Los <b>Méritos</b> y <b>Defectos</b> son rasgos opcionales del Entrenador que dan más detalle a su historia y a sus capacidades. Se eligen <b>solo al crear el personaje</b>, en la sección Méritos y Defectos de su ficha.</p>
+<ul><li><b>Puntos:</b> cada jugador parte con <b>${PTS_LIBRES} puntos</b> para Méritos y puede tomar <b>hasta ${N_DEF} Defectos</b>, que suman sus puntos. Con el total compra los Méritos que le alcancen.</li>
+<li><b>Valores:</b> un Mérito cuesta de +1 a +6 y un Defecto aporta de −1 a −6. Hay 4 categorías: Físicos, Mentales, Sociales y Sobrenaturales.</li>
+<li><b>Coherencia:</b> no se toman rasgos que se contradigan (columna «Incompatible con»). De los rasgos con niveles (I, II, III) se toma uno solo. La ficha lo avisa en rojo, y el Narrador puede hacer excepciones.</li>
+<li><b>Bonos de Talento:</b> un Mérito que siempre aplica da <b>+1</b>; uno que aplica solo en cierta situación da <b>+2</b>.</li>
+<li><b>En la ficha:</b> lo que se suma solo se ve en <span class="rs-up">verde</span> si sube y en <span class="rs-down">rojo</span> si baja (Talentos, PS, Velocidad, Puntos de Destino). Lo condicional se pinta en <span class="rs-cond">amarillo</span> y, al tirar, el panel pregunta si el rasgo aplica.</li>
+<li><b>Resistencias pasivas:</b> se aplican solas: −1 CD al daño recibido del tipo y +20 a la Salvación de su estado.</li>
+<li><b>Narrativos:</b> los demás los maneja el Narrador en la historia (Favor, Enemigo, Aristócrata, Pobre…).</li></ul>
+${ej(`Un Entrenador toma Cojera (−3) y Timidez (−2): suma ${PTS_LIBRES} + 5 = ${PTS_LIBRES+5} puntos. Compra Rastreador (+1), Suerte (+3) y Resistencia al Calor (+2), y le sobran 4. Su Velocidad baja 10 ft y su Atletismo y Acrobacias −2 (rojo), sus Talentos sociales −1 (rojo), su máximo de Puntos de Destino sube a 4 (verde) y, al tirar Supervivencia, el panel pregunta si aplica Rastreador (+2).`)}
+<h3 class="subh">Méritos</h3>${rasTabla('M')}
+<h3 class="subh">Defectos</h3>${rasTabla('D')}`});
+/* el índice del Glosario va en orden alfabético */
+GLOS.sort((a,b)=>a.t.localeCompare(b.t,'es'));
 let GLOS_OPEN='';
 const TYPE_ABBR=t=>({Electrico:'ELÉ',Psiquico:'PSÍ',Dragon:'DRA',Siniestro:'SIN',Fantasma:'FAN'}[t]||deacc(t).slice(0,3).toUpperCase());
 function glosHTML(){ return `<p class="note">Elige un tema en el índice para desplegarlo.</p>`+GLOS.map(g=>`<details class="card glos" id="g-${g.id}" ${GLOS_OPEN===g.id?'open':''}><summary>${g.t}</summary>${GLOS_OPEN===g.id?g.h():''}</details>`).join(''); }
