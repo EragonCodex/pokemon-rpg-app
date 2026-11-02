@@ -289,7 +289,6 @@ body.is-dragging{user-select:none;cursor:grabbing}
 .rs-down{color:var(--bad)!important;font-weight:600}
 .rs-cond{color:var(--warn)!important;font-weight:600;background:color-mix(in srgb,var(--warn) 16%,transparent);border-radius:3px;padding:0 3px}
 .linkbtn.rs-cond{text-decoration-color:var(--warn)}
-.pill.or{font-size:10px;padding:1px 4px;color:var(--accent);margin-left:2px}
 .ras-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 @media (max-width:700px){.ras-grid{grid-template-columns:minmax(0,1fr)}}
 .ras{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;background:var(--sunk);display:flex;flex-direction:column;gap:6px;min-width:0}

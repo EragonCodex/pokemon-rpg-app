@@ -41,7 +41,7 @@ const EST_M = D.estados.filter(r=>r[2]==='Mental').map(r=>r[0]);
    rasgoFx: 0 rasgo,1 clave (tal:X, attr:X, vel, ps%, pd, cdRecv:Tipo, salv:Estado, salvM, all, talSoc, nota),2 mod,3 automático,4 condición,5 campo */
 const RASGOS = new Map((D.rasgos||[]).map(r=>[r[0],r]));
 const RFX = D.rasgoFx||[];
-const N_DEF=3, N_MER=6, PTS_LIBRES=3;
+const N_DEF=3, N_MER=6, PTS_LIBRES=5;
 const sg = v=>(num(v)>0?'+':num(v)<0?'−':'')+Math.abs(num(v));
 const TAL_SOC=['Presencia','Manipulacion','Perspicacia','Interpretacion'];
 const nivelGrupo = n=>{ const m=/^(.*) (I{1,3})(?: \(.*\))?$/.exec(n); return m?m[1]:null; };
@@ -190,7 +190,7 @@ function checkSheet(f,c){
     const dPts=(f.defectos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+Math.abs(num(RASGOS.get(n)[3])),0);
     const mPts=(f.meritos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+num(RASGOS.get(n)[3]),0);
     out.rasLibres=PTS_LIBRES; out.rasDef=dPts; out.rasMer=mPts; out.rasSaldo=PTS_LIBRES+dPts-mPts;
-    if(out.rasSaldo<0) rs.push(`Los Méritos cuestan ${mPts} y tienes ${PTS_LIBRES+dPts} puntos (3 libres + ${dPts} de Defectos).`);
+    if(out.rasSaldo<0) rs.push(`Los Méritos cuestan ${mPts} y tienes ${PTS_LIBRES+dPts} puntos (${PTS_LIBRES} libres + ${dPts} de Defectos).`);
     if(desconocidos.length) rs.push(`${desconocidos.join(', ')}: no está en la lista.`);
     (f.defectos||[]).forEach(n=>{ const r=RASGOS.get(n); if(r&&r[1]!=='D') rs.push(`${n} es un Mérito, no un Defecto.`); });
     (f.meritos||[]).forEach(n=>{ const r=RASGOS.get(n); if(r&&r[1]!=='M') rs.push(`${n} es un Defecto, no un Mérito.`); });
@@ -518,10 +518,10 @@ function renderSheet(){
   if(!isP){
     h+=`<div class="card"><h2>Talentos <span class="pill" data-c="talPts"></span></h2><div class="tal">`;
     for(const [cat,col,list] of TALENTOS){ h+=`<div><div class="cat" style="color:${col}">${cat}</div>`;
-      for(const t of list){ const r=(f.tal||{})[t]||''; const mk=rasgoMark(f,'tal:'+t,condKeysTal(t)); const or=ri(r)-ri(f.rango)===1;
-        h+=`<div class="t"><button class="linkbtn ${mk.cls}" data-rolltal="${t}"${mk.tip?` title="${esc(mk.tip)}"`:''}>${TAL_LABEL(t)}${or?' <span class="pill or">OR</span>':''}</button><select data-f="tal.${t}" ${S.ro?'disabled':''} aria-label="Rango de ${TAL_LABEL(t)}">${optsCode(r)}</select><b class="${mk.auto>0?'rs-up':mk.auto<0?'rs-down':''}">${talBonus(f,t)}</b></div>`; }
+      for(const t of list){ const r=(f.tal||{})[t]||''; const mk=rasgoMark(f,'tal:'+t,condKeysTal(t));
+        h+=`<div class="t"><button class="linkbtn ${mk.cls}" data-rolltal="${t}"${mk.tip?` title="${esc(mk.tip)}"`:''}>${TAL_LABEL(t)}</button><select data-f="tal.${t}" ${S.ro?'disabled':''} aria-label="Rango de ${TAL_LABEL(t)}">${optsCode(r)}</select><b class="${mk.auto>0?'rs-up':mk.auto<0?'rs-down':''}">${talBonus(f,t)}</b></div>`; }
       h+=`</div>`; }
-    h+=`</div><div class="check" data-c="talChk"></div><p class="note">Clic en un talento para tirar 1d20 + talento + el atributo que elijas. Puedes subir 1 Talento un Rango sobre el tuyo (OverRanked), con un punto adicional. Rasgos: <span class="rs-up">verde</span> suma solo, <span class="rs-down">rojo</span> resta solo, <span class="rs-cond">amarillo</span> se consulta al tirar.</p></div>`;
+    h+=`</div><div class="check" data-c="talChk"></div><p class="note">Clic en un talento para tirar 1d20 + talento + el atributo que elijas.</p></div>`;
     h+=rasgosCardHTML(f);
   }
   h+=`<div class="card"><h2>Movimientos <span class="pill" data-c="mvPts"></span></h2><div class="moves">`;
@@ -552,9 +552,9 @@ function rasgosCardHTML(f){
   return `<div class="card"><h2>Méritos y Defectos <span class="pill" data-c="rasPts"></span></h2>
     <h3 class="subh" style="margin-top:0">Defectos · máximo ${N_DEF}</h3><div class="ras-grid">${def.slice(0,N_DEF).map((n,i)=>slot('defectos',i,n)).join('')}</div>
     <h3 class="subh">Méritos</h3><div class="ras-grid">${mer.map((n,i)=>slot('meritos',i,n)).join('')}</div>
-    ${S.ro?'':`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="addMer">+3 Méritos</button>${nM>N_MER&&last3?'<button class="btn sm" data-act="rmMer">Quitar 3 vacíos</button>':''}</div>`}
+    ${S.ro?'':`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="addMer">+Agregar</button>${nM>N_MER&&last3?'<button class="btn sm" data-act="rmMer">Quitar 3 vacíos</button>':''}</div>`}
     <div class="check" data-c="rasChk"></div>
-    <p class="note">Se eligen al crear el personaje: 3 puntos libres más los de tus Defectos, para comprar Méritos. Los que no se contradicen se avisan en rojo, pero el Narrador puede hacer excepciones.</p></div>`;
+    </div>`;
 }
 function noteHTML(f){
   const isBit=S.open.src==='bit';
