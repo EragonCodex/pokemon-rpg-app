@@ -386,7 +386,7 @@ function calc(f){
   const dx=f.tipo==='P'?dexById.get(f.especie):null;
   const ps=hpOf(f,A0);
   const base = f.tipo==='E'?25:(dx?num(dx[8])||25:25);
-  const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v+num(em.vel),10,60);
+  const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v+num(em.vel)+(f.orden&&f.orden.k==='mueve'?num(f.orden.v):0),10,60);
   const ev=(c,a,x)=>clamp(1-0.15*num(c)+0.15*Math.floor(a/2)+0.15*num(f.bEv)+x,0.2,1);
   const talB = f.tipo==='E'&&f.iniTal? talBonus(f,f.iniTal) : 0;
   const pdMax = f.tipo==='E'? Math.max(0,3+rasgoAuto(f,'pd').v) : 0;
@@ -1389,14 +1389,14 @@ function bindTool(){
 
 /* ---------- combate ---------- */
 const PEN={Starter:0,Beginner:10,Amateur:20,Elite:30,Master:40,Legend:40};
-const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{}};
+const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{},acted:null};
 const CBU={atk:'',mv:'',bon:{},picking:false,targets:[],colFor:''};
 let cbChain=Promise.resolve();
 function cbWrite(fields,full){
   for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx','cond','eq'].includes(k)) CB[k]={...(CB[k]||{}),...v}; else CB[k]=v; }
   cbChain=cbChain.then(async()=>{ try{
       const ref=S.db.doc('combate/actual');
-      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null,cond:CB.cond||{},voto:CB.voto||null,eq:CB.eq||{}}); CB.exists=true; }
+      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null,cond:CB.cond||{},voto:CB.voto||null,eq:CB.eq||{},acted:CB.acted||null}); CB.exists=true; }
       else { const up={...fields}; for(const k of ['cond','eq']) if(k in up) up[k]=CB[k]; await ref.update(up); } /* condición y equipos se mandan completos */
       setStatus('Guardado');
     }catch(e){ onWriteError(e); } });
@@ -1441,6 +1441,9 @@ function toggleGlove(k){
 }
 function gloveBtn(k){ const on=inCombat(k); return `<button class="glove" data-glove="${esc(k)}" aria-pressed="${on}" title="${on?'Quitar del combate':'Agregar al combate'}" aria-label="${on?'Quitar del combate':'Agregar al combate'}">🥊</button>`; }
 function combatants(){ return CB.parts.map(combatant).filter(Boolean); }
+/* Quién ya usó su Acción en la ronda (se reinicia sola al cambiar de ronda) */
+const actedKeys=()=>CB.acted&&num(CB.acted.r)===num(CB.ronda)?(CB.acted.k||[]):[];
+function markActed(k){ const ks=actedKeys(); if(k&&!ks.includes(k)) cbWrite({acted:{r:num(CB.ronda),k:[...ks,k]}}); }
 const iAmIn=()=> isMaster() || CB.parts.some(k=>k.startsWith(`jug|${S.uid}|`));
 function cbOrder(){ return combatants().map(x=>({x,c:calc(x.f)})).sort((a,b)=>b.c.ini-a.c.ini||(CB.ties[b.x.key]||0)-(CB.ties[a.x.key]||0)); }
 function targetMode(m){ const b=m[9], dist=String(m[10]);
@@ -1454,8 +1457,8 @@ function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
   const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente');
   const pen = rec?0:n*(PEN[mi.m[5]]||0);
-  const prec=clamp(mi.prec-pen,0,100);
-  let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0),0,5);
+  const od=f.orden||null; const prec=clamp(mi.prec-pen+(od&&od.k==='apunta'?num(od.v):0),0,100);
+  let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0)+(od&&od.k==='critico'?num(od.v):0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
   if(reR!==null&&c.em.cond&&c.em.cond.entorno==='Arcoíris'&&c.em.cond.aliado) reR=Math.min(1,reR*2); /* Arcoíris duplica el Rango Extra del equipo */
   if(reR!==null&&mi.hm.reMul!==null) reR=Math.min(1,reR*mi.hm.reMul); /* Dicha ×2, Potencia Bruta 0 */
@@ -1532,9 +1535,9 @@ function cbOrderHTML(){
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     const rsOn=CBU.rs&&CBU.rs.k===x.key;
-    return `<div class="r cbrow${canGlove(x)?' rsable':''}">${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
+    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
-      <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}</div>
+      <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}${x.f.orden?`<div class="note cond-cn">Orden ${esc(x.f.orden.n)} de ${esc(x.f.orden.by)}: ${esc(ORDEN_TXT(x.f.orden))} en su siguiente movimiento</div>`:''}</div>
       <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
     <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones, quita los estados superados y descuenta las rondas del clima, el campo y el entorno. El Master los elige a mano; los jugadores los crean con un movimiento o una Habilidad.</p>`;
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
@@ -1665,10 +1668,20 @@ const COMANDAR=[
   ['¡Muévete!','Presencia','CAR',b=>`El Pokémon gana +${5*Math.floor(b/2)} ft de Velocidad (5 ft por cada 2 de bono; máximo 60 ft).`],
   ['¡Ahora!','','',()=>'Un Pokémon suyo con Iniciativa menor actúa en este momento.'],
   ['Retrasar Acción','','',()=>'Su Pokémon espera; actúa cuando el Entrenador gaste su Reacción en la ronda.']];
+const DIF_RANGO={Starter:['Fácil',9],Beginner:['Sencilla',13],Amateur:['Media',17],Elite:['Desafiante',21],Master:['Difícil',27],Legend:['Imposible',33]};
+/* Dificultad de Comandar: la del rival de mayor Rango (Starter = Fácil, Beginner = Sencilla…) */
+function cmdDif(x){ const riv=combatants().filter(y=>!aliados(y.key,x.key)&&!(y.src===x.src&&y.uid===x.uid)); let best=null;
+  for(const y of riv) if(!best||ri(y.f.rango)>ri(best.f.rango)) best=y;
+  const rk=best&&DIF_RANGO[best.f.rango]?best.f.rango:'Starter'; const [n,v]=DIF_RANGO[rk]; return {n,v,rk,by:best?charName(best.f):''}; }
+const ORDEN_K=['apunta','esquiva','critico','mueve'];
+const ORDEN_TXT=o=>o.k==='apunta'?`+${o.v} % de Precisión`:o.k==='esquiva'?`+${o.v} % a su próxima Esquiva o Temple`:o.k==='critico'?`+${o.v} al Índice de Crítico`:`+${o.v} ft de Velocidad`;
+const ordenVal=(k,b)=>k==='apunta'||k==='esquiva'?5*b:k==='critico'?Math.ceil(b/2):5*Math.floor(b/2);
 const misPokemon=x=>combatants().filter(y=>y.f.tipo==='P'&&y.src===x.src&&y.uid===x.uid&&(!y.f.entrenador||y.f.entrenador===x.id));
 function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||= {};
   if(!pk.some(y=>y.key===CBU.cmdT)) CBU.cmdT=pk[0]?pk[0].key:'';
-  let h=`<div class="k" style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Comandar · solo una Orden por ronda, en vez de atacar</div>`;
+  const dif=cmdDif(x);
+  let h=`<div class="k" style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Comandar · solo una Orden por ronda, en vez de atacar</div>
+    <p class="note" style="margin:0 0 6px">Dificultad <b>${dif.n} (${dif.v})</b>${dif.by?`, por el rival de mayor Rango: ${esc(dif.by)} (${esc(dif.rk)})`:' (no hay rivales)'}. Si la Orden tiene éxito, el bono se aplica al siguiente movimiento del Pokémon.</p>`;
   h+=pk.length?`<div class="grid g3"><label class="f">Pokémon<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate.</p>';
   h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], b=t?talBonus(f,t):0, a=CBU.cmdA[i]||o[2]; const bb=Math.max(0,b);
     return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${pk.length?'':'disabled'}>${esc(o[0])}</button>
@@ -1679,11 +1692,13 @@ function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||
   return h; }
 function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; const y=combatant(CBU.cmdT); if(!o||!y) return;
   const f=x.f, c=calc(f), t=o[1], b=t?talBonus(f,t):0; let txt;
-  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b;
-    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0} = ${tot}. ${o[3](Math.max(0,b))}`;
-    CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)}): 1d20 [${r}] + ${a} + ${TAL_LABEL(t)} = ${tot}`,tot); }
+  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b; const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v);
+    const bb=Math.max(0,b), k=ORDEN_K[i], v=ordenVal(k,bb);
+    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0} = ${tot} contra ${dif.n} (${dif.v}) → ${ok?`éxito: ${charName(y.f)} tendrá ${ORDEN_TXT({k,v})} en su siguiente movimiento.`:'falla, la Orden no se cumple.'}`;
+    if(ok) mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:charName(f)}; });
+    CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)}): 1d20 [${r}] + ${a} + ${TAL_LABEL(t)} = ${tot} vs ${dif.v} · ${ok?'éxito':'falla'}`,tot); }
   else { txt=`${charName(f)}: ${o[0]} con ${charName(y.f)}. ${o[3](b)}`; CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)})`,null); }
-  renderSheet(); }
+  markActed(x.key); renderSheet(); }
 function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
@@ -1740,6 +1755,7 @@ function doAttack(){
       else steps.push({k:'',t:`${cn.est}: la tirada (${r}) no supera ${cn.thr}, actúa con normalidad.`}); } }
   const res=[];
   const nf=structuredClone(x.f); CKEY.set(nf,x.key); nf.rep={mv:mvId,n:ai.n+1};
+  if(nf.orden&&nf.orden.k!=='esquiva'){ steps.splice(1,0,{k:'ok',t:`Orden ${nf.orden.n} de ${nf.orden.by}: ${ORDEN_TXT(nf.orden)} (se usa en este movimiento).`}); delete nf.orden; }
   let selfNow=false;
   if(go){ crit=r<=Math.round(ai.critR*100); steps.push({k:crit?'ok':'',t:`Crítico (${pct(ai.critR)}${hasCat(m,'Preciso')?', Preciso +1 IC':''}): ${crit?'¡sí!':'no'}`});
     if(ai.reR!==null){ re=r<=Math.round(ai.reR*100); steps.push({k:re?'ok':'',t:`Rango Extra ${pct(ai.reR)}: ${re?'se activa el efecto':'no se activa'}`}); }
@@ -1766,7 +1782,7 @@ function doAttack(){
   const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
   if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
-  cbWrite({last});
+  cbWrite({last}); markActed(x.key);
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
 }
@@ -1887,10 +1903,10 @@ function clChange(el){
 }
 
 function doEvade(ref,f,kind,against){
-  const c=calc(f); const need=Math.round((kind==='esq'?c.esq:c.tem)*100); const r=d(100);
+  const c=calc(f); const od=f.orden&&f.orden.k==='esquiva'?f.orden:null; const need=Math.min(100,Math.round((kind==='esq'?c.esq:c.tem)*100)+(od?num(od.v):0)); const r=d(100);
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100;
-  const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; if(ref.key) saveAny(ref,nf); else saveFicha(ref,nf);
-  const txt=`Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?'lo evita':'no lo evita'}`;
+  const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; if(od) delete nf.orden; if(ref.key) saveAny(ref,nf); else saveFicha(ref,nf);
+  const txt=`${od?`Orden ${od.n}: +${od.v} % a la Evasión. `:''}Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?'lo evita':'no lo evita'}`;
   logRoll(charName(f),txt,r);
   return {r,ok,txt};
 }
@@ -1935,7 +1951,7 @@ function cbClick(b){
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
-  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{}},true); render(); }
+  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{},acted:null},true); render(); }
   else if(act==='round'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm')&&($('#endConfirm').innerHTML=''); $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
   else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
   else if(act==='roundYes'){ b.disabled=true; endRound(); }
@@ -1960,7 +1976,7 @@ function cbClick(b){
       if(ev.ok){ fx.ev=true; fx.done=true; }
       else { connectHit(L,z,'no logró evadir').forEach(o=>log.push({k:'',t:o})); fx.done=true; } }
     else if(act==='apply'){ const out=connectHit(L,z,''); log.push({k:'ok',t:(z.heal?'Curación aplicada':'Recibido')+(out.length?': '+out.join(' · '):'')}); fx.done=true; }
-    else if(act==='colmv'){ log.push(...doCollide(L,z,b.dataset.mv)); fx.done=true; CBU.colFor=''; }
+    else if(act==='colmv'){ log.push(...doCollide(L,z,b.dataset.mv)); fx.done=true; CBU.colFor=''; markActed(z.key); }
     fx.log=log; cbWrite({lastFx:{[fk]:fx}}); renderSheet(); }
 }
 function cbChange(el){
@@ -2140,7 +2156,7 @@ async function boot(){
   setStatus('Conectado');
   if(window.__PRUEBAS) showBanner('Versión de pruebas en Claude: aquí se revisan los cambios antes de pasarlos a la app de la mesa. Las fichas de esta versión no son las de la web.');
   db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
-  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{};
+  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null;
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
   db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   db.collection('tiradas').onSnapshot(snap=>{ const m=snapMap(snap); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
