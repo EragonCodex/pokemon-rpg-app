@@ -145,7 +145,9 @@ const condRow=n=>CONDS.find(r=>r[0]===n);
 const condsDe=cls=>CONDS.filter(r=>r[1].startsWith(COND_CLS[cls]));
 const condCls=n=>{ const r=condRow(n); return !r?'':r[1].startsWith('Clima')?'clima':r[1].startsWith('Campo')?'campo':'entorno'; };
 const condDur=n=>/^(Viento Afín|Arcoíris)$/.test(n)?4:5;
-const sideOf=k=>String(k||'').split('|')[0]==='master'?'master':'jug';
+/* Aliados: mismo Equipo (1 a 4) en Combate; «Sin Equipo» solo es aliado de sí mismo */
+const eqOf=k=>num((CB.eq||{})[k]);
+const aliados=(a,b)=>!!a&&!!b&&(a===b||(eqOf(a)>0&&eqOf(a)===eqOf(b)));
 /* Habilidad activa (Mareado la anula) */
 const habDe=f=>f&&f.tipo==='P'&&f.estM!=='Mareado'?deacc(f.habilidad||'').toLowerCase():'';
 const CKEY=new WeakMap();
@@ -156,26 +158,26 @@ function condPara(f,key){
   const A=condActivas(), h=habDe(f);
   const clima=A.clima&&!anulaClima()?A.clima.n:'';
   const campo=A.campo&&h!=='levitacion'?A.campo.n:''; /* Levitación no recibe los efectos de los campos */
-  const enSuelo=f.tipo==='P'&&!tiposDe(f).includes('Volador')&&h!=='levitacion';
+  const enSuelo=!tiposDe(f).includes('Volador')&&h!=='levitacion';
   const ent=A.entorno||null;
-  return {clima, campo, entorno:ent?ent.n:'', aliado:ent&&ent.by?sideOf(key)===sideOf(ent.by):null, enSuelo, h, key, climaMov:h==='megasolar'?'Sol Intenso':clima};
+  return {clima, campo, entorno:ent?ent.n:'', aliado:ent&&ent.by?aliados(key,ent.by):null, rival:!!(ent&&ent.by&&!aliados(key,ent.by)), enSuelo, h, key, climaMov:h==='megasolar'?'Sol Intenso':clima};
 }
 function condAplica(o,f,P){
-  const T=tiposDe(f), h=P.h, isP=f.tipo==='P';
+  const T=tiposDe(f), h=P.h;
   const add=(k,v,why)=>{ o.attr[k]=(o.attr[k]||0)+v; (o.src[k] ||= []).push(why); o.cn.push(`${why} ${sg(v)} ${k}`); };
   const ev=(v,why)=>{ o.esq+=v; o.tem+=v; o.cn.push(`${why} ${v>0?'+':'−'}${Math.abs(v*100)} % Evasión`); };
   const cd=(t,v,why)=>{ o.cdOwn[t]=num(o.cdOwn[t])+v; };
   const est=n=>[f.estF,f.estM].includes(n);
-  if(isP){
+  { /* también a los Entrenadores */
     if(P.clima==='Tormenta de Arena'&&T.includes('Roca')) add('SAB',2,'Tormenta de Arena');
     if(P.clima==='Granizo'&&T.includes('Hielo')) add('SAB',2,'Granizo');
     if(P.campo==='Campo Magnético'&&T.includes('Acero')){ add('VIT',1,'Campo Magnético'); add('SAB',1,'Campo Magnético'); }
     if(COND_EV[P.clima]&&T.includes(COND_EV[P.clima])) ev(-0.10,P.clima);
     if(P.campo==='Arena de Combate'){ o.ic+=1; o.cn.push('Arena de Combate +1 IC'); }
+    if(P.entorno==='Lodazal'&&P.rival) o.cn.push('Lodazal: se desplaza a la mitad');
   }
   for(const n of [P.clima,P.campo]){ const t=COND_CD[n]; if(!t) continue; cd(t[0],1,n); if(t[1]) cd(t[1],-1,n); }
   if(P.entorno==='Viento Afín'&&P.aliado){ add('DES',3,'Viento Afín'); o.vel+=10; }
-  if(P.entorno==='Lodazal'&&P.aliado===false) o.cn.push('Lodazal: se desplaza a la mitad');
   /* potencia al estado */
   if(P.entorno==='Lodazal'&&est('Enlodado')) add('DES',-2,'Lodazal (Enlodado)');
   if(P.clima==='Penumbra'&&est('Cegado')){ o.prec-=10; o.cn.push('Penumbra (Cegado) −10 % Precisión'); }
@@ -206,11 +208,11 @@ function condAplica(o,f,P){
   if(P.clima==='Tormenta de Arena'&&h==='veloarena') ev(0.10,name);
   if(P.clima==='Tormenta de Arena'&&h==='poderarena') ['Tierra','Roca','Acero'].forEach(t=>cd(t,1,name));
   if(P.clima==='Sol Intenso'&&h==='defensahoja') o.noEst=name;
-  if(P.clima==='Sol Intenso'&&combatants().some(x=>sideOf(x.key)===sideOf(P.key)&&habDe(x.f)==='mantofrondoso')) o.noEst='Manto Frondoso';
+  if(P.clima==='Sol Intenso'&&combatants().some(x=>aliados(x.key,P.key)&&habDe(x.f)==='mantofrondoso')) o.noEst='Manto Frondoso';
 }
 /* Don Floral alcanza al usuario y a sus aliados */
 function condEquipo(o,f,P){ if(P.clima!=='Sol Intenso'||f.tipo!=='P') return;
-  if(combatants().some(x=>sideOf(x.key)===sideOf(P.key)&&habDe(x.f)==='donfloral')){ for(const k of ['FUE','SAB']){ o.attr[k]=(o.attr[k]||0)+1; (o.src[k] ||= []).push('Don Floral'); } o.cn.push('Don Floral +1 FUE y +1 SAB'); } }
+  if(combatants().some(x=>aliados(x.key,P.key)&&habDe(x.f)==='donfloral')){ for(const k of ['FUE','SAB']){ o.attr[k]=(o.attr[k]||0)+1; (o.src[k] ||= []).push('Don Floral'); } o.cn.push('Don Floral +1 FUE y +1 SAB'); } }
 /* ¿La condición impide recibir este estado? */
 function condInmune(f,name){ const em=estEffects(f); const P=em.cond; if(!P) return ''; const e=estMap.get(name);
   if(em.noEst) return em.noEst;
@@ -232,21 +234,30 @@ function condMov(m,P){ const o={cd:0,prec:0,x2:false,block:'',notes:[]}; if(!P) 
   return o; }
 /* Condición que crea un movimiento o una Habilidad (texto del efecto) */
 function condDeTexto(t){ t=String(t||''); let r;
+  if((r=/[Pp]uede crear (?:la condici[oó]n de campo|el campo|el entorno|el clima) ([A-ZÁÉÍÓÚ][^.(;]*?) durante (\d+) rondas/.exec(t))&&condRow(r[1].trim())) return {n:r[1].trim(),r:Number(r[2]),re:true};
   if(/elimina el clima y la condici[oó]n de campo/i.test(t)) return {clear:true};
   if((r=/(?:[Cc]ambia el clima a|[Cc]rea la condici[oó]n de campo|[Cc]rea el entorno) ([A-ZÁÉÍÓÚ][^.(;]*?)(?: \(\w+\))? (?:durante (\d+) rondas|mientras siga)/.exec(t))){ const n=r[1].trim(); if(!condRow(n)) return null;
     const an=/anula los movimientos de tipo (\w+)/.exec(t); return {n,r:r[2]?Number(r[2]):null,anula:an?an[1]:''}; }
   return null; }
 const condDeMov=m=>m[0]==='M0830'?{n:'Viento Afín',r:4}:m[0]==='M0364'?{n:'Alboroto',r:2}:condDeTexto(m[11]);
-function setCond(cls,n,r,by,anula){
-  const prev=((CB.cond||{})[cls]||{}).n||''; const v=n?{n,r:r===undefined?condDur(n):r,by:by||'',anula:anula||''}:null;
+function setCond(cls,n,r,by,anula,rk){
+  const prev=((CB.cond||{})[cls]||{}).n||''; const v=n?{n,r:r===undefined?condDur(n):r,by:by||'',anula:anula||'',rk:rk||'Starter'}:null;
   cbWrite({cond:{[cls]:v}});
   if(prev!==(n||'')) prediccion();
   return v; }
 /* Una condición creada por un combatiente (movimiento o Habilidad) */
-function crearCond(c,key,lines,why){
+function crearCond(c,key,lines,why,rk){
   if(c.clear){ setCond('clima',''); setCond('campo',''); lines.push(`${why}: elimina el clima y el campo.`); return; }
-  const cls=condCls(c.n); if(!cls) return; setCond(cls,c.n,c.r,key,c.anula);
+  const cls=condCls(c.n); if(!cls) return; setCond(cls,c.n,c.r,key,c.anula,rk||((combatant(key)||{}).f||{}).rango);
   lines.push(`${why}: ${cls==='clima'?'el clima pasa a':cls==='campo'?'crea el campo':'crea el entorno'} ${c.n}${c.r?` (${c.r} rondas)`:' (mientras siga en combate)'}.`); }
+const habNombre=h=>{ const r=D.hab.find(z=>z[0]===h); return r?r[0]:h; };
+/* Botón de Habilidad en Atacar: activa su efecto cuando el jugador lo decide (al entrar, en la ronda 0 o cuando corresponda) */
+function activarHab(){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='P') return; const h=x.f.habilidad; const ht=habMap.get(h)||'';
+  const lines=[]; const nc=/^Cuando recibe/.test(ht)?null:condDeTexto(ht);
+  if(x.f.estM==='Mareado') lines.push(`${h} está anulada por Mareado.`);
+  else if(nc) crearCond(nc,x.key,lines,`${charName(x.f)} (${h})`,x.f.rango);
+  else { if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion(); lines.push(`${charName(x.f)} activa ${h}: ${ht||'sin texto.'}`); }
+  CBU.habMsg={k:x.key,lines}; logRoll(charName(x.f),`Habilidad ${h}: ${lines.join(' ')}`,null); renderSheet(); }
 /* Predicción: Castform cambia de forma según el clima */
 function prediccion(){ if(!S.canWrite) return; const cl=((CB.cond||{}).clima||{}).n||''; const clima=anulaClima()?'':cl;
   const want=clima==='Sol Intenso'?/Sol/:clima==='Llovizna'?/Lluvia/:clima==='Granizo'?/Nieve/:null;
@@ -882,7 +893,7 @@ document.getElementById('rp').addEventListener('click',e=>{ const b=e.target.clo
 const tbl=(hd,rows)=>`<div class="tw"><table class="gt"><thead><tr>${hd.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="attr-name"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 const ej=t=>`<div class="ej"><b>Ejemplo.</b> ${t}</div>`;
 const SOC=[['Dureza','Picante','Amarillo','Ácida, Salada','Dulce, Amarga'],['Estilo','Ácida','Rojo','Amarga, Picante','Salada, Dulce'],['Belleza','Amarga','Azul','Dulce, Ácida','Picante, Salada'],['Dulzura','Dulce','Rosa','Salada, Amarga','Ácida, Picante'],['Astucia','Salada','Verde','Picante, Dulce','Amarga, Ácida']];
-const CONDS=[['Tormenta de Arena','Clima','Roca +2 SAB. Quien no es Roca, Tierra ni Acero recibe residual cada ronda.','Aprisionado: residual +1 Rango.'],['Granizo','Clima','Hielo +2 SAB. Quien no es Hielo recibe residual cada ronda.','Congelado: Salvación −10.'],['Llovizna','Clima','Agua +1 CD y Fuego −1 CD.','Empapado: evita la Salvación 1 ronda.'],['Sol Intenso','Clima','Fuego +1 CD y Agua −1 CD.','Quemado: residual +1 Rango.'],['Miasma','Clima','Al final de cada ronda, quien no es Veneno puede quedar Envenenado.','Envenenado: residual +1 Rango.'],['Plaga','Clima','Bicho +1 CD, Fantasma −1 CD; los Siniestro −10 % de Evasión.','Infestado: umbral 40 (en vez de 50).'],['Penumbra','Clima','Siniestro +1 CD, Bicho −1 CD; los Fantasma −10 % de Evasión.','Cegado: −10 % de Precisión extra.'],['Ectoplasma','Clima','Fantasma +1 CD, Siniestro −1 CD; los Bicho −10 % de Evasión.','Maldito: residual +1 Rango.'],['Campo Eléctrico','Campo','Eléctrico +1 CD. Nadie en el suelo puede quedar Adormilado.','Paralizado: umbral 30 (en vez de 45).'],['Campo de Hierba','Campo','Planta +1 CD. Quien está en el suelo recupera residual cada ronda.','Drenado: quien lo causó recupera el doble.'],['Campo Psíquico','Campo','Psíquico +1 CD. Bloquea los movimientos con Prioridad.','Adormilado: umbral 30 (en vez de 45).'],['Campo de Niebla','Campo','Hada +1 CD y Dragón −1 CD. Nadie en el suelo recibe estados Físicos.','Encantado: evita la Salvación 1 ronda.'],['Campo Magnético','Campo','Acero +1 VIT y +1 SAB.','Magnetizado: Eléctrico y Roca +1 CD extra.'],['Alboroto','Campo','Movimientos de Sonido +1 CD. Nadie puede quedar Adormilado.','Aturdido: además no puede moverse.'],['Turbulencia Ancestral','Campo','Dragón +1 CD y Hada −1 CD.','Aterrado: Salvación −10.'],['Arena de Combate','Campo','+1 al IC de todos los Pokémon en el campo.','Provocado: evita la Salvación 1 ronda.'],['Lodazal','Entorno','Los rivales se desplazan a la mitad.','Enlodado: además −2 DES.'],['Viento Afín','Entorno','Los aliados ganan +3 DES durante 4 rondas (y +10 ft de Velocidad).','Mareado: −10 % de Precisión extra.'],['Arcoíris','Entorno (4 rondas)','Se crea al combinar 2 movimientos Voto en la misma ronda. Duplica el Rango Extra del equipo.','—']];
+const CONDS=[['Tormenta de Arena','Clima','Roca +2 SAB. Quien no es Roca, Tierra ni Acero recibe residual cada ronda.','Aprisionado: residual +1 Rango.'],['Granizo','Clima','Hielo +2 SAB. Quien no es Hielo recibe residual cada ronda.','Congelado: Salvación −10.'],['Llovizna','Clima','Agua +1 CD y Fuego −1 CD.','Empapado: evita la Salvación 1 ronda.'],['Sol Intenso','Clima','Fuego +1 CD y Agua −1 CD.','Quemado: residual +1 Rango.'],['Miasma','Clima','Al final de cada ronda, quien no es Veneno puede quedar Envenenado.','Envenenado: residual +1 Rango.'],['Plaga','Clima','Bicho +1 CD, Fantasma −1 CD; los Siniestro −10 % de Evasión.','Infestado: umbral 40 (en vez de 50).'],['Penumbra','Clima','Siniestro +1 CD, Bicho −1 CD; los Fantasma −10 % de Evasión.','Cegado: −10 % de Precisión extra.'],['Ectoplasma','Clima','Fantasma +1 CD, Siniestro −1 CD; los Bicho −10 % de Evasión.','Maldito: residual +1 Rango.'],['Campo Eléctrico','Campo','Eléctrico +1 CD. Nadie en el suelo puede quedar Adormilado.','Paralizado: umbral 30 (en vez de 45).'],['Campo de Hierba','Campo','Planta +1 CD. Quien está en el suelo recupera residual cada ronda.','Drenado: quien lo causó recupera el doble.'],['Campo Psíquico','Campo','Psíquico +1 CD. Bloquea los movimientos con Prioridad.','Adormilado: umbral 30 (en vez de 45).'],['Campo de Niebla','Campo','Hada +1 CD y Dragón −1 CD. Nadie en el suelo recibe estados Físicos.','Encantado: evita la Salvación 1 ronda.'],['Campo Magnético','Campo','Acero +1 VIT y +1 SAB.','Magnetizado: Eléctrico y Roca +1 CD extra.'],['Alboroto','Campo','Movimientos de Sonido +1 CD. Nadie puede quedar Adormilado.','Aturdido: además no puede moverse.'],['Turbulencia Ancestral','Campo','Dragón +1 CD y Hada −1 CD.','Aterrado: Salvación −10.'],['Arena de Combate','Campo','+1 al IC de todos los Pokémon en el campo.','Provocado: evita la Salvación 1 ronda.'],['Lodazal','Entorno','Los rivales se desplazan a la mitad.','Enlodado: además −2 DES.'],['Viento Afín','Entorno','Los aliados ganan +3 DES y +10 ft de Velocidad durante 4 rondas.','Mareado: −10 % de Precisión extra.'],['Arcoíris','Entorno (4 rondas)','Se crea al combinar 2 movimientos Voto en la misma ronda. Duplica el Rango Extra del equipo.','—']];
 const condTipo=t=>{const e=estMap.get(String(t).split(':')[0].trim()); return e?chip(e[1]):'—';};
 const MONTURAS=[["Arnés de hombro", 1, "Mediano", 4, "Tierra firme (Pokémon bípedos medianos)", "Caídas leves", 2000], ["Silla de montar", 1, "Mediano", 3, "Tierra firme, Montaña, Arena, Nieve y hielo", "Caídas leves, polvo y barro", 3500], ["Cesta de carga", 1, "Mediano", 4, "Aire (corto alcance), Montaña (escalada)", "Caídas y golpes contra la roca", 4000], ["Silla marina", 1, "Mediano", 3, "Agua, Corrientes y cascadas", "Agua, oleaje y corrientes", 4500], ["Balsa", 2, "Pequeño", 5, "Agua (aguas tranquilas; no sube cascadas)", "Agua y oleaje leve", 5000], ["Remolque", 2, "Pequeño", 5, "Tierra firme, Subterráneo (túnel terminado)", "Carga pesada y terreno irregular", 6000], ["Silla de montar doble", 2, "Grande", 6, "Tierra firme, Montaña, Arena, Nieve y hielo", "Caídas leves, polvo y barro", 7000], ["Silla ignífuga", 1, "Mediano", 3, "La del Pokémon (obligatoria si es de tipo Fuego)", "Fuego, calor extremo y Quemado", 8000], ["Silla aislante", 1, "Mediano", 3, "La del Pokémon (obligatoria si es de tipo Eléctrico)", "Descargas eléctricas, Paralizado y Magnetizado", 8000], ["Silla marina doble", 2, "Grande", 6, "Agua, Corrientes y cascadas", "Agua, oleaje y corrientes", 9000], ["Traje de buceo", 1, "Mediano", 3, "Bajo el agua (lo usa el jinete, con la Silla marina)", "Falta de aire, presión y frío del agua", 9000], ["Arnés de vuelo", 1, "Mediano", 4, "Aire", "Viento, frío de altura y maniobras bruscas", 12000], ["Silla ignífuga doble", 2, "Grande", 6, "La del Pokémon (obligatoria si es de tipo Fuego)", "Fuego, calor extremo y Quemado", 15000], ["Silla aislante doble", 2, "Grande", 6, "La del Pokémon (obligatoria si es de tipo Eléctrico)", "Descargas eléctricas, Paralizado y Magnetizado", 15000], ["Cabina de excavación", 3, "Grande", 7, "Subterráneo", "Derrumbes, oscuridad y gases", 15000], ["Cabina", 3, "Grande (o bandada)", 7, "Aire (aerotaxi; en bandada si la especie es Mediana o menor)", "Clima: lluvia, viento, frío y granizo", 25000], ["Cabina sumergible", 3, "Grande", 7, "Bajo el agua, Agua", "Falta de aire, presión y frío del agua", 32000], ["Plataforma", 4, "Enorme", 8, "Tierra firme, Agua, Aire", "Oleaje, caídas y clima", 35000], ["Plataforma grande", 6, "Colosal", 10, "Tierra firme, Agua, Aire", "Oleaje, caídas y clima", 60000]]; // Pokemon_RPG 3.2.14, hoja Monturas
 const GLOS=[
@@ -1280,15 +1291,15 @@ function bindTool(){
 
 /* ---------- combate ---------- */
 const PEN={Starter:0,Beginner:10,Amateur:20,Elite:30,Master:40,Legend:40};
-const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null};
+const CB={exists:false,parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{}};
 const CBU={atk:'',mv:'',bon:{},picking:false,targets:[],colFor:''};
 let cbChain=Promise.resolve();
 function cbWrite(fields,full){
-  for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx','cond'].includes(k)) CB[k]={...(CB[k]||{}),...v}; else CB[k]=v; }
+  for(const [k,v] of Object.entries(fields)){ if(!full&&['snaps','ties','lastFx','cond','eq'].includes(k)) CB[k]={...(CB[k]||{}),...v}; else CB[k]=v; }
   cbChain=cbChain.then(async()=>{ try{
       const ref=S.db.doc('combate/actual');
-      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null,cond:CB.cond||{},voto:CB.voto||null}); CB.exists=true; }
-      else await ref.update('cond' in fields?{...fields,cond:CB.cond}:fields); /* la condición se manda completa */
+      if(full||!CB.exists){ await ref.set({parts:CB.parts,snaps:CB.snaps,ties:CB.ties,last:CB.last,lastFx:CB.lastFx,ronda:num(CB.ronda),rondaLog:CB.rondaLog||null,cond:CB.cond||{},voto:CB.voto||null,eq:CB.eq||{}}); CB.exists=true; }
+      else { const up={...fields}; for(const k of ['cond','eq']) if(k in up) up[k]=CB[k]; await ref.update(up); } /* condición y equipos se mandan completos */
       setStatus('Guardado');
     }catch(e){ onWriteError(e); } });
 }
@@ -1324,8 +1335,7 @@ function toggleGlove(k){
   else { parts.push(k); const c=combatant(k); if(c&&c.src==='master') snaps[k]=snapOf(c.f); }
   const entra=!CB.parts.includes(k);
   if(isMaster()) cbWrite({parts,snaps},true); else cbWrite({parts});
-  if(entra){ const c=combatant(k); const h=c&&c.f.tipo==='P'?c.f.habilidad:''; const ht=h?habMap.get(h):'';
-    if(ht&&/^Al entrar en combate/.test(ht)){ const nc=condDeTexto(ht); if(nc){ const cl=[]; crearCond(nc,k,cl,`${charName(c.f)} (${h})`); logRoll('Condición',cl.join(' '),null); } }
+  if(entra){ const c=combatant(k); const h=c&&c.f.tipo==='P'?c.f.habilidad:'';
     if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion(); }
   else { for(const cls of ['clima','campo','entorno']){ const c=(CB.cond||{})[cls]; if(c&&c.by===k&&c.r==null){ setCond(cls,''); logRoll('Condición',`${c.n} termina: su causante salió del combate.`,null); } }
     prediccion(); }
@@ -1362,7 +1372,7 @@ function parseFx(m){
   if(FX_CACHE.has(m[0])) return FX_CACHE.get(m[0]);
   const ops=[]; const txt=String(m[11]||'');
   for(let s of txt.split(/(?<=\.)\s+/)){ s=s.trim(); if(!s) continue;
-    if(/^(Si |Con |Requiere|Mientras|Durante|Tras usarlo|El siguiente|Cuando|Debe |Usa |Cancela|Esparce|Planta |Como |Cura |Evita|Ignora|Los movimientos)/i.test(s)) continue;
+    if(/^(Si |Con |Requiere|Mientras|Durante|Tras usarlo|El siguiente|Cuando|Debe |Usa |Cancela|Esparce|Planta |Como |Cura |Evita|Ignora|Los movimientos|Los aliados|Puede crear)/i.test(s)) continue;
     if(/(cada ronda|por cada|cada vez|al final de|en su lugar|según|a quien|\bsi (el|la|es|hay|en)\b|hasta el final|siguiente ronda|por punto|durante \d)/i.test(s)) continue;
     const both=/(al Blanco y al usuario|incluido el usuario)/i.test(s);
     const self=!both&&/(al usuario|del usuario|su Precisi[oó]n|a s[ií] mismo)/i.test(s)&&!/(al rival|al Blanco|del rival|a todos los rivales)/i.test(s);
@@ -1418,26 +1428,29 @@ function cbOrderHTML(){
     return `<div class="r cbrow"><div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}</div>
-      <div style="text-align:right"><span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
+      <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
     <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones, quita los estados superados y descuenta las rondas del clima, el campo y el entorno. El Master los elige a mano; los jugadores los crean con un movimiento o una Habilidad.</p>`;
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
   return h+`</div>`;
 }
 /* Efectos de fin de ronda del clima y el campo sobre un Pokémon */
-function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P||f.tipo!=='P') return false; const T=tiposDe(f), h=P.h; let ch=false;
-  const idx=clamp(ri(f.rango)+2,1,24);
-  const pierde=why=>{ const dd=dice(idx), rl=rollDice(dd); f.dano=num(f.dano)+rl.t; ch=true; lines.push({k:'ko',t:`${name}: ${why}, residual ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`}); };
-  const gana=why=>{ const dd=dice(idx), rl=rollDice(dd); const v=Math.min(num(f.dano),rl.t); f.dano=num(f.dano)-v; ch=true; lines.push({k:'ok',t:`${name}: ${why}, recupera ${dd} [${rl.r.join(', ')}] = ${v} PS.`}); };
+function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P) return false; const T=tiposDe(f), h=P.h; let ch=false;
+  /* el residual de la condición usa el Rango de quien la creó (mínimo si la puso el Master); las Habilidades usan el Rango propio */
+  const C=CB.cond||{}; const rk=cls=>ri((C[cls]&&C[cls].rk)||'Starter');
+  const idxC=cls=>clamp(rk(cls)+2,1,24), idxP=clamp(ri(f.rango||'Starter')+2,1,24);
+  const pierde=(why,idx)=>{ const dd=dice(idx), rl=rollDice(dd); f.dano=num(f.dano)+rl.t; ch=true; lines.push({k:'ko',t:`${name}: ${why}, residual ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`}); };
+  const gana=(why,idx)=>{ const dd=dice(idx), rl=rollDice(dd); const v=Math.min(num(f.dano),rl.t); f.dano=num(f.dano)-v; ch=true; lines.push({k:'ok',t:`${name}: ${why}, recupera ${dd} [${rl.r.join(', ')}] = ${v} PS.`}); };
   const sinDanoClima=['funda','muromagico'].includes(h);
-  if(P.clima==='Tormenta de Arena'&&!T.some(t=>['Roca','Tierra','Acero'].includes(t))&&!sinDanoClima&&!['poderarena','veloarena'].includes(h)) pierde('Tormenta de Arena');
-  if(P.clima==='Granizo'){ if(h==='gelido') gana('Gélido con Granizo'); else if(!T.includes('Hielo')&&!sinDanoClima) pierde('Granizo'); }
-  if(P.clima==='Llovizna'&&(h==='curalluvia'||h==='pielseca')) gana(`${f.habilidad} con Llovizna`);
-  if(P.clima==='Sol Intenso'&&(h==='pielseca'||h==='podersolar')) pierde(`${f.habilidad} con Sol Intenso`);
+  if(P.clima==='Tormenta de Arena'&&!T.some(t=>['Roca','Tierra','Acero'].includes(t))&&!sinDanoClima&&!['poderarena','veloarena'].includes(h)) pierde('Tormenta de Arena',idxC('clima'));
+  if(P.clima==='Granizo'){ if(h==='gelido') gana('Gélido con Granizo',idxP); else if(!T.includes('Hielo')&&!sinDanoClima) pierde('Granizo',idxC('clima')); }
+  if(P.clima==='Llovizna'&&(h==='curalluvia'||h==='pielseca')) gana(`${f.habilidad} con Llovizna`,idxP);
+  if(P.clima==='Sol Intenso'&&(h==='pielseca'||h==='podersolar')) pierde(`${f.habilidad} con Sol Intenso`,idxP);
   if(P.clima==='Llovizna'&&h==='hidratacion'&&(f.estF||f.estM)){ lines.push({k:'ok',t:`${name}: Hidratación con Llovizna, se libera de ${[f.estF,f.estM].filter(Boolean).join(' y ')}.`}); f.estF=''; f.estM=''; f.estFx={}; ch=true; }
-  if(P.campo==='Campo de Hierba'&&P.enSuelo&&num(f.dano)>0) gana('Campo de Hierba');
-  if(P.clima==='Miasma'&&!T.includes('Veneno')&&!f.estF){ const e=estMap.get('Envenenado'); const r=d(100);
-    if(r<=num(e[4])) lines.push({k:'ok',t:`${name}: Miasma, Salvación d100 [${r}] ≤ ${num(e[4])} → no queda Envenenado.`});
-    else { const t=giveEstado(f,'Envenenado',{rank:f.rango||'Starter',by:''},false); ch=true; lines.push({k:'ko',t:`${name}: Miasma, Salvación d100 [${r}] > ${num(e[4])} → ${t}.`}); } }
+  if(P.campo==='Campo de Hierba'&&P.enSuelo&&num(f.dano)>0) gana('Campo de Hierba',idxC('campo'));
+  /* Miasma: 90 % de quedar Envenenado (se salva con 10 o menos) */
+  if(P.clima==='Miasma'&&!T.includes('Veneno')&&!f.estF){ const r=d(100);
+    if(r<=10) lines.push({k:'ok',t:`${name}: Miasma, d100 [${r}] ≤ 10 → no queda Envenenado.`});
+    else { const t=giveEstado(f,'Envenenado',{rank:(C.clima&&C.clima.rk)||'Starter',by:''},false); ch=true; lines.push({k:'ko',t:`${name}: Miasma, d100 [${r}] > 10 → ${t}.`}); } }
   return ch; }
 async function endRound(){
   if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
@@ -1486,7 +1499,9 @@ function cbAttackHTML(){
   if(!mine.length) return h+`<p class="note">No controlas a ningún combatiente.</p></div>`;
   if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; CBU.picking=false; }
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
-  h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label></div>`;
+  const hb=x.f.tipo==='P'&&x.f.habilidad?x.f.habilidad:'';
+  h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
+  if(hb&&CBU.habMsg&&CBU.habMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px">${CBU.habMsg.lines.map(t=>`<div class="ok">${esc(t)}</div>`).join('')}</div>`;
   if(!mvs.length) return h+`<p class="note">Este personaje no tiene movimientos.</p></div>`;
   h+=`<div class="mvlist">`;
   for(const id of mvs){ const ai=attackInfo(x,id); if(!ai) continue; const m=ai.mi.m; const on=CBU.picking&&CBU.mv===id; const mode=targetMode(m);
@@ -1540,9 +1555,9 @@ function doAttack(){
     if(ai.reR!==null){ re=r<=Math.round(ai.reR*100); steps.push({k:re?'ok':'',t:`Rango Extra ${pct(ai.reR)}: ${re?'se activa el efecto':'no se activa'}`}); }
     steps.push({k:'fx',t:`Efecto: ${m[11]}`});
     if(ai.mi.cm.notes.length) steps.push({k:'',t:`Condición: ${ai.mi.cm.notes.join(' · ')}`});
-    const cl=[]; const nc=condDeMov(m); if(nc) postCond=()=>crearCond(nc,x.key,cl,m[1]);
-    if(/^Voto (Agua|Fuego|Planta)$/.test(m[1])){ const V=CB.voto; const ally=V&&num(V.ronda)===num(CB.ronda)&&V.key!==x.key&&V.mv!==mvId&&sideOf(V.key)===sideOf(x.key)&&inCombat(V.key);
-      if(ally) postCond=()=>crearCond({n:'Arcoíris',r:4},x.key,cl,`${V.name} y ${charName(x.f)} combinan sus Voto`);
+    const cl=[]; const nc=condDeMov(m); if(nc&&(!nc.re||re)) postCond=()=>crearCond(nc,x.key,cl,m[1],m[5]);
+    if(/^Voto (Agua|Fuego|Planta)$/.test(m[1])){ const V=CB.voto; const ally=V&&num(V.ronda)===num(CB.ronda)&&V.key!==x.key&&V.mv!==mvId&&aliados(V.key,x.key)&&inCombat(V.key);
+      if(ally) postCond=()=>crearCond({n:'Arcoíris',r:4},x.key,cl,`${V.name} y ${charName(x.f)} combinan sus Voto`,m[5]);
       cbWrite({voto:ally?null:{ronda:num(CB.ronda),key:x.key,mv:mvId,name:charName(x.f)}}); }
     if(postCond) steps.push({k:'ok',t:'',cl});
     if(mode==='none'||!tkeys.length){
@@ -1713,12 +1728,16 @@ function cbClick(b){
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; }
-  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null},true); render(); }
+  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{}},true); render(); }
   else if(act==='round'){ $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
   else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; }
   else if(act==='roundYes'){ b.disabled=true; endRound(); }
   else if(act==='pick'){ const mv=b.dataset.mv; const x=combatant(CBU.atk); const m=atkById.get(mv); if(!x||!m) return; CBU.mv=mv; CBU.targets=[];
+    /* movimientos a aliados: se marcan los del mismo Equipo, pero se pueden quitar (distancias en el mapa) */
+    const al=combatants().filter(y=>y.key!==x.key&&aliados(y.key,x.key)).map(y=>y.key);
+    if(['Aliados','Equipo'].includes(m[9])) CBU.targets=al; else if(m[9]==='Aliado'&&al.length===1) CBU.targets=al;
     if(targetMode(m)==='none'){ CBU.picking=false; doAttack(); return; } CBU.picking=true; renderSheet(); }
+  else if(act==='hab'){ activarHab(); }
   else if(act==='cancel'){ CBU.picking=false; CBU.targets=[]; renderSheet(); }
   else if(act==='roll'){ doAttack(); }
   else if(act==='colno'){ CBU.colFor=''; renderSheet(); }
@@ -1754,6 +1773,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.dexj){ setVis([e.target.dataset.id],e.target.checked,e.target.dataset.dexj); return; }
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
+  if(e.target.dataset.cbeq){ const k=e.target.dataset.cbeq; const c=combatant(k); if(c&&canGlove(c)){ const n=num(e.target.value); cbWrite({eq:{[k]:n||null}}); } renderSheet(); return; }
   if(e.target.dataset.cond&&isMaster()){ const cls=e.target.dataset.cond, n=e.target.value; setCond(cls,n,n?condDur(n):undefined,''); logRoll('Condición',n?`El Master define ${COND_CLS[cls].toLowerCase()}: ${n} (${condDur(n)} rondas).`:`El Master quita ${COND_CLS[cls].toLowerCase()==='clima'?'el clima':COND_CLS[cls].toLowerCase()==='campo'?'el campo':'el entorno'}.`,null); renderSheet(); return; }
   if(e.target.dataset.condr&&isMaster()){ const cls=e.target.dataset.condr; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,r:clamp(num(e.target.value),1,20)}}}); renderSheet(); return; }
   if(e.target.dataset.condby&&isMaster()){ const cls=e.target.dataset.condby; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,by:e.target.value}}}); renderSheet(); return; }
@@ -1906,7 +1926,7 @@ async function boot(){
   setStatus('Conectado');
   if(window.__PRUEBAS) showBanner('Versión de pruebas en Claude: aquí se revisan los cambios antes de pasarlos a la app de la mesa. Las fichas de esta versión no son las de la web.');
   db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
-  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null;
+  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda); CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{};
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
   db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   db.collection('tiradas').onSnapshot(snap=>{ const m=snapMap(snap); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
