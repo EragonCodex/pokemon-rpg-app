@@ -48,9 +48,9 @@ const nivelGrupo = n=>{ const m=/^(.*) (I{1,3})(?: \(.*\))?$/.exec(n); return m?
 function rasgosDe(f){ if(!f||f.tipo!=='E') return []; return [...(f.defectos||[]),...(f.meritos||[])].filter(n=>RASGOS.has(n)); }
 function rasgoFxDe(f){ const s=new Set(rasgosDe(f)); return RFX.filter(x=>s.has(x[0])).map(x=>rasgoFxOp(f,x)); }
 /* Méritos y Defectos que piden elegir algo: tipo, sentido, Pokémon del equipo, clima, Talento u objeto */
-const SENTIDOS=['Vista','Oído','Olfato','Gusto','Tacto'], CLIMAS_SENS=['Sol Intenso','Llovizna','Granizo','Tormenta de Arena'];
-const RASGO_OP={'Sentido Agudo':['sentido','Sentido'],'Rito':['talento','Tirada del ritual'],'Estudioso de un Tipo':['tipo','Tipo'],'Vínculo Pokémon':['pokemon','Pokémon'],'Dominio Elemental':['tipoPropio','Tipo propio'],
-  'Alergia a un Tipo I':['tipo','Tipo'],'Alergia a un Tipo II':['tipo','Tipo'],'Alergia a un Tipo III':['tipo','Tipo'],'Sensible al Clima':['clima','Clima'],
+const SENTIDOS=['Vista','Oído','Olfato','Gusto','Tacto'];
+const RASGO_OP={'Sentido Agudo':['sentido','Sentido'],'Rito':['talento','Tirada del ritual'],'Estudioso de un Tipo':['tipo','Tipo'],'Vínculo Pokémon':['pokemon','Pokémon'],'Dominio Elemental':['tipo','Tipo'],
+  'Alergia a un Tipo I':['tipo','Tipo'],'Alergia a un Tipo II':['tipo','Tipo'],'Alergia a un Tipo III':['tipo','Tipo'],'Sensible al Clima':['clima','Clima'],'Sensible al Campo':['campo','Campo'],'Afinidad al Clima':['clima','Clima'],'Afinidad al Campo':['campo','Campo'],
   'Fobia I':['texto','Miedo a'],'Fobia II':['texto','Miedo a'],'Fobia III':['texto','Miedo a'],'Odio':['texto','Odia a']};
 function rasgoOp(f,n){ for(const k of ['meritos','defectos']){ const arr=f[k]||[]; for(let i=0;i<arr.length;i++) if(arr[i]===n){ const v=(((f.rasgoOp||{})[k])||[])[i]; if(v) return v; } } return ''; }
 function rasgoOpLabel(f,n,v){ const k=(RASGO_OP[n]||[])[0]; if(k==='talento') return TAL_LABEL(v);
@@ -59,6 +59,11 @@ function rasgoFxOp(f,x){ if(!RASGO_OP[x[0]]) return x; const v=rasgoOp(f,x[0]); 
   if(x[0]==='Rito'){ y[1]='tal:'+v; y[4]=`si hace su ritual antes de la tirada de ${TAL_LABEL(v)}`; }
   else y[4]=`${x[4]}: ${rasgoOpLabel(f,x[0],v)}`;
   return y; }
+/* Entrenador de un Pokémon (su ficha, o la copia del combate si es del Master) */
+function entrenadorDe(f,K){ let src='jug',uid=null; if(K){ [src,uid]=K.split('|'); uid=uid||null; } else if(S.open){ src=S.open.src; uid=S.open.uid; }
+  if(src!=='jug'&&src!=='master') return null;
+  const x=poolOf(src,uid).find(y=>y.id===f.entrenador); if(x) return x.f;
+  return src==='master'?(CB.snaps||{})['master||'+f.entrenador]||null:null; }
 /* bono extra de las Órdenes de Comandar por Vínculo Pokémon y Dominio Elemental */
 function ordenExtra(f,y){ let b=0; const why=[];
   if(y&&rasgosDe(f).includes('Vínculo Pokémon')&&rasgoOp(f,'Vínculo Pokémon')===y.id){ b+=2; why.push('Vínculo Pokémon +2'); }
@@ -150,7 +155,9 @@ function estEffects(f,key){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:
     else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); }
     else if(n==='Dominio Elemental'&&/^CD/.test(String(x[5]))){ const t=deacc(rasgoOp(f,n)); if(t){ o.cdOwn[t]=num(o.cdOwn[t])+1; o.resist.push(`${n}: +1 CD a sus movimientos de tipo ${t}`); } } }
   /* climas, campos y entornos: solo en combate */
-  const K=key||condKeyOf(f); if(K&&inCombat(K)){ o.cond=condPara(f,K); condAplica(o,f,o.cond); condEquipo(o,f,o.cond); }
+  const K=key||condKeyOf(f);
+  if(f.tipo==='P'&&f.entrenador){ const tr=entrenadorDe(f,K); const t=tr&&rasgosDe(tr).includes('Dominio Elemental')?deacc(rasgoOp(tr,'Dominio Elemental')):''; if(t){ o.cdOwn[t]=num(o.cdOwn[t])+1; o.resist.push(`Dominio Elemental de ${charName(tr)}: +1 CD a sus movimientos de tipo ${t}`); } }
+  if(K&&inCombat(K)){ o.cond=condPara(f,K); condAplica(o,f,o.cond); condEquipo(o,f,o.cond); }
   habAplica(o,f,K&&inCombat(K)?K:'');
   return o; }
 
@@ -827,7 +834,8 @@ function rasgoOpHTML(f,kind,i,n){ const [k,lbl]=RASGO_OP[n]; const v=(((f.rasgoO
   if(k==='tipo') ctl=sel(D.types.map(t=>[t,t]));
   else if(k==='tipoPropio'){ const ts=tiposDe(f); ctl=ts.length?sel(ts.map(t=>[t,t])):'<span class="note">Primero elige los tipos del Entrenador</span>'; }
   else if(k==='sentido') ctl=sel(SENTIDOS.map(t=>[t,t]));
-  else if(k==='clima') ctl=sel(CLIMAS_SENS.map(t=>[t,t]));
+  else if(k==='clima') ctl=sel(condsDe('clima').map(r=>[r[0],r[0]]));
+  else if(k==='campo') ctl=sel(condsDe('campo').map(r=>[r[0],r[0]]));
   else if(k==='talento') ctl=sel(ALL_TAL.map(t=>[t,TAL_LABEL(t)]));
   else if(k==='pokemon'){ const team=S.open?teamOf(S.open):[]; ctl=team.length?sel(team.map(x=>[x.id,charName(x.f)])):'<span class="note">Sin Pokémon en su equipo</span>'; }
   else ctl=`<input data-f="${path}" value="${esc(v)}" list="dl-tipos" placeholder="Un tipo, una especie, un Team…" ${dis} aria-label="${esc(lbl)}">`;
@@ -969,7 +977,8 @@ function rpConsultas(f){ if(!f||f.tipo!=='E') return []; const keys=['all','attr
   return rasgoFxDe(f).map((r,i)=>({r,id:r[0]+'|'+r[1]+'|'+r[4],auto:rasgoOpAuto(f,r[0])})).filter(x=>!x.r[3]&&keys.includes(x.r[1])&&num(x.r[2])!==0); }
 /* ¿La condición de la subopción se cumple ahora? (clima activo, o alguien de ese tipo en el combate) */
 function rasgoOpAuto(f,n){ const v=rasgoOp(f,n); if(!v) return false; const K=condKeyOf(f); if(!K||!inCombat(K)) return false;
-  if(n==='Sensible al Clima') return (((CB.cond||{}).clima||{}).n||'')===v&&!anulaClima();
+  if(/^(Sensible|Afinidad) al Clima$/.test(n)) return (((CB.cond||{}).clima||{}).n||'')===v&&!anulaClima();
+  if(/^(Sensible|Afinidad) al Campo$/.test(n)) return (((CB.cond||{}).campo||{}).n||'')===v;
   if(/^Alergia a un Tipo/.test(n)) return combatants().some(y=>y.key!==K&&tiposDe(y.f).includes(v));
   return false; }
 function renderRP(){
