@@ -301,13 +301,14 @@ function condInmune(f,name){ const em=estEffects(f); const P=em.cond; if(!P) ret
   if(e&&e[2]==='Fisico'&&P.campo==='Campo de Niebla'&&P.enSuelo) return 'Campo de Niebla';
   return ''; }
 /* Efecto del clima o del campo en un movimiento concreto (Precisión, CD, bloqueo) */
-function condMov(m,P){ const o={cd:0,prec:0,x2:false,block:'',notes:[]}; if(!P) return o; const t=String(m[11]||''); let r;
+function condMov(m,P){ const o={cd:0,prec:0,prio:0,x2:false,block:'',notes:[]}; if(!P) return o; const t=String(m[11]||''); let r;
   const act=n=>[P.climaMov,P.campo,P.entorno].includes(n.trim());
   if(P.campo==='Alboroto'&&hasCat(m,'Sonido')){ o.cd+=1; o.notes.push('Alboroto +1 CD'); }
   if((r=/Con ([^,;]+?), aumenta su Precisi[oó]n en (\d+)\s*%; con otro clima, la reduce en (\d+)\s*%/.exec(t))){ if(act(r[1])){ o.prec+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} % Precisión`); } else if(P.climaMov){ o.prec-=Number(r[3]); o.notes.push(`${P.climaMov} −${r[3]} % Precisión`); } }
   if((r=/Con ([^,;]+?), aumenta la Clase de Dado \(CD\) en (\d+)/.exec(t))&&act(r[1])){ o.cd+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} CD`); }
   if((r=/Con ([^;]+?), reduce la Clase de Dado \(CD\) en (\d+)/.exec(t))&&r[1].split(/,\s*|\s+o\s+/).some(act)){ o.cd-=Number(r[2]); o.notes.push(`${P.climaMov} −${r[2]} CD`); }
   if((r=/Con ([^,;]+?), \+(\d+) CD; con otro (clima|Campo), −(\d+) CD/.exec(t))){ if(act(r[1])){ o.cd+=Number(r[2]); o.notes.push(`${r[1]} +${r[2]} CD`); } else if(r[3]==='clima'?P.climaMov:P.campo){ o.cd-=Number(r[4]); o.notes.push(`${r[3]==='clima'?P.climaMov:P.campo} −${r[4]} CD`); } }
+  if((r=/Con ([^,;]+?), gana Prioridad \+(\d+)/.exec(t))&&act(r[1])){ o.prio+=Number(r[2]); o.notes.push(`${r[1]}: Prioridad +${r[2]}`); }
   if((r=/El da[ñn]o es doble con ([^.]+)\./.exec(t))&&act(r[1])){ o.x2=true; o.notes.push(`${r[1]}: daño doble`); }
   const C=(CB.cond||{}).clima; if(C&&C.anula&&m[2]===C.anula&&P.clima) o.block=`${C.n} anula los movimientos de tipo ${C.anula}`;
   if(P.campo==='Campo Psíquico'&&num(m[8])>0) o.block='Campo Psíquico bloquea los movimientos con Prioridad';
@@ -402,7 +403,9 @@ function moveInfo(f,id,c){
   const ak = short(m[4]);
   const cm = condMov(m, c.em&&c.em.cond);
   const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(tipo)])+cm.cd+hm.cd,1,24):0;
-  return {m, stab, prec:clamp(prec+cm.prec+hm.prec,0,100), dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak, cm, hm, tipo, prio:hm.prio};
+  const prio = hm.prio+cm.prio;
+  if(prio>0&&!cm.block&&c.em&&c.em.cond&&c.em.cond.campo==='Campo Psíquico') cm.block='Campo Psíquico bloquea los movimientos con Prioridad';
+  return {m, stab, prec:clamp(prec+cm.prec+hm.prec,0,100), dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak, cm, hm, tipo, prio};
 }
 /* movimientos que alcanzan a un tipo que sería inmune (Luz Devastadora alcanza a los tipo Hada) */
 const IGNORA_INMUNIDAD={M0832:['Hada']};
@@ -1528,10 +1531,11 @@ function cbOrderHTML(){
   h+=cbCondHTML();
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
-    return `<div class="r cbrow"><div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
+    const rsOn=CBU.rs&&CBU.rs.k===x.key;
+    return `<div class="r cbrow${canGlove(x)?' rsable':''}">${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}</div>
-      <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div></div>`; }).join('')+`</div>
+      <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
     <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones, quita los estados superados y descuenta las rondas del clima, el campo y el entorno. El Master los elige a mano; los jugadores los crean con un movimiento o una Habilidad.</p>`;
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
   return h+`</div>`;
@@ -1564,6 +1568,24 @@ function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P) return false; co
     if(r<=10) lines.push({k:'ok',t:`${name}: Miasma, d100 [${r}] ≤ 10 → no queda Envenenado.`});
     else { const t=giveEstado(f,'Envenenado',{rank:(C.clima&&C.clima.rk)||'Starter',by:''},false); ch=true; lines.push({k:'ko',t:`${name}: Miasma, d100 [${r}] > 10 → ${t}.`}); } }
   return ch; }
+/* Curar o Dañar a mano con un daño residual (trampas, efectos que la app no calcula) */
+function rsPanelHTML(x){ const R=CBU.rs; const dmg=R.m==='dmg'; const rk=R.r||x.f.rango||'Starter';
+  return `<div class="rspanel"><label class="f">Residual de Rango<select data-rs="r">${RANGOS.map(n=>`<option value="${esc(n)}"${n===rk?' selected':''}>${esc(n)} · ${dice(ri(n)+2)}</option>`).join('')}</select></label>
+    ${dmg?`<label class="f">Tipo del daño<select data-rs="t"><option value="">Sin tipo</option>${D.types.map(t=>`<option value="${esc(t)}"${t===R.t?' selected':''}>${esc(t)}</option>`).join('')}</select></label>`:''}
+    <div class="row" style="align-self:end"><button class="btn sm pri" data-cb="rsGo">${dmg?'Tirar daño':'Tirar curación'}</button><button class="btn sm" data-cb="rsNo">Cerrar</button></div>
+    ${R.msg?`<div class="note rsmsg">${esc(R.msg)}</div>`:''}</div>`; }
+function rsGo(){ const R=CBU.rs; if(!R) return; const x=combatant(R.k); if(!x||!canGlove(x)) return; const rk=R.r||x.f.rango||'Starter'; const dmg=R.m==='dmg';
+  const c=calc(x.f); let idx=ri(rk)+2; const ex=[];
+  if(dmg&&R.t){ const e=effectiveness(R.t,c.tipos,'');
+    if(e.immune){ R.msg=`${charName(x.f)} es inmune al tipo ${R.t}: no recibe daño.`; logRoll(charName(x.f),`Daño residual ${R.t}: inmune`,0); renderSheet(); return; }
+    if(e.steps){ idx+=e.steps; ex.push(e.steps>0?`súper eficaz +${e.steps}`:`poco eficaz ${e.steps}`); }
+    const rv=num(c.em.cdRecv[R.t]); if(rv){ idx+=rv; ex.push(`${rv>0?'+':''}${rv} CD recibida`); }
+    if(R.t==='Roca'&&((CB.cond||{}).clima||{}).n==='Tormenta de Arena'){ idx+=1; ex.push('Tormenta de Arena +1 Rango'); } }
+  if(dmg){ const mur=(c.em.hk||[]).find(h=>h.k==='sinDañoIndirecto'); if(mur){ R.msg=`${mur.nm}: ${charName(x.f)} no recibe daño residual.`; renderSheet(); return; } }
+  const dd=dice(clamp(idx,1,24)), rl=rollDice(dd); let v=rl.t;
+  mutate(x.key,f=>{ if(dmg) f.dano=num(f.dano)+v; else { v=Math.min(v,num(f.dano)); f.dano=num(f.dano)-v; } });
+  R.msg=`${dmg?'Daño':'Curación'} residual ${rk}${R.t&&dmg?` de tipo ${R.t}`:''}: ${dd} [${rl.r.join(', ')}] = ${v}${ex.length?' · '+ex.join(', '):''}.`;
+  logRoll(charName(x.f),`${dmg?'Recibe':'Recupera'} ${v} PS · ${R.msg}`,v); renderSheet(); }
 async function endRound(){
   if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
   const cur=num(CB.ronda); const sb=window.__sb;
@@ -1894,6 +1916,9 @@ function cbClick(b){
     if(['Aliados','Equipo'].includes(m[9])) CBU.targets=al; else if(m[9]==='Aliado'&&al.length===1) CBU.targets=al;
     if(targetMode(m)==='none'){ CBU.picking=false; doAttack(); return; } CBU.picking=true; renderSheet(); }
   else if(act==='hab'){ activarHab(); }
+  else if(act==='rs'){ const k=b.dataset.k, mm=b.dataset.m; CBU.rs=CBU.rs&&CBU.rs.k===k&&CBU.rs.m===mm?null:{k,m:mm,r:'',t:'',msg:''}; renderSheet(); }
+  else if(act==='rsNo'){ CBU.rs=null; renderSheet(); }
+  else if(act==='rsGo'){ rsGo(); }
   else if(act==='cancel'){ CBU.picking=false; CBU.targets=[]; renderSheet(); }
   else if(act==='roll'){ doAttack(); }
   else if(act==='colno'){ CBU.colFor=''; renderSheet(); }
@@ -1929,6 +1954,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.dexj){ setVis([e.target.dataset.id],e.target.checked,e.target.dataset.dexj); return; }
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
+  if(e.target.dataset.rs&&CBU.rs){ CBU.rs[e.target.dataset.rs]=e.target.value; CBU.rs.msg=''; return; }
   if(e.target.dataset.cbeq){ const k=e.target.dataset.cbeq; const c=combatant(k); if(c&&canGlove(c)){ const n=num(e.target.value); cbWrite({eq:{[k]:n||null}}); } renderSheet(); return; }
   if(e.target.dataset.cond&&isMaster()){ const cls=e.target.dataset.cond, n=e.target.value; setCond(cls,n,n?condDur(n):undefined,''); logRoll('Condición',n?`El Master define ${COND_CLS[cls].toLowerCase()}: ${n} (${condDur(n)} rondas).`:`El Master quita ${COND_CLS[cls].toLowerCase()==='clima'?'el clima':COND_CLS[cls].toLowerCase()==='campo'?'el campo':'el entorno'}.`,null); renderSheet(); return; }
   if(e.target.dataset.condr&&isMaster()){ const cls=e.target.dataset.condr; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,r:clamp(num(e.target.value),1,20)}}}); renderSheet(); return; }
