@@ -133,7 +133,87 @@ function estEffects(f,key){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:
     else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); } }
   /* climas, campos y entornos: solo en combate */
   const K=key||condKeyOf(f); if(K&&inCombat(K)){ o.cond=condPara(f,K); condAplica(o,f,o.cond); condEquipo(o,f,o.cond); }
+  habAplica(o,f,K&&inCombat(K)?K:'');
   return o; }
+
+/* ---------- Habilidades en combate (Habilidades 1.3, hoja «Efectos en combate») ---------- */
+/* fila: [habilidad, n, activación, condición, alcance, clave, valor, prob, automatización, nota] */
+const HFX=new Map(); for(const r of (D.habFx||[])) if(r[8]==='Sí'||r[8]==='Botón'){ if(!HFX.has(r[0])) HFX.set(r[0],[]); HFX.get(r[0]).push(r); }
+const hval=v=>{ const n=Number(String(v??'').replace(/−/g,'-').replace(',','.').replace(/^×/,'').replace(/\s*%$/,'')); return Number.isFinite(n)?n:0; };
+const habOf=f=>f&&f.tipo==='P'&&f.estM!=='Mareado'?(f.habilidad||''):'';
+const habRowsOf=(f,acts)=>(HFX.get(habOf(f))||[]).filter(r=>!acts||acts.includes(r[2]));
+const PASIVA=['Siempre','Mientras se cumpla'];
+function habCondOk(c,f,key,x){ return !c||String(c).split('+').every(p=>habCond1(p,f,key,x||{})); }
+function habCond1(c,f,key,x){ let m;
+  if(c==='estado') return !!(f.estF||f.estM);
+  if((m=/^estado:(\w+)$/.exec(c))) return f.estF===m[1]||f.estM===m[1];
+  if(c==='ps<=1/3') return psFrac(f)<=1/3; if(c==='ps<1/2') return psFrac(f)<0.5; if(c==='psMax') return psFrac(f)>=1;
+  if((m=/^(clima|campo|entorno):(.+)$/.exec(c))){ if(!key||!inCombat(key)) return false; const P=condPara(f,key); return m[2]==='cualquiera'?!!P[m[1]]:P[m[1]]===m[2]; }
+  if(c==='ronda=1') return num(CB.ronda)<=1; if(c==='ronda<=5') return num(CB.ronda)<=5;
+  if((m=/^rival:(\w+)$/.exec(c))) return !!key&&combatants().some(y=>!aliados(y.key,key)&&(y.f.estF===m[1]||y.f.estM===m[1]));
+  if((m=/^blanco:(\w+)$/.exec(c))) return !!x.blanco&&(x.blanco.estF===m[1]||x.blanco.estM===m[1]);
+  if(c==='mov:contacto') return !!x.mov&&/^contacto/i.test(String(x.mov[10]));
+  if((m=/^mov:(.+)$/.exec(c))) return !!x.mov&&m[1].split('/').some(n=>deacc(n)===deacc(x.mov[1]));
+  if(c.startsWith('recibe:')){ const r=x.recibe; if(!r) return false; const q=c.slice(7);
+    if(q==='contacto') return /^contacto/i.test(String(r.mov[10])); if(q==='critico') return !!r.crit;
+    if((m=/^clase:(\w+)$/.exec(q))) return deacc(r.mov[3])===deacc(m[1]); if((m=/^cat:(\w+)$/.exec(q))) return hasCat(r.mov,m[1]);
+    if((m=/^tipo:(.+)$/.exec(q))) return m[1].split('/').some(t=>deacc(t)===deacc(r.tipo));
+    if(q==='mismoTipo') return tiposDe(f).includes(deacc(r.tipo)); return false; }
+  if(c==='debilitado') return !!x.ko; if(c==='cruza:ps<1/2') return !!x.cruza; if(c==='rivalBaja') return !!x.rivalBaja;
+  return false; }
+/* Filas pasivas que alcanzan a esta ficha (las suyas y las de otros combatientes según su Alcance) */
+function habPasivas(f,key){ const out=[];
+  for(const r of habRowsOf(f,PASIVA)) if(['Propio','Equipo','Todos'].includes(r[4])&&habCondOk(r[3],f,key,{})) out.push(r);
+  if(key) for(const y of combatants()){ if(y.key===key) continue; for(const r of habRowsOf(y.f,PASIVA)){ const a=r[4];
+      const ok=(a==='Aliados'||a==='Equipo')?aliados(y.key,key):a==='Rivales'?!aliados(y.key,key):(a==='Todos'||a==='Todos los demás');
+      if(ok&&habCondOk(r[3],y.f,y.key,{})) out.push(r); } }
+  return out; }
+const bestAttr=f=>{ const A=attrs(f)||{}; return ATTR.reduce((a,z)=>num(A[z])>num(A[a])?z:a,ATTR[0]); };
+function habAplica(o,f,key){
+  o.hk=[]; o.inmEst=new Map(); o.salvMul={}; o.residMod={};
+  for(const r of habPasivas(f,key)){ const k=r[5], v=r[6], nm=r[0]; let m;
+    const at=(a,val)=>{ o.attr[a]=(o.attr[a]||0)+val; (o.src[a] ||= []).push(nm); o.cn.push(`${nm} ${sg(val)} ${a}`); };
+    if((m=/^attr:(FUE|VIT|ENE|SAB|DES|CAR)$/.exec(k))) at(m[1],hval(v));
+    else if(k==='attr:max') at(bestAttr(f),hval(v));
+    else if(k==='evasion'){ o.esq+=hval(v)/100; o.tem+=hval(v)/100; o.cn.push(`${nm} ${sg(hval(v))} % Evasión`); }
+    else if(k==='prec'){ o.prec+=hval(v); o.cn.push(`${nm} ${sg(hval(v))} % Precisión`); }
+    else if(k==='ic'){ o.ic+=hval(v); o.cn.push(`${nm} +${hval(v)} IC`); }
+    else if(k==='vel'){ o.vel+=hval(v); }
+    else if((m=/^cdOwn:([^:→]+)$/.exec(k))&&!['todos','super','critico','conRE','siguiente','base<=6'].includes(m[1])){ const t=deacc(m[1]); o.cdOwn[t]=num(o.cdOwn[t])+hval(v); }
+    else if((m=/^cdRecv:([^:]+)$/.exec(k))&&!['todos','super'].includes(m[1])){ const t=deacc(m[1]); o.cdRecv[t]=num(o.cdRecv[t])+hval(v); }
+    else if((m=/^inmuneEst:(.+)$/.exec(k))) o.inmEst.set(m[1],nm);
+    else if((m=/^salv:(\w+)$/.exec(k))) o.salvMul[m[1]]=hval(v)||2;
+    else if((m=/^residual:(\w+)$/.exec(k))) o.residMod[m[1]]=String(v);
+    else o.hk.push({k,v:String(v),nm});
+  } }
+const hkOf=(em,re)=>((em&&em.hk)||[]).filter(h=>re.test(h.k));
+/* CD, Precisión, Prioridad, tipo y STAB que la Habilidad del atacante da a un movimiento */
+function habMov(m,em){
+  const o={tipo:m[2],cd:0,prec:0,prio:num(m[8]),stab:null,notes:[],golpea:[],ignEv:false,siempre:false,reMul:null,changed:false};
+  for(const h of hkOf(em,/^tipoMov:/)){ const [a,b]=h.k.slice(8).split('→'); const ok=a==='todos'||(a==='cat:Sonido'?hasCat(m,'Sonido'):deacc(a)===m[2]);
+    if(ok&&deacc(b)!==o.tipo){ o.tipo=deacc(b); o.changed=true; o.notes.push(`${h.nm}: pasa a ${b}`); } }
+  if(m[3]!=='Estado') for(const h of hkOf(em,/^cdOwn:/)){ const q=h.k.slice(6), v=hval(h.v); let ok=false;
+    if(q==='todos') ok=true; else if(q==='cat:Contacto') ok=/^contacto/i.test(String(m[10])); else if(q.startsWith('cat:')) ok=hasCat(m,q.slice(4));
+    else if(q.startsWith('clase:')) ok=deacc(m[3])===deacc(q.slice(6)); else if(q==='base<=6') ok=typeof m[7]==='number'&&m[7]<=6;
+    else if(q==='conRE') ok=typeof m[12]==='number'; else if(q.includes('→')) ok=o.changed&&deacc(q.split('→')[1])===o.tipo;
+    if(ok){ o.cd+=v; o.notes.push(`${h.nm} ${sg(v)} CD`); } }
+  for(const h of hkOf(em,/^prec:clase:/)) if(deacc(m[3])===deacc(h.k.split(':')[2])){ o.prec+=hval(h.v); o.notes.push(`${h.nm} ${sg(hval(h.v))} % Precisión`); }
+  for(const h of hkOf(em,/^prioridad:/)){ const q=h.k.slice(10); const ok=q==='todos'||(q==='Estado'?m[3]==='Estado':/^curaci/.test(q)?hasCat(m,'Curacion'):deacc(q)===o.tipo); if(ok) o.prio+=hval(h.v); }
+  for(const h of hkOf(em,/^stab$/)) o.stab=hval(h.v);
+  for(const h of hkOf(em,/^golpea:/)){ const [a,b]=h.k.slice(7).split('→'); if(a.split(',').some(t=>deacc(t)===o.tipo)) o.golpea.push(deacc(b)); }
+  o.ignEv=hkOf(em,/^ignoraEvasion$/).length>0; o.siempre=hkOf(em,/^siempreGolpea$/).length>0;
+  for(const h of hkOf(em,/^re$/)) o.reMul=hval(h.v)===0?0:2;
+  return o; }
+function bumpAttr(f,k,v){ f.attr ||= blankAttr(); f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b), b1=clamp(b0+v,-6,6); f.attr[k].b=b1; return b1-b0; }
+/* Cambia un atributo por una Habilidad (respeta «No le reducen» y Simple/Respondón) */
+function habAttr(f,k,v,why,riv){ if(k==='max') k=bestAttr(f); if(k==='azar') k=pick(ATTR);
+  const own=habRowsOf(f);
+  if(v<0&&own.some(r=>r[5]==='noBajaAttr:todos'||r[5]==='noBajaAttr:'+k)) return `${charName(f)}: ${habOf(f)} impide bajar ${k}`;
+  const ca=own.find(r=>r[5]==='cambiosAttr'); if(ca) v=ca[6]==='×2'?v*2:-v;
+  const d=bumpAttr(f,k,v); let t=`${charName(f)} ${d?sg(d):'±0'} ${k} (${why})`;
+  if(riv&&d<0) for(const r of habRowsOf(f,['Al cambiar atributos'])) if(r[3]==='rivalBaja'){ const mm=/^attr:(\w+)$/.exec(r[5]); if(mm){ const d2=bumpAttr(f,mm[1],hval(r[6])); t+=` · ${r[0]}: ${sg(d2)} ${mm[1]}`; } }
+  return t; }
+function rollResid(rank){ const dd=dice(clamp(ri(rank||'Starter')+2,1,24)); const rl=rollDice(dd); return {t:rl.t,txt:`${dd} [${rl.r.join(', ')}]`}; }
 
 /* ---------- climas, campos y entornos (Condiciones de campo) ---------- */
 const COND_TIPO={'Tormenta de Arena':'Roca',Granizo:'Hielo',Llovizna:'Agua','Sol Intenso':'Fuego',Miasma:'Veneno',Plaga:'Bicho',Penumbra:'Siniestro',Ectoplasma:'Fantasma','Campo Eléctrico':'Electrico','Campo de Hierba':'Planta','Campo Psíquico':'Psiquico','Campo de Niebla':'Hada','Campo Magnético':'Acero',Alboroto:'Normal','Turbulencia Ancestral':'Dragon','Arena de Combate':'Lucha',Lodazal:'Tierra','Viento Afín':'Volador','Arcoíris':''};
@@ -255,8 +335,20 @@ const habNombre=h=>{ const r=D.hab.find(z=>z[0]===h); return r?r[0]:h; };
 function activarHab(){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='P') return; const h=x.f.habilidad; const ht=habMap.get(h)||'';
   const lines=[]; const nc=/^Cuando recibe/.test(ht)?null:condDeTexto(ht);
   if(x.f.estM==='Mareado') lines.push(`${h} está anulada por Mareado.`);
-  else if(nc) crearCond(nc,x.key,lines,`${charName(x.f)} (${h})`,x.f.rango);
-  else { if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion(); lines.push(`${charName(x.f)} activa ${h}: ${ht||'sin texto.'}`); }
+  else { if(nc) crearCond(nc,x.key,lines,`${charName(x.f)} (${h})`,x.f.rango);
+    const rows=habRowsOf(x.f,['Botón']).filter(r=>r[8]==='Botón');
+    const rivales=combatants().filter(y=>!aliados(y.key,x.key)), otros=combatants().filter(y=>y.key!==x.key), alis=combatants().filter(y=>y.key!==x.key&&aliados(y.key,x.key));
+    for(const r of rows){ const k=r[5], v=hval(r[6]); let mm;
+      if((mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(k))){ let a=mm[1];
+        if(mm[2]){ const rv=rivales[0]; const A=rv?calc(rv.f).A:null; a=A&&A.VIT<A.SAB?mm[1]:mm[2]; }
+        const dest=r[4]==='Rivales'?rivales:r[4]==='Todos los demás'?otros:r[4]==='Aliados'?alis:r[4]==='Equipo'?[x,...alis]:[x];
+        for(const y of dest){ let n=''; mutate(y.key,f=>{ n=habAttr(f,a,v,h,!aliados(y.key,x.key)); }); if(n) lines.push(n); }
+        if(!dest.length) lines.push(`${h}: no hay a quién afectar.`); }
+      else if(k==='curaPS'&&r[4]==='Aliado'){ const best=alis.map(y=>({y,c:calc(y.f)})).sort((a,b)=>a.c.act/a.c.ps-b.c.act/b.c.ps)[0];
+        if(best){ const val=num(calc(x.f).A.CAR); mutate(best.y.key,f=>{ f.dano=Math.max(0,num(f.dano)-val); }); lines.push(`${charName(best.y.f)} recupera ${val} PS (${h}).`); } else lines.push(`${h}: no hay aliados en su Equipo.`); }
+      else if(k==='nota'||k==='evasion') lines.push(`${h}: ${r[9]||ht}`); }
+    if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion();
+    if(!lines.length) lines.push(`${charName(x.f)} activa ${h}: ${ht||'sin texto.'}`); }
   CBU.habMsg={k:x.key,lines}; logRoll(charName(x.f),`Habilidad ${h}: ${lines.join(' ')}`,null); renderSheet(); }
 /* Predicción: Castform cambia de forma según el clima */
 function prediccion(){ if(!S.canWrite) return; const cl=((CB.cond||{}).clima||{}).n||''; const clima=anulaClima()?'':cl;
@@ -282,14 +374,16 @@ function cbTint(){ const b=document.body; const C=CB.cond||{}; const n=S.view===
   b.classList.toggle('cb-tint',!!n&&!!COND_TIPO[n]); b.classList.toggle('cb-rainbow',n==='Arcoíris');
   if(n&&COND_TIPO[n]) b.style.setProperty('--cb-tint','#'+(TYPE_BG[COND_TIPO[n]]||'CCCCCC')); else b.style.removeProperty('--cb-tint'); }
 function tiposDe(f){ if(f.tipo==='E') return (f.tipos||[]).filter(Boolean); const dx=dexById.get(f.especie); return dx?dexTypes(dx):[]; }
+function hpOf(f,A0){ A0=A0||attrs(f)||{FUE:0,VIT:0,ENE:0,SAB:0,DES:0,CAR:0}; const dx=f.tipo==='P'?dexById.get(f.especie):null;
+  if(f.tipo==='E') return Math.ceil((0.8*hpBase(f.rango)+1.5*(A0.VIT+A0.CAR))*(1+rasgoAuto(f,'ps%').v/100));
+  // Megaevolución: la Vida usa el HP Base de un Rango más (tope Legend); los atributos no cambian
+  return dx?Math.ceil(hpBase(dx[5]==='Mega'&&ri(f.rango)>=0?RANGOS[Math.min(RANGOS.length-1,ri(f.rango)+1)]:f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0; }
+const psFrac=f=>{ const p=hpOf(f); return p?clamp((p-num(f.dano))/p,0,1):1; };
 function calc(f){
   const A0=attrs(f)||{FUE:0,VIT:0,ENE:0,SAB:0,DES:0,CAR:0};
   const em=estEffects(f); const A={...A0}; for(const [k,v] of Object.entries(em.attr)) A[k]+=v;
   const dx=f.tipo==='P'?dexById.get(f.especie):null;
-  let ps;
-  if(f.tipo==='E') ps=Math.ceil((0.8*hpBase(f.rango)+1.5*(A0.VIT+A0.CAR))*(1+rasgoAuto(f,'ps%').v/100));
-  // Megaevolución: la Vida usa el HP Base de un Rango más (tope Legend); los atributos no cambian
-  else ps=dx?Math.ceil(hpBase(dx[5]==='Mega'&&ri(f.rango)>=0?RANGOS[Math.min(RANGOS.length-1,ri(f.rango)+1)]:f.rango)+(A0.VIT+A0.CAR)*(D.etapa[dx[5]]??1)):0;
+  const ps=hpOf(f,A0);
   const base = f.tipo==='E'?25:(dx?num(dx[8])||25:25);
   const vel = clamp(base+num(D.speed[f.velMod||'Normal'])+rasgoAuto(f,'vel').v+num(em.vel),10,60);
   const ev=(c,a,x)=>clamp(1-0.15*num(c)+0.15*Math.floor(a/2)+0.15*num(f.bEv)+x,0.2,1);
@@ -301,19 +395,20 @@ function calc(f){
 const dice = idx=>D.dados[clamp(idx,1,24)-1];
 function moveInfo(f,id,c){
   const m=atkById.get(id); if(!m) return null;
-  const stab = c.tipos.includes(m[2])?1:0;
+  const hm = habMov(m, c.em); const tipo = hm.tipo;
+  const stab = c.tipos.includes(tipo)?(hm.stab??1):0;
   const prec = clamp(clamp(75+5*(num(m[6])+num(f.prec)),30,100)+(c.em?c.em.prec:0),0,100);
   const isNum = typeof m[7]==='number' && m[7]>0;
   const ak = short(m[4]);
   const cm = condMov(m, c.em&&c.em.cond);
-  const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(m[2])])+cm.cd,1,24):0;
-  return {m, stab, prec:clamp(prec+cm.prec,0,100), dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak, cm};
+  const idx = isNum? clamp(m[7]+stab+num(c.em&&c.em.cdOwn[deacc(tipo)])+cm.cd+hm.cd,1,24):0;
+  return {m, stab, prec:clamp(prec+cm.prec+hm.prec,0,100), dice: isNum?dice(idx):'-', idx, atr: isNum? (c.A[ak]??0):null, ak, cm, hm, tipo, prio:hm.prio};
 }
 /* movimientos que alcanzan a un tipo que sería inmune (Luz Devastadora alcanza a los tipo Hada) */
 const IGNORA_INMUNIDAD={M0832:['Hada']};
-function effectiveness(mtype, defTypes, mvId){
+function effectiveness(mtype, defTypes, mvId, extra){
   const row=D.chart[mtype]; if(!row) return {steps:0,immune:false};
-  let s=0, imm=false; const ign=IGNORA_INMUNIDAD[mvId]||[];
+  let s=0, imm=false; const ign=[...(IGNORA_INMUNIDAD[mvId]||[]),...(extra||[])];
   for(const t of defTypes){ const i=D.types.indexOf(t); if(i<0) continue; const v=row[i];
     if(v==='x0'){ if(!ign.includes(t)) imm=true; } else if(typeof v==='number') s+=v; }
   return {steps:s, immune:imm};
@@ -1360,8 +1455,9 @@ function attackInfo(x,mv){
   let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
   if(reR!==null&&c.em.cond&&c.em.cond.entorno==='Arcoíris'&&c.em.cond.aliado) reR=Math.min(1,reR*2); /* Arcoíris duplica el Rango Extra del equipo */
+  if(reR!==null&&mi.hm.reMul!==null) reR=Math.min(1,reR*mi.hm.reMul); /* Dicha ×2, Potencia Bruta 0 */
   if(c.em.noCrit){ critR=0; if(reR!==null) reR=0; }
-  return {f,c,mi,n,rec,pen,prec,ic,critR,reR};
+  return {x,f,c,mi,n,rec,pen,prec,ic,critR,reR};
 }
 
 /* ---------- efectos automáticos de los movimientos ---------- */
@@ -1397,6 +1493,7 @@ function giveEstado(f,name,ctx,force){
   const cls=e[2]==='Fisico'?'F':'M', field=cls==='F'?'estF':'estM';
   if(estImmune(f,name)) return `inmune a ${name}`;
   const ci=condInmune(f,name); if(ci) return `${ci}: no puede quedar ${name}`;
+  const ih=estEffects(f).inmEst; const hi=ih&&(ih.get('todos')||ih.get(name)); if(hi) return `${hi}: no puede quedar ${name}`;
   if(f[field]&&!force) return f[field]===name?`ya estaba ${name}`:`ya tiene ${f[field]}, no se aplica ${name}`;
   const prev=f[field]; f[field]=name; setEstFx(f,cls,{r:ctx.rank,by:ctx.by});
   return prev&&prev!==name?`${name} (reemplaza a ${prev})`:name;
@@ -1409,8 +1506,14 @@ function applyOps(f,ops,role,ctx){
     if(op.ch==='re'&&!ctx.re) continue;
     if(op.k==='est'){ const n=op.rand?pick(op.names):op.names[0]; const t=giveEstado(f,n,ctx,false); if(t) notes.push(t); }
     else if(op.k==='attr'){ const at={...op.at}; if(at.__rand){ at[pick(ATTR)]=(at[pick(ATTR)]||0)+at.__rand; delete at.__rand; }
-      f.attr ||= blankAttr();
-      for(const [k,v] of Object.entries(at)){ if(!ATTR.includes(k)) continue; f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b); const b1=clamp(b0+v,-6,6); f.attr[k].b=b1; if(b1!==b0) notes.push(`${b1-b0>0?'+':''}${b1-b0} ${k} (bono ${b1>0?'+':''}${b1})`); else notes.push(`${k} ya está en el tope (${b0>0?'+':''}${b0})`); } }
+      f.attr ||= blankAttr(); const own=role==='target'?habRowsOf(f):[]; const ca=own.find(r=>r[5]==='cambiosAttr');
+      for(let [k,v] of Object.entries(at)){ if(!ATTR.includes(k)) continue;
+        if(v<0&&own.some(r=>r[5]==='noBajaAttr:todos'||r[5]==='noBajaAttr:'+k)){ notes.push(`${habOf(f)} impide bajar ${k}`); continue; }
+        if(ca){ v=ca[6]==='×2'?v*2:-v; }
+        if(v<0&&role==='target'&&ctx.by&&ctx.tk&&ctx.by!==ctx.tk&&!aliados(ctx.by,ctx.tk)) ctx.rivalBaja=true;
+        f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b); const b1=clamp(b0+v,-6,6); f.attr[k].b=b1; if(b1!==b0) notes.push(`${b1-b0>0?'+':''}${b1-b0} ${k} (bono ${b1>0?'+':''}${b1})`); else notes.push(`${k} ya está en el tope (${b0>0?'+':''}${b0})`); }
+      if(ctx.rivalBaja&&!ctx.rbDone){ ctx.rbDone=true; for(const r of habRowsOf(f,['Al cambiar atributos'])) if(r[3]==='rivalBaja'){ const mm=/^attr:(\w+)$/.exec(r[5]); if(mm){ const d=bumpAttr(f,mm[1],hval(r[6])); notes.push(`${r[0]}: ${sg(d)} ${mm[1]}`); } } } }
+    else if(op.k==='prec'&&op.v<0&&role==='target'&&habRowsOf(f).some(r=>/^noBajaAttr:Precisi/.test(r[5]))){ notes.push(`${habOf(f)} impide bajar la Precisión`); }
     else if(op.k==='prec'){ const p0=num(f.prec), p1=clamp(p0+op.v,-6,6); f.prec=p1; notes.push(`Precisión ${p1-p0>0?'+':''}${(p1-p0)*5}% (mod ${p1>0?'+':''}${p1})`); }
     else if(op.k==='bev'){ const b0=num(f.bEv), b1=clamp(b0+op.v,-3,3); f.bEv=b1; notes.push(`Bono de Evasión ${b1>0?'+':''}${b1}`); }
   }
@@ -1433,6 +1536,15 @@ function cbOrderHTML(){
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
   return h+`</div>`;
 }
+/* Habilidades de fin de ronda (Impulso, Veleta, Mudar) y Pesadilla de los rivales */
+function habFinRonda(f,key,name,lines){ let ch=false;
+  for(const r of habRowsOf(f,['Fin de ronda'])){ if(!habCondOk(r[3],f,key,{})) continue; const k=r[5]; let mm;
+    if(r[7]&&!/^attr/.test(k)&&d(100)>hval(r[7])){ continue; }
+    if((mm=/^attr:(\w+)$/.exec(k))){ const n=habAttr(f,mm[1],hval(r[6]),r[0]); lines.push({k:'',t:n}); ch=true; }
+    else if(k==='liberaEst'&&(f.estF||f.estM)){ lines.push({k:'ok',t:`${name}: ${r[0]}, se libera de ${[f.estF,f.estM].filter(Boolean).join(' y ')}.`}); f.estF=''; f.estM=''; f.estFx={}; ch=true; } }
+  if(f.estM==='Adormilado') for(const y of combatants()){ if(y.key===key||aliados(y.key,key)) continue;
+    for(const r of habRowsOf(y.f,['Fin de ronda'])) if(r[5]==='pierdePS'&&r[4]==='Rivales'){ const rr=rollResid(y.f.rango); f.dano=num(f.dano)+rr.t; ch=true; lines.push({k:'ko',t:`${name}: ${r[0]} de ${charName(y.f)}, ${rr.txt} = ${rr.t} de daño.`}); } }
+  return ch; }
 /* Efectos de fin de ronda del clima y el campo sobre un Pokémon */
 function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P) return false; const T=tiposDe(f), h=P.h; let ch=false;
   /* el residual de la condición usa el Rango de quien la creó (mínimo si la puso el Master); las Habilidades usan el Rango propio */
@@ -1464,11 +1576,15 @@ async function endRound(){
       const fx={r:f.rango||'Starter',n:0,pr:0,...((f.estFx||{})[cls]||{})};
       if(estImmune(f,est)){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: es inmune a ${est} por su tipo; se quita.`}); continue; }
       if(e[4]==='-'||e[4]===''||e[4]==null){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: ${est} termina.`}); continue; }
-      const th=num(e[4])+num(e[5])*num(fx.n)+num((em.salv||{})[est]); /* + resistencias pasivas y condiciones */
+      const th=num(e[4])*(em.salvMul[est]||1)+num(e[5])*num(fx.n)+num((em.salv||{})[est]); /* + resistencias pasivas, condiciones y Habilidades */
       if(th>=100){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: su Salvación de ${est} llegó a ${th}; se libera sin residual.`}); continue; }
       if(/Residual/i.test(e[3])){ const poison=est==='Envenenado'; const up=num(em.resid[est]); const idx=clamp(ri(fx.r)+(poison?1+num(fx.pr):2)+up,1,24); const dd=dice(idx); const rl=rollDice(dd);
-        f.dano=num(f.dano)+rl.t; changed=true;
-        lines.push({k:'ko',t:`${name}: residual de ${est} (${fx.r}${poison?`, ronda ${num(fx.pr)+1}`:''}${up?`, +${up} Rango por ${em.cond.clima}`:''}) ${dd} [${rl.r.join(', ')}] = ${rl.t} de daño.`});
+        const rm=em.residMod[est], mur=(em.hk||[]).find(h=>h.k==='sinDañoIndirecto'); let rt=rl.t, why='';
+        if(rm==='×0,5'){ rt=Math.floor(rt/2); why=` (mitad por ${habOf(f)})`; }
+        if(rm==='cura'){ f.dano=Math.max(0,num(f.dano)-rt); changed=true; lines.push({k:'ok',t:`${name}: ${habOf(f)}, el residual de ${est} lo cura ${dd} [${rl.r.join(', ')}] = ${rt} PS.`}); }
+        else if(mur){ changed=true; lines.push({k:'ok',t:`${name}: ${mur.nm}, no recibe el residual de ${est}.`}); }
+        else { f.dano=num(f.dano)+rt; changed=true;
+        lines.push({k:'ko',t:`${name}: residual de ${est} (${fx.r}${poison?`, ronda ${num(fx.pr)+1}`:''}${up?`, +${up} Rango por ${em.cond.clima}`:''}) ${dd} [${rl.r.join(', ')}] = ${rt} de daño${why}.`}); }
         const hierba=((CB.cond||{}).campo||{}).n==='Campo de Hierba';
         if(est==='Drenado'&&fx.by&&fx.by!==x.key&&inCombat(fx.by)) heals.push({key:fx.by,val:hierba?rl.t*2:rl.t,from:name+(hierba?' (doble por Campo de Hierba)':'')});
         if(poison) fx.pr=num(fx.pr)+1; }
@@ -1478,6 +1594,7 @@ async function endRound(){
       else { fx.n=num(fx.n)+1; f.estFx={...(f.estFx||{}),[cls]:fx}; lines.push({k:'',t:`${name}: Salvación de ${est} d100 [${r}] > ${th} → sigue (próxima: ${Math.min(100,th+num(e[5]))}).`}); }
       changed=true; }
     if(condFinRonda(f,em,name,lines)) changed=true;
+    if(habFinRonda(f,x.key,name,lines)) changed=true;
     if(f.tipo==='P'&&f.habilidad==='Mutapetito'){ const dx=dexById.get(f.especie); const alt=formasDe(dx).find(r=>/Saciada|Voraz/i.test(r[2]));
       if(alt){ f.especie=alt[0]; changed=true; lines.push({k:'',t:`${name}: Mutapetito, pasa a ${alt[2]}.`}); } }
     if(changed) saveAny(x,f);
@@ -1508,7 +1625,7 @@ function cbAttackHTML(){
     h+=`<div class="mvrow${on?' on':''}"><div class="mvhead"><button class="mvname" data-cb="pick" data-mv="${id}" title="Atacar con ${esc(m[1])}">${esc(m[1])}</button>
         <label class="mini" title="Bonus a la Clase de Dado">CD <input type="number" data-cbf="bonus" data-mv="${id}" value="${num(CBU.bon[id])}" aria-label="Bonus CD de ${esc(m[1])}"></label>
         <label class="mini" title="Repeticiones seguidas">Rep. <input type="number" min="0" data-cbf="rep" data-mv="${id}" value="${ai.n}" aria-label="Repeticiones de ${esc(m[1])}"></label></div>
-      <div class="mvdata">${chip(m[2])} ${claseChip(m[3])} <span>Prec <b>${ai.prec}%</b>${ai.pen?` <span class="ko">(−${ai.pen})</span>`:''}</span><span>CD <b>${ai.mi.dice==='-'?'—':ai.mi.dice}</b></span><span>Prio <b>${num(m[8])>0?'+':''}${num(m[8])}</b></span><span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?socialChip(m[14]):''}</div>
+      <div class="mvdata">${chip(ai.mi.tipo)} ${claseChip(m[3])} <span>Prec <b>${ai.prec}%</b>${ai.pen?` <span class="ko">(−${ai.pen})</span>`:''}</span><span>CD <b>${ai.mi.dice==='-'?'—':ai.mi.dice}</b></span><span>Prio <b>${ai.mi.prio>0?'+':''}${ai.mi.prio}</b></span><span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?socialChip(m[14]):''}</div>
       <div class="mvfx">${esc(m[11])}${ai.reR!==null?`<div class="re">R. Extra <b>${pct(ai.reR)}</b></div>`:''}</div>`;
     if(on){ const others=combatants().filter(y=>y.key!==x.key);
       h+=`<div class="mvpick">${mode==='none'?'':`<div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(charName(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div>`}
@@ -1520,24 +1637,46 @@ function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
   if(heal){ if(!isNum) return {heal:true,val:null,det:'Sin dado'}; const idx=clamp(m[7]+ai.mi.stab+num(bonus)+ai.mi.cm.cd,1,24); const dd=dice(idx); const rl=rollDice(dd); let v=rl.t+(ai.mi.atr||0); if(crit) v*=2; return {heal:true,val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr||0}${crit?' × 2 (crítico)':''}`}; }
-  const e=effectiveness(m[2],tc.tipos,m[0]);
+  const T=ai.mi.tipo, hm=ai.mi.hm, th=tc.em.hk||[], self=ai.x&&ai.x.key===target.key;
+  /* inmunidades por la Habilidad del objetivo */
+  if(!self){
+    const ab=th.find(h=>/^(inmuneTipo|absorbe):/.test(h.k)&&deacc(h.k.split(':')[1])===T);
+    if(ab&&!ab.k.startsWith('absorbe')) return {val:0,det:`Inmune (${ab.nm})`,immune:true};
+    if(ab) var absorbe=ab.nm;
+    const ic=th.find(h=>h.k.startsWith('inmuneCat:')&&hasCat(m,h.k.slice(10))); if(ic) return {val:0,det:`Inmune (${ic.nm})`,immune:true};
+    const ie=th.find(h=>h.k==='inmuneClase:Estado'); if(ie&&m[3]==='Estado') return {val:null,det:`Sin efecto (${ie.nm})`,immune:true};
+    const sa=th.find(h=>h.k==='sinDañoAliados'); if(sa&&ai.x&&aliados(ai.x.key,target.key)) return {val:0,det:`Sin daño de aliados (${sa.nm})`,immune:true}; }
+  const e=effectiveness(T,tc.tipos,m[0],hm.golpea);
   if(e.immune) return {val:0,det:'Inmune',immune:true};
+  const sg2=th.find(h=>h.k==='soloSuper'); if(sg2&&!self&&e.steps<=0&&m[3]!=='Estado') return {val:0,det:`Inmune: solo le daña lo súper eficaz (${sg2.nm})`,immune:true};
+  const pe=th.find(h=>h.k==='pocoEficazRecv'); if(pe&&!self) e.steps=Math.min(e.steps,-1);
+  const hx=[];
+  const nc=th.find(h=>h.k==='noCritRecv'); if(crit&&nc){ crit=false; hx.push(`${nc.nm}: no recibe críticos`); }
+  if(!crit&&ai.x&&habRowsOf(ai.f,['Siempre']).some(r=>r[5]==='critico'&&habCondOk(r[3],ai.f,ai.x.key,{blanco:target.f}))){ crit=true; hx.push(`${habOf(ai.f)}: siempre crítico`); }
   if(!isNum){ if(m[3]==='Estado'&&crit){ const ak=short(m[4]); const v=ai.c.A[ak]||0; return {val:v,det:`Crítico de Estado: daño igual a ${ak} (${v})`}; } return {val:null,det:'Sin daño'}; }
-  const own=num(ai.c.em.cdOwn[deacc(m[2])]), recv=num(tc.em.cdRecv[deacc(m[2])]);
+  const own=num(ai.c.em.cdOwn[T]), recv=num(tc.em.cdRecv[T]);
+  let hcd=0;
+  for(const h of hkOf(ai.c.em,/^cdOwn:(super|critico)$/)) if(h.k==='cdOwn:super'?e.steps>0:crit){ hcd+=hval(h.v); hx.push(`${h.nm} ${sg(hval(h.v))} CD`); }
+  for(const h of th.filter(h=>h.k.startsWith('cdRecv:'))){ const q=h.k.slice(7); let ok=false;
+    if(q==='todos') ok=true; else if(q==='super') ok=e.steps>0; else if(q==='cat:Contacto') ok=/^contacto/i.test(String(m[10])); else if(q.startsWith('cat:')) ok=hasCat(m,q.slice(4)); else if(q.startsWith('clase:')) ok=deacc(m[3])===deacc(q.slice(6));
+    if(ok){ hcd+=hval(h.v); hx.push(`${h.nm} ${sg(hval(h.v))} CD`); } }
   const cm=ai.mi.cm;
-  const idx=clamp(m[7]+ai.mi.stab+e.steps+num(bonus)+own+recv+cm.cd,1,24); const dd=dice(idx); const rl=rollDice(dd);
+  const idx=clamp(m[7]+ai.mi.stab+e.steps+num(bonus)+own+recv+cm.cd+hcd,1,24); const dd=dice(idx); const rl=rollDice(dd);
   const def=m[3]==='Fisico'?tc.A.VIT:m[3]==='Especial'?tc.A.SAB:0;
   let v=Math.max(0,rl.t+ai.mi.atr-def); if(crit) v*=2; if(cm.x2) v*=2;
-  const ex=[e.steps>0?`súper eficaz +${e.steps}`:e.steps<0?`poco eficaz ${e.steps}`:'',own?`propio ${own>0?'+':''}${own} CD (estado o condición)`:'',recv?`objetivo ${recv>0?'+':''}${recv} CD`:'',...cm.notes].filter(Boolean).join(', ');
-  return {val:v,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr} ${ai.mi.ak}${def?' − '+def+(m[3]==='Fisico'?' VIT':' SAB'):''}${crit?' × 2 (crítico)':''}${cm.x2?' × 2':''}${ex?' · '+ex:''}`};
+  const x2=th.find(h=>h.k.startsWith('dañoRecv×2:')&&deacc(h.k.split(':')[1])===T); if(x2){ v*=2; hx.push(`${x2.nm}: recibe doble de ${T}`); }
+  const pc=hkOf(ai.c.em,/^daño×2:pocoEficaz$/)[0]; if(pc&&e.steps<0){ v*=2; hx.push(`${pc.nm}: doble daño (poco eficaz)`); }
+  if(typeof absorbe!=='undefined'&&absorbe) return {heal:true,val:v,det:`${absorbe}: en vez de recibir daño recupera ${v} PS (${dd} [${rl.r.join(', ')}])`,absorbe:true,immune:true};
+  const ex=[e.steps>0?`súper eficaz +${e.steps}`:e.steps<0?`poco eficaz ${e.steps}`:'',own?`propio ${own>0?'+':''}${own} CD`:'',recv?`objetivo ${recv>0?'+':''}${recv} CD`:'',...cm.notes,...hm.notes,...hx].filter(Boolean).join(', ');
+  return {val:v,crit,det:`${dd} [${rl.r.join(', ')}] + ${ai.mi.atr} ${ai.mi.ak}${def?' − '+def+(m[3]==='Fisico'?' VIT':' SAB'):''}${crit?' × 2 (crítico)':''}${cm.x2?' × 2':''}${ex?' · '+ex:''}`};
 }
 function doAttack(){
   const x=combatant(CBU.atk); if(!x||!canEditRef(x)) return; const mvId=CBU.mv; const ai=attackInfo(x,mvId); if(!ai) return; const m=ai.mi.m;
   const mode=targetMode(m); let tkeys=mode==='none'?[]:CBU.targets.slice();
   const bonus=num(CBU.bon[mvId]);
   const r=d(100); const steps=[]; const ts=Date.now();
-  const hit=r<=ai.prec&&r!==100;
-  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}% → ${hit?'conecta':'falla'}`});
+  const hit=(r<=ai.prec||ai.mi.hm.siempre)&&r!==100;
+  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}% → ${hit?'conecta':'falla'}${ai.mi.hm.siempre&&r>ai.prec&&r!==100?` (${habOf(x.f)}: siempre golpea)`:''}`});
   if(r===1) steps.push({k:'ok',t:'01 natural: +1 al Bono de Evasión y algo a decisión del Narrador.'});
   if(r===100) steps.push({k:'ko',t:'100: fallo crítico, −1 al Bono de Evasión y algo a decisión del Narrador.'});
   let go=hit, crit=false, re=false, postCond=null;
@@ -1566,33 +1705,50 @@ function doAttack(){
       if(notes.length) steps.push({k:'ok',t:`Efectos en ${charName(x.f)}: ${notes.join(' · ')}`});
       selfNow=true; }
     else for(const k of tkeys){ const t=combatant(k); if(!t) continue; const dr=rollDamage(ai,t,crit,bonus);
-      let est=''; if(crit&&!dr.heal){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
-      res.push({key:k,name:charName(t.f),...dr,est,kind:m[3]==='Estado'?'tem':'esq'}); }
+      const ck=dr.crit??crit; let est=''; if(ck&&!dr.heal&&!dr.immune){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
+      const noEv=ai.mi.hm.ignEv||ai.mi.hm.siempre;
+      res.push({key:k,name:charName(t.f),...dr,crit:ck,est,kind:dr.immune||noEv?null:m[3]==='Estado'?'tem':'esq'}); }
   }
   saveFicha(x,nf);
   /* la condición se crea después de guardar al atacante (Predicción puede cambiar su forma) */
   if(postCond){ postCond(); const i=steps.findIndex(z=>z.cl); const cl=steps[i].cl; steps.splice(i,1,...cl.map(t=>({k:'ok',t}))); }
-  const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
+  const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
   if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
   cbWrite({last});
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
 }
+/* Habilidades que reaccionan al golpe: del que recibe (al recibir un ataque) y del atacante (causa estados, al debilitar) */
+function habAlGolpear(L,z,t,A,m,act0,act1,ps){ const out=[]; const dmg=num(z.val)>0;
+  const x={recibe:{mov:m,crit:!!(z.crit??L.crit),tipo:L.tipo||m[2]},ko:act1<=0&&act0>0,cruza:act0>=ps/2&&act1<ps/2&&act1>0};
+  if(dmg) for(const r of habRowsOf(t.f,['Al recibir un ataque'])){ if(!habCondOk(r[3],t.f,z.key,x)) continue; const k=r[5], v=r[6]; let mm;
+    if(r[7]&&d(100)>hval(r[7])) continue;
+    if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)); }); if(n) out.push(n); }
+    else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${charName(A.f)} ${n}`); }
+    else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
+  if(dmg&&m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
+    if(d(100)>hval(r[7]||100)) continue; const e=pick(mm[1].split('/')); let n=''; mutate(z.key,f=>{ n=giveEstado(f,e,{rank:A.f.rango||'Starter',by:L.byKey},false); }); if(n) out.push(`${r[0]}: ${n}`); }
+  if(x.ko) for(const r of habRowsOf(A.f,['Al debilitar'])){ const mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(r[5]); if(!mm) continue; let n=''; mutate(L.byKey,f=>{ n=habAttr(f,mm[1],hval(r[6]),r[0]); }); if(n) out.push(n); }
+  return out; }
 /* El ataque conecta con un objetivo: daño (o curación), estado por crítico y efectos */
 function connectHit(L,z,extra){
   const t=combatant(z.key); if(!t) return [];
-  const A=combatant(L.byKey); const m=atkById.get(L.mvId); const ops=m?parseFx(m):[]; const ctx={re:!!L.re,rank:L.rank,by:L.byKey};
-  const out=[];
+  const A=combatant(L.byKey); const m=atkById.get(L.mvId); const ops=m?parseFx(m):[]; const ctx={re:!!L.re,rank:L.rank,by:L.byKey,tk:z.key};
+  const out=[]; const tc0=calc(t.f); const ps=tc0.ps, act0=tc0.act; let act1=act0;
+  if((tc0.em.hk||[]).some(h=>h.k==='noReRecv')) ctx.re=false; /* Polvo Escudo */
   mutate(z.key,f=>{
-    if(z.val){ if(z.heal) f.dano=Math.max(0,num(f.dano)-z.val); else f.dano=num(f.dano)+z.val; out.push(z.heal?`recupera ${z.val} PS`:`recibe ${z.val} de daño`); }
-    if(z.selfMove) return;
-    if(L.crit&&m&&!z.heal){ const ce=critEstado(m); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } }
+    if(z.val){ if(z.heal) f.dano=Math.max(0,num(f.dano)-z.val); else { f.dano=num(f.dano)+z.val;
+        const sv=(tc0.em.hk||[]).find(h=>h.k==='sobrevive1PS'); if(sv&&act0>=ps&&num(f.dano)>=ps){ f.dano=ps-1; out.push(`${sv.nm}: queda con 1 PS`); } }
+      act1=ps-num(f.dano); out.push(z.heal?`recupera ${z.val} PS`:`recibe ${z.val} de daño`); }
+    if(z.selfMove||z.immune) return;
+    if((z.crit??L.crit)&&m&&!z.heal){ const ce=critEstado(m); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } }
     const n=applyOps(f,ops,'target',ctx); out.push(...n);
   });
+  if(m&&A&&!z.heal&&!z.selfMove&&z.key!==L.byKey) out.push(...habAlGolpear(L,z,t,A,m,act0,act1,ps));
   if(m&&hasCat(m,'Drenaje')&&!z.heal&&num(z.val)>0&&A){ const hv=Math.floor(num(z.val)/2); if(hv){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-hv); }); out.push(`${charName(A.f)} recupera ${hv} PS (Drenaje)`); } }
   if(!L.selfDone&&!z.selfMove&&A&&m){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
-  if(!z.heal&&num(z.val)>0&&z.key!==L.byKey){ const tf=(combatant(z.key)||{}).f; const h=tf&&tf.tipo==='P'&&tf.estM!=='Mareado'?tf.habilidad:''; const ht=h?habMap.get(h):'';
+  if(!z.heal&&!z.immune&&num(z.val)>0&&z.key!==L.byKey){ const tf=(combatant(z.key)||{}).f; const h=tf&&tf.tipo==='P'&&tf.estM!=='Mareado'?tf.habilidad:''; const ht=h?habMap.get(h):'';
     if(ht&&/^Cuando recibe un ataque/.test(ht)){ const c=condDeTexto(ht); if(c){ const cl=[]; crearCond(c,z.key,cl,h); out.push(...cl); } } }
   logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')||'sin efecto'}${extra?' · '+extra:''}`,z.val??null);
   return out;
@@ -1726,11 +1882,11 @@ function doCollide(L,z,mv){
 function cbClick(b){
   const act=b.dataset.cb;
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
-  else if(act==='end'){ $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
-  else if(act==='endNo'){ $('#endConfirm').innerHTML=''; }
+  else if(act==='end'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
+  else if(act==='endNo'){ $('#endConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
   else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:0,rondaLog:null,cond:{},voto:null,eq:{}},true); render(); }
-  else if(act==='round'){ $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
-  else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; }
+  else if(act==='round'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm')&&($('#endConfirm').innerHTML=''); $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
+  else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
   else if(act==='roundYes'){ b.disabled=true; endRound(); }
   else if(act==='pick'){ const mv=b.dataset.mv; const x=combatant(CBU.atk); const m=atkById.get(mv); if(!x||!m) return; CBU.mv=mv; CBU.targets=[];
     /* movimientos a aliados: se marcan los del mismo Equipo, pero se pueden quitar (distancias en el mapa) */
