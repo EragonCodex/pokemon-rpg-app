@@ -46,7 +46,24 @@ const sg = v=>(num(v)>0?'+':num(v)<0?'−':'')+Math.abs(num(v));
 const TAL_SOC=['Presencia','Manipulacion','Perspicacia','Interpretacion'];
 const nivelGrupo = n=>{ const m=/^(.*) (I{1,3})(?: \(.*\))?$/.exec(n); return m?m[1]:null; };
 function rasgosDe(f){ if(!f||f.tipo!=='E') return []; return [...(f.defectos||[]),...(f.meritos||[])].filter(n=>RASGOS.has(n)); }
-function rasgoFxDe(f){ const s=new Set(rasgosDe(f)); return RFX.filter(x=>s.has(x[0])); }
+function rasgoFxDe(f){ const s=new Set(rasgosDe(f)); return RFX.filter(x=>s.has(x[0])).map(x=>rasgoFxOp(f,x)); }
+/* Méritos y Defectos que piden elegir algo: tipo, sentido, Pokémon del equipo, clima, Talento u objeto */
+const SENTIDOS=['Vista','Oído','Olfato','Gusto','Tacto'], CLIMAS_SENS=['Sol Intenso','Llovizna','Granizo','Tormenta de Arena'];
+const RASGO_OP={'Sentido Agudo':['sentido','Sentido'],'Rito':['talento','Tirada del ritual'],'Estudioso de un Tipo':['tipo','Tipo'],'Vínculo Pokémon':['pokemon','Pokémon'],'Dominio Elemental':['tipoPropio','Tipo propio'],
+  'Alergia a un Tipo I':['tipo','Tipo'],'Alergia a un Tipo II':['tipo','Tipo'],'Alergia a un Tipo III':['tipo','Tipo'],'Sensible al Clima':['clima','Clima'],
+  'Fobia I':['texto','Miedo a'],'Fobia II':['texto','Miedo a'],'Fobia III':['texto','Miedo a'],'Odio':['texto','Odia a']};
+function rasgoOp(f,n){ for(const k of ['meritos','defectos']){ const arr=f[k]||[]; for(let i=0;i<arr.length;i++) if(arr[i]===n){ const v=(((f.rasgoOp||{})[k])||[])[i]; if(v) return v; } } return ''; }
+function rasgoOpLabel(f,n,v){ const k=(RASGO_OP[n]||[])[0]; if(k==='talento') return TAL_LABEL(v);
+  if(k==='pokemon'){ const t=(S.open?teamOf(S.open):[]).find(x=>x.id===v); return t?charName(t.f):'su Pokémon vinculado'; } return v; }
+function rasgoFxOp(f,x){ if(!RASGO_OP[x[0]]) return x; const v=rasgoOp(f,x[0]); if(!v) return x; const y=[...x];
+  if(x[0]==='Rito'){ y[1]='tal:'+v; y[4]=`si hace su ritual antes de la tirada de ${TAL_LABEL(v)}`; }
+  else y[4]=`${x[4]}: ${rasgoOpLabel(f,x[0],v)}`;
+  return y; }
+/* bono extra de las Órdenes de Comandar por Vínculo Pokémon y Dominio Elemental */
+function ordenExtra(f,y){ let b=0; const why=[];
+  if(y&&rasgosDe(f).includes('Vínculo Pokémon')&&rasgoOp(f,'Vínculo Pokémon')===y.id){ b+=2; why.push('Vínculo Pokémon +2'); }
+  const dt=rasgosDe(f).includes('Dominio Elemental')?rasgoOp(f,'Dominio Elemental'):''; if(y&&dt&&tiposDe(y.f).includes(dt)){ b+=2; why.push(`Dominio Elemental (${dt}) +2`); }
+  return {b,why}; }
 /* suma automática de una clave (sin preguntar) y los rasgos que la causan */
 function rasgoAuto(f,key){ let v=0; const src=[]; for(const x of rasgoFxDe(f)) if(x[3]&&x[1]===key){ v+=num(x[2]); src.push(`${x[0]} ${sg(x[2])}`); } return {v,src}; }
 /* efectos condicionales que se consultan al tirar */
@@ -130,7 +147,8 @@ function estEffects(f,key){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:
   for(const x of rasgoFxDe(f)){ const [n,k,v]=x;
     if(k.startsWith('cdRecv:')){ const t=k.slice(7); o.cdRecv[t]=num(o.cdRecv[t])+num(v); o.resist.push(`${n}: ${sg(v)} CD de ${t}`); }
     else if(k.startsWith('salv:')){ const e=k.slice(5); o.salv[e]=num(o.salv[e])+num(v); o.resist.push(`${n}: Salvación de ${e} ${sg(v)}`); }
-    else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); } }
+    else if(k==='salvM'){ EST_M.forEach(e=>o.salv[e]=num(o.salv[e])+num(v)); o.resist.push(`${n}: Salvación de estados Mentales ${sg(v)}`); }
+    else if(n==='Dominio Elemental'&&/^CD/.test(String(x[5]))){ const t=deacc(rasgoOp(f,n)); if(t){ o.cdOwn[t]=num(o.cdOwn[t])+1; o.resist.push(`${n}: +1 CD a sus movimientos de tipo ${t}`); } } }
   /* climas, campos y entornos: solo en combate */
   const K=key||condKeyOf(f); if(K&&inCombat(K)){ o.cond=condPara(f,K); condAplica(o,f,o.cond); condEquipo(o,f,o.cond); }
   habAplica(o,f,K&&inCombat(K)?K:'');
@@ -803,11 +821,22 @@ function formaHTML(f,dx){ if(!(f.habilidad in FORMA_HAB)) return ''; const fs=fo
   let h=`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="formas" data-c="formaBtn" ${S.ro?'disabled':''}>Cambiar forma</button><span class="note" data-c="formaHint"></span></div>`;
   if(S.formOpen&&!S.ro){ h+=`<div class="row" style="margin-top:6px">${fs.map(r=>`<button class="btn sm" data-act="setForma" data-id="${esc(r[0])}" title="${esc(dexTypes(r).join(' / '))}">${esc(r[2]||r[1])}${fs.filter(x=>x[2]===r[2]).length>1?` (${esc(dexTypes(r).join('/'))})`:''}</button>`).join('')}${f.habilidad==='Escudolimitado'?'<button class="btn sm pri" data-act="setForma" data-id="__nucleo">Núcleo al azar</button>':''}</div>`; }
   return h; }
+function rasgoOpHTML(f,kind,i,n){ const [k,lbl]=RASGO_OP[n]; const v=(((f.rasgoOp||{})[kind])||[])[i]||''; const path=`rasgoOp.${kind}.${i}`, dis=S.ro?'disabled':'';
+  const sel=list=>`<select data-f="${path}" ${dis} aria-label="${esc(lbl)} de ${esc(n)}"><option value="">Elegir…</option>${list.map(([val,t])=>`<option value="${esc(val)}"${val===v?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+  let ctl;
+  if(k==='tipo') ctl=sel(D.types.map(t=>[t,t]));
+  else if(k==='tipoPropio'){ const ts=tiposDe(f); ctl=ts.length?sel(ts.map(t=>[t,t])):'<span class="note">Primero elige los tipos del Entrenador</span>'; }
+  else if(k==='sentido') ctl=sel(SENTIDOS.map(t=>[t,t]));
+  else if(k==='clima') ctl=sel(CLIMAS_SENS.map(t=>[t,t]));
+  else if(k==='talento') ctl=sel(ALL_TAL.map(t=>[t,TAL_LABEL(t)]));
+  else if(k==='pokemon'){ const team=S.open?teamOf(S.open):[]; ctl=team.length?sel(team.map(x=>[x.id,charName(x.f)])):'<span class="note">Sin Pokémon en su equipo</span>'; }
+  else ctl=`<input data-f="${path}" value="${esc(v)}" list="dl-tipos" placeholder="Un tipo, una especie, un Team…" ${dis} aria-label="${esc(lbl)}">`;
+  return `<label class="rasop${v?'':' falta'}"><span>${esc(lbl)}</span>${ctl}</label>`; }
 function rasgosCardHTML(f){
   const def=[...(f.defectos||[])]; while(def.length<N_DEF) def.push('');
   const mer=[...(f.meritos||[])]; while(mer.length<N_MER) mer.push('');
   const slot=(kind,i,n)=>{ const r=RASGOS.get(n); const isD=kind==='defectos';
-    return `<div class="ras ${isD?'def':'mer'}"><input data-f="${kind}.${i}" list="dl-${isD?'def':'mer'}" value="${esc(n||'')}" placeholder="${isD?'Defecto':'Mérito'} ${i+1}" ${S.ro?'disabled':''} aria-label="${isD?'Defecto':'Mérito'} ${i+1}">${r?`<div class="meta"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span><span>${esc(r[2])}</span></div><div class="fx">${esc(r[5])}</div>`:''}</div>`; };
+    return `<div class="ras ${isD?'def':'mer'}"><input data-f="${kind}.${i}" list="dl-${isD?'def':'mer'}" value="${esc(n||'')}" placeholder="${isD?'Defecto':'Mérito'} ${i+1}" ${S.ro?'disabled':''} aria-label="${isD?'Defecto':'Mérito'} ${i+1}">${r&&RASGO_OP[n]?rasgoOpHTML(f,kind,i,n):''}${r?`<div class="meta"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span><span>${esc(r[2])}</span></div><div class="fx">${esc(r[5])}</div>`:''}</div>`; };
   const nM=mer.length, last3=mer.slice(-3).every(x=>!x);
   return `<div class="card"><h2>Méritos y Defectos <span class="pill" data-c="rasPts"></span></h2>
     <h3 class="subh" style="margin-top:0">Defectos · máximo ${N_DEF}</h3><div class="ras-grid">${def.slice(0,N_DEF).map((n,i)=>slot('defectos',i,n)).join('')}</div>
@@ -903,7 +932,8 @@ function onField(e){
   else if(p.startsWith('tal.')||p==='cat'){ setPath(f,p,v); full=true; }
   else if(/^(defectos|meritos)\.\d+$/.test(p)){ v=v.trim(); const r=RASGOS.get(v); const want=p.startsWith('defectos')?'D':'M';
     if(v&&(!r||r[1]!==want)){ el.setCustomValidity(r?(want==='D'?'Ese es un Mérito: va en Méritos':'Ese es un Defecto: va en Defectos'):'No está en la lista de '+(want==='D'?'Defectos':'Méritos')); el.reportValidity(); return; }
-    el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; full=true; }
+    el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; if(f.rasgoOp&&f.rasgoOp[k]) f.rasgoOp[k][num(p.split('.')[1])]=''; full=true; }
+  else if(p.startsWith('rasgoOp.')){ setPath(f,p,v.trim()); full=true; }
   else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); full=true; }
   else setPath(f,p,v);
   commit(full);
@@ -936,7 +966,12 @@ function charName(f){ const dx=f.tipo==='P'?dexById.get(f.especie):null; return 
 function openRP(o){ RP=o; renderRP(); }
 /* consultas de rasgos para una tirada d20: las del Talento y del Atributo elegidos y las que valen para cualquier tirada */
 function rpConsultas(f){ if(!f||f.tipo!=='E') return []; const keys=['all','attr:'+RP.attr].concat(RP.tal?condKeysTal(RP.tal):[]);
-  return rasgoFxDe(f).map((r,i)=>({r,id:r[0]+'|'+r[1]+'|'+r[4]})).filter(x=>!x.r[3]&&keys.includes(x.r[1])&&num(x.r[2])!==0); }
+  return rasgoFxDe(f).map((r,i)=>({r,id:r[0]+'|'+r[1]+'|'+r[4],auto:rasgoOpAuto(f,r[0])})).filter(x=>!x.r[3]&&keys.includes(x.r[1])&&num(x.r[2])!==0); }
+/* ¿La condición de la subopción se cumple ahora? (clima activo, o alguien de ese tipo en el combate) */
+function rasgoOpAuto(f,n){ const v=rasgoOp(f,n); if(!v) return false; const K=condKeyOf(f); if(!K||!inCombat(K)) return false;
+  if(n==='Sensible al Clima') return (((CB.cond||{}).clima||{}).n||'')===v&&!anulaClima();
+  if(/^Alergia a un Tipo/.test(n)) return combatants().some(y=>y.key!==K&&tiposDe(y.f).includes(v));
+  return false; }
 function renderRP(){
   const el=$('#rp'); if(!RP||!S.cur){ el.hidden=true; return; }
   if(RP.kind==='res'){ el.innerHTML=`<h4>${esc(RP.title)} <button class="btn sm" data-rp="close" aria-label="Cerrar">✕</button></h4><div class="out"><span class="big ${RP.res.cls}">${RP.res.v}</span><span class="note" style="text-align:right">${RP.res.html}</span></div>`; el.hidden=false; return; }
@@ -947,7 +982,7 @@ function renderRP(){
     h+=`<div class="grid g2"><label class="f">Atributo<select id="rpA">${ATTR.map(k=>`<option value="${k}"${RP.attr===k?' selected':''}>${ATTR_FULL[k]} (${c.A[k]>=0?'+':''}${c.A[k]})</option>`).join('')}${RP.kind==='tal'?'':''}</select></label>`;
     h+= isE?`<label class="f">Talento<select id="rpT"><option value="">Ninguno</option>${ALL_TAL.map(t=>`<option value="${t}"${RP.tal===t?' selected':''}>${TAL_LABEL(t)} (${talBonus(f,t)>=0?'+':''}${talBonus(f,t)})</option>`).join('')}</select></label>`:'<div></div>';
     h+=`</div>`;
-    const cq=rpConsultas(f); RP.cq=cq; RP.chk ||= {};
+    const cq=rpConsultas(f); RP.cq=cq; RP.chk ||= {}; cq.forEach(x=>{ if(x.auto&&RP.chk[x.id]===undefined) RP.chk[x.id]=true; });
     if(cq.length) h+=`<div class="rs-ask"><div class="k">¿Aplica algún rasgo?</div>${cq.map((x,i)=>`<label><input type="checkbox" data-rc="${i}"${RP.chk[x.id]?' checked':''}> <b class="rs-cond">${esc(x.r[0])}</b> ${x.r[2]===-99?'falla automáticamente':sg(x.r[2])}${x.r[4]?` <span class="note">(${esc(x.r[4])})</span>`:''}</label>`).join('')}</div>`;
     h+=`<label class="f">Bonus extra<input type="number" id="rpX" value="${num(RP.x)}"></label><button class="btn pri" data-rp="roll">Tirar</button>`;
   } else if(RP.kind==='move'){
@@ -1683,18 +1718,18 @@ function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||
   let h=`<div class="k" style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Comandar · solo una Orden por ronda, en vez de atacar</div>
     <p class="note" style="margin:0 0 6px">Dificultad <b>${dif.n} (${dif.v})</b>${dif.by?`, por el rival de mayor Rango: ${esc(dif.by)} (${esc(dif.rk)})`:' (no hay rivales)'}. Si la Orden tiene éxito, el bono se aplica al siguiente movimiento del Pokémon.</p>`;
   h+=pk.length?`<div class="grid g3"><label class="f">Pokémon<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate.</p>';
-  h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], b=t?talBonus(f,t):0, a=CBU.cmdA[i]||o[2]; const bb=Math.max(0,b);
+  h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], ex=t?ordenExtra(f,combatant(CBU.cmdT)):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0, a=CBU.cmdA[i]||o[2]; const bb=Math.max(0,b);
     return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${pk.length?'':'disabled'}>${esc(o[0])}</button>
       ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
-      <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b></span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
+      <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b>${ex.why.length?` <span class="note">(${esc(ex.why.join(', '))})</span>`:''}</span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
       <div class="mvfx">${esc(o[3](bb))}</div></div>`; }).join('')+`</div>`;
   if(CBU.cmdMsg&&CBU.cmdMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px"><div class="ok">${esc(CBU.cmdMsg.t)}</div></div>`;
   return h; }
 function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; const y=combatant(CBU.cmdT); if(!o||!y) return;
-  const f=x.f, c=calc(f), t=o[1], b=t?talBonus(f,t):0; let txt;
+  const f=x.f, c=calc(f), t=o[1], ex=t?ordenExtra(f,y):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0; let txt;
   if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b; const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v);
     const bb=Math.max(0,b), k=ORDEN_K[i], v=ordenVal(k,bb);
-    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0} = ${tot} contra ${dif.n} (${dif.v}) → ${ok?`éxito: ${charName(y.f)} tendrá ${ORDEN_TXT({k,v})} en su siguiente movimiento.`:'falla, la Orden no se cumple.'}`;
+    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''} = ${tot} contra ${dif.n} (${dif.v}) → ${ok?`éxito: ${charName(y.f)} tendrá ${ORDEN_TXT({k,v})} en su siguiente movimiento.`:'falla, la Orden no se cumple.'}`;
     if(ok) mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:charName(f)}; });
     CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)}): 1d20 [${r}] + ${a} + ${TAL_LABEL(t)} = ${tot} vs ${dif.v} · ${ok?'éxito':'falla'}`,tot); }
   else { txt=`${charName(f)}: ${o[0]} con ${charName(y.f)}. ${o[3](b)}`; CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)})`,null); }
@@ -2115,7 +2150,7 @@ async function saveMasters(){ render(); try{ await S.db.doc('config/mesa').set({
 function mkDL(id,list){ let dl=document.getElementById(id); if(!dl){ dl=document.createElement('datalist'); dl.id=id; document.body.appendChild(dl);} dl.innerHTML=list.map(v=>`<option value="${esc(v)}">`).join(''); }
 function buildDexList(){ mkDL('dl-dex',D.dex.filter(r=>speciesAllowed(r[0])).map(dexLabel)); }
 function buildFolderList(){ mkDL('dl-fold',[...new Set(Object.values(S.master).map(f=>f.carpeta).filter(Boolean))].sort()); }
-buildDexList(); mkDL('dl-atk',D.atk.map(a=>a[1])); mkDL('dl-hab',D.hab.map(h=>h[0])); mkDL('dl-def',(D.rasgos||[]).filter(r=>r[1]==='D').map(r=>r[0])); mkDL('dl-mer',(D.rasgos||[]).filter(r=>r[1]==='M').map(r=>r[0]));
+buildDexList(); mkDL('dl-atk',D.atk.map(a=>a[1])); mkDL('dl-hab',D.hab.map(h=>h[0])); mkDL('dl-def',(D.rasgos||[]).filter(r=>r[1]==='D').map(r=>r[0])); mkDL('dl-mer',(D.rasgos||[]).filter(r=>r[1]==='M').map(r=>r[0])); mkDL('dl-tipos',D.types);
 
 /* ---------- conexión ---------- */
 function busy(){ const a=document.activeElement; return !!(a&&a.closest&&a.closest('#sheet')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
