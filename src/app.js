@@ -1641,7 +1641,8 @@ function cbAttackHTML(){
   const hb=x.f.tipo==='P'&&x.f.habilidad?x.f.habilidad:'';
   h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
   if(hb&&CBU.habMsg&&CBU.habMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px">${CBU.habMsg.lines.map(t=>`<div class="ok">${esc(t)}</div>`).join('')}</div>`;
-  if(!mvs.length) return h+`<p class="note">Este personaje no tiene movimientos.</p></div>`;
+  if(x.f.tipo==='E') h+=cmdHTML(x);
+  if(!mvs.length) return h+(x.f.tipo==='E'?'</div>':`<p class="note">Este personaje no tiene movimientos.</p></div>`);
   h+=`<div class="mvlist">`;
   for(const id of mvs){ const ai=attackInfo(x,id); if(!ai) continue; const m=ai.mi.m; const on=CBU.picking&&CBU.mv===id; const mode=targetMode(m);
     h+=`<div class="mvrow${on?' on':''}"><div class="mvhead"><button class="mvname" data-cb="pick" data-mv="${id}" title="Atacar con ${esc(m[1])}">${esc(m[1])}</button>
@@ -1655,6 +1656,34 @@ function cbAttackHTML(){
     h+=`</div>`; }
   return h+`</div><p class="note">Clic en el nombre de un movimiento para atacar con él. La Precisión ya descuenta las repeticiones.</p></div>`;
 }
+/* ---------- Comandar: acciones del Entrenador como movimientos Sin tipo ---------- */
+/* [nombre, Talento, Atributo por defecto, efecto(bono)] */
+const COMANDAR=[
+  ['¡Apunta!','Precision','DES',b=>`El Pokémon resta ${5*b} (5 × bono) a la tirada de Precisión de su próximo movimiento.`],
+  ['¡Esquiva!','Perspicacia','SAB',b=>`El Pokémon resta ${5*b} (5 × bono) a su próxima tirada de Esquiva o Temple.`],
+  ['¡Punto débil!','Teoria','SAB',b=>`El Pokémon suma +${Math.ceil(b/2)} (la mitad del bono, hacia arriba) a su Índice de Crítico.`],
+  ['¡Muévete!','Presencia','CAR',b=>`El Pokémon gana +${5*Math.floor(b/2)} ft de Velocidad (5 ft por cada 2 de bono; máximo 60 ft).`],
+  ['¡Ahora!','','',()=>'Un Pokémon suyo con Iniciativa menor actúa en este momento.'],
+  ['Retrasar Acción','','',()=>'Su Pokémon espera; actúa cuando el Entrenador gaste su Reacción en la ronda.']];
+const misPokemon=x=>combatants().filter(y=>y.f.tipo==='P'&&y.src===x.src&&y.uid===x.uid&&(!y.f.entrenador||y.f.entrenador===x.id));
+function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||= {};
+  if(!pk.some(y=>y.key===CBU.cmdT)) CBU.cmdT=pk[0]?pk[0].key:'';
+  let h=`<div class="k" style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Comandar · solo una Orden por ronda, en vez de atacar</div>`;
+  h+=pk.length?`<div class="grid g3"><label class="f">Pokémon<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate.</p>';
+  h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], b=t?talBonus(f,t):0, a=CBU.cmdA[i]||o[2]; const bb=Math.max(0,b);
+    return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${pk.length?'':'disabled'}>${esc(o[0])}</button>
+      ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
+      <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b></span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
+      <div class="mvfx">${esc(o[3](bb))}</div></div>`; }).join('')+`</div>`;
+  if(CBU.cmdMsg&&CBU.cmdMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px"><div class="ok">${esc(CBU.cmdMsg.t)}</div></div>`;
+  return h; }
+function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; const y=combatant(CBU.cmdT); if(!o||!y) return;
+  const f=x.f, c=calc(f), t=o[1], b=t?talBonus(f,t):0; let txt;
+  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b;
+    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0} = ${tot}. ${o[3](Math.max(0,b))}`;
+    CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)}): 1d20 [${r}] + ${a} + ${TAL_LABEL(t)} = ${tot}`,tot); }
+  else { txt=`${charName(f)}: ${o[0]} con ${charName(y.f)}. ${o[3](b)}`; CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)})`,null); }
+  renderSheet(); }
 function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
@@ -1916,6 +1945,7 @@ function cbClick(b){
     if(['Aliados','Equipo'].includes(m[9])) CBU.targets=al; else if(m[9]==='Aliado'&&al.length===1) CBU.targets=al;
     if(targetMode(m)==='none'){ CBU.picking=false; doAttack(); return; } CBU.picking=true; renderSheet(); }
   else if(act==='hab'){ activarHab(); }
+  else if(act==='cmd'){ doComandar(num(b.dataset.i)); }
   else if(act==='rs'){ const k=b.dataset.k, mm=b.dataset.m; CBU.rs=CBU.rs&&CBU.rs.k===k&&CBU.rs.m===mm?null:{k,m:mm,r:'',t:'',msg:''}; renderSheet(); }
   else if(act==='rsNo'){ CBU.rs=null; renderSheet(); }
   else if(act==='rsGo'){ rsGo(); }
@@ -1954,6 +1984,8 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.dexj){ setVis([e.target.dataset.id],e.target.checked,e.target.dataset.dexj); return; }
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
+  if('cmdt' in e.target.dataset){ CBU.cmdT=e.target.value; return; }
+  if(e.target.dataset.cmda){ (CBU.cmdA ||= {})[e.target.dataset.cmda]=e.target.value; renderSheet(); return; }
   if(e.target.dataset.rs&&CBU.rs){ CBU.rs[e.target.dataset.rs]=e.target.value; CBU.rs.msg=''; return; }
   if(e.target.dataset.cbeq){ const k=e.target.dataset.cbeq; const c=combatant(k); if(c&&canGlove(c)){ const n=num(e.target.value); cbWrite({eq:{[k]:n||null}}); } renderSheet(); return; }
   if(e.target.dataset.cond&&isMaster()){ const cls=e.target.dataset.cond, n=e.target.value; setCond(cls,n,n?condDur(n):undefined,''); logRoll('Condición',n?`El Master define ${COND_CLS[cls].toLowerCase()}: ${n} (${condDur(n)} rondas).`:`El Master quita ${COND_CLS[cls].toLowerCase()==='clima'?'el clima':COND_CLS[cls].toLowerCase()==='campo'?'el campo':'el entorno'}.`,null); renderSheet(); return; }
