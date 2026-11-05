@@ -540,11 +540,12 @@ function logRoll(quien,txt,val){
   } else { (S.tir.__local ||= {log:[]}).log.push(e); }
   if(S.view==='mesa'&&S.open?.src==='hist' || S.view==='tools'&&S.tool==='dados') safeSheet();
 }
+const MAX_TIR=50; /* el historial guarda solo las últimas 50 tiradas */
 function allRolls(){
   const out=[]; for(const [u,dd] of Object.entries(S.tir)) for(const e of (dd.log||[])) out.push({...e,uid:u});
-  return out.sort((a,b)=>b.ts-a.ts).slice(0,120);
+  return out.sort((a,b)=>b.ts-a.ts).slice(0,MAX_TIR);
 }
-function histHTML(limit=120){
+function histHTML(limit=MAX_TIR){
   const rs=allRolls().slice(0,limit);
   if(!rs.length) return '<p class="note">Todavía no hay tiradas. Tira un dado desde una ficha (clic en un atributo, un talento o el botón d100 de un movimiento) o desde Herramientas › Dados.</p>';
   return `<div class="hist">${rs.map(r=>`<div class="h"><span class="t">${hhmm(r.ts)}</span><span><b>${esc(r.quien||'—')}</b> <span class="w">${esc(r.uid==='__local'?'(solo tú)':(S.players[r.uid]?.alias||''))}</span></span><span class="v">${r.val??''}</span><span class="d">${esc(r.txt)}${canDelRolls()&&r.uid!=='__local'?` <button class="btn sm" data-act="rmRoll" data-u="${esc(r.uid)}" data-ts="${r.ts}" aria-label="Eliminar tirada">Eliminar</button>`:''}</span></div>`).join('')}</div>`;
@@ -621,7 +622,18 @@ function itemHTML(x,sub){
   if(canGlove(x)&&(S.view==='mesa'||S.view==='master'||S.view==='mis')) return `<div class="irow${sub?' sub':''}">${btn.replace('class="item sub"','class="item"')}${gloveBtn(refKey(x))}</div>`;
   return btn;
 }
-function noteItem(x){ const cur=S.open&&S.open.id===x.id; return `<button class="item note-i" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${esc(x.f.titulo||'Sin título')}</span><span class="pill">${esc(x.f.fecha||'')}</span><span class="s">${esc((x.f.texto||'').slice(0,80))}</span></button>`; }
+/* visibilidad de las notas: pub = toda la mesa · priv = su dueño y los Masters (por defecto) · yo = solo su dueño (opción de los Masters) */
+const NOTA_VIS={pub:'Pública',priv:'Privada',yo:'Solo yo'};
+const notaVis=f=>NOTA_VIS[f.vis]?f.vis:'priv';
+function notaVisible(u,f){ if(u===S.uid) return true; const v=notaVis(f); return v==='pub'||(v==='priv'&&isMaster()); }
+const bitVis=f=>f.vis==='yo'?'yo':'masters';
+const bitVisible=f=>bitVis(f)!=='yo'||!f.autor||f.autor===S.uid;
+function notasDe(u){ return Object.entries(S.notas[u]||{}).filter(([,f])=>notaVisible(u,f)).map(([id,f])=>({src:'nota',uid:u,id,f})).sort((a,b)=>(b.f.creado||'').localeCompare(a.f.creado||'')); }
+const NOTES_OPEN=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('pkrpg.notas')||'[]')||[]; }catch(_){ return []; } })());
+function toggleNotes(u){ NOTES_OPEN.has(u)?NOTES_OPEN.delete(u):NOTES_OPEN.add(u); try{ localStorage.setItem('pkrpg.notas',JSON.stringify([...NOTES_OPEN])); }catch(_){} renderList(); }
+function notesBlock(u,notas,empty){ if(!notas.length) return empty?`<p class="note">${empty}</p>`:''; const open=NOTES_OPEN.has(u);
+  return `<div class="nblk"><button class="item ntog" data-notes="${esc(u)}" aria-expanded="${open}"><span class="n">${open?'▾':'▸'} Notas</span><span class="pill">${notas.length}</span></button>${open?`<div class="team">${notas.map(noteItem).join('')}</div>`:''}</div>`; }
+function noteItem(x){ const cur=S.open&&S.open.id===x.id; const vis=x.src==='bit'?(bitVis(x.f)==='yo'?'Solo yo':''):NOTA_VIS[notaVis(x.f)]; return `<button class="item note-i" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${vis&&vis!=='Pública'?'🔒 ':''}${esc(x.f.titulo||'Sin título')}</span><span class="pill">${esc(x.f.fecha||'')}</span><span class="s">${esc((x.f.texto||'').slice(0,80))}</span></button>`; }
 /* orden propio de cada jugador (en este navegador) y equipos desplegables */
 const ordKey=scope=>'pkrpg.ord.'+(S.uid||'')+'.'+scope;
 function loadOrder(scope){ try{ return JSON.parse(localStorage.getItem(ordKey(scope))||'[]')||[]; }catch(_){ return []; } }
@@ -666,23 +678,23 @@ function renderList(){
   if(S.view==='mis'){
     const g=groupHTML(poolOf('jug',S.uid),'mis');
     const alias = (S.players[S.uid]||{}).alias || S.me?.name || '';
-    const notas=Object.entries(S.notas[S.uid]||{}).map(([id,f])=>({src:'nota',uid:S.uid,id,f})).sort((a,b)=>(b.f.creado||'').localeCompare(a.f.creado||''));
+    const notas=notasDe(S.uid);
     h+=`<div class="grp"><h3>Tu nombre en la mesa</h3><input id="alias" class="btn" style="width:100%;text-align:left" value="${esc(alias)}" ${S.canWrite?'':'disabled'} aria-label="Tu nombre en la mesa"></div>`;
+    h+=`<div class="grp"><h3>Mis notas ${S.canWrite?'<button class="btn sm" data-act="newNota">+ Nota</button>':''}</h3><div class="items">${notesBlock(S.uid,notas,'Notas de tu personaje. Son privadas (solo tú y los Masters) hasta que las hagas públicas.')}</div></div>`;
     h+=`<div class="grp"><h3>Entrenadores ${S.canWrite?'<button class="btn sm" data-act="newE">+ Entrenador</button>':''}</h3><div class="items">${g.h||'<p class="note">Aún no tienes entrenadores.</p>'}</div></div>`;
     h+=`<div class="grp"><h3>Pokémon sueltos ${S.canWrite?'<button class="btn sm" data-act="newP">+ Pokémon</button>':''}</h3><div class="items">${g.loose||'<p class="note">Pokémon sin entrenador, para probar o guardar.</p>'}</div></div>`;
-    h+=`<div class="grp"><h3>Mis notas ${S.canWrite?'<button class="btn sm" data-act="newNota">+ Nota</button>':''}</h3><div class="items">${notas.map(noteItem).join('')||'<p class="note">Notas de tu personaje. Las ve toda la mesa.</p>'}</div></div>`;
   } else if(S.view==='mesa'){
     h+=`<div class="grp"><h3>Mesa</h3><div class="items"><button class="item" data-hist="1" aria-current="${S.open?.src==='hist'}"><span class="n">Historial de dados</span><span class="pill">${allRolls().length}</span></button></div></div>`;
     const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
     h+=`<div class="dlist" data-scope="mesa">`;
-    for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=Object.entries(S.notas[u]||{}).map(([id,f])=>({src:'nota',uid:u,id,f}));
-      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(g.h+g.loose+notas.map(noteItem).join(''))||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+    for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=notasDe(u);
+      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
     h+=`</div>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
     const npcs=pool.filter(x=>x.f.cat!=='salvaje'); const wild=pool.filter(x=>x.f.cat==='salvaje');
-    const bits=Object.entries(S.bit).map(([id,f])=>({src:'bit',uid:null,id,f})).sort((a,b)=>(b.f.fecha||'').localeCompare(a.f.fecha||'')||(b.f.creado||'').localeCompare(a.f.creado||''));
-    h+=`<div class="grp"><h3>Bitácora y notas ${S.canWrite?'<button class="btn sm" data-act="newBit">+ Entrada</button>':''}</h3><div class="items">${bits.map(noteItem).join('')||'<p class="note">Resúmenes de sesión y notas privadas del Master.</p>'}</div></div>`;
+    const bits=Object.entries(S.bit).filter(([,f])=>bitVisible(f)).map(([id,f])=>({src:'bit',uid:null,id,f})).sort((a,b)=>(b.f.fecha||'').localeCompare(a.f.fecha||'')||(b.f.creado||'').localeCompare(a.f.creado||''));
+    h+=`<div class="grp"><h3>Bitácora y notas ${S.canWrite?'<button class="btn sm" data-act="newBit">+ Entrada</button>':''}</h3><div class="items">${notesBlock('__bit',bits,'Resúmenes de sesión y notas de los Masters. Cada entrada puede quedar solo para ti.')}</div></div>`;
     h+=`<div class="grp"><h3>NPC ${S.canWrite?'<button class="btn sm" data-act="newNpc" data-folder="">+ NPC</button>':''}</h3>
       ${S.canWrite?`<div class="row" style="margin-bottom:6px"><input id="newFolder" class="btn" style="flex:1;min-width:0;text-align:left" placeholder="Nueva carpeta (p. ej. Gimnasio Plateada)" aria-label="Nombre de la carpeta"><button class="btn sm" data-act="newFolderNpc">Crear</button></div>`:''}
       ${folderHTML(npcs,'newNpc')||'<p class="note">Entrenadores y Pokémon de NPC, ordenados por carpeta.</p>'}</div>`;
@@ -698,7 +710,7 @@ function renderList(){
   } else if(S.view==='glos'){
     h+=`<div class="grp"><h3>Glosario</h3><div class="items">${GLOS.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></div>`;
   } else {
-    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['dados','Dados']];
+    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas']]:[])];
     h+=`<div class="grp"><h3>Herramientas</h3><div class="items">${tools.map(([k,n])=>`<button class="item" data-tool="${k}" aria-current="${S.tool===k}"><span class="n">${n}</span></button>`).join('')}</div></div>`;
   }
   L.innerHTML=h;
@@ -727,7 +739,7 @@ function renderSheet(){
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
   h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
-    <div class="kind">${kind}${S.ro?' · solo lectura':''}</div><div class="headline">
+    <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar">🔒 Fijada</span>':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
     <div class="grid ${isP?'g3':'g4'}" style="margin-top:12px">`;
@@ -753,8 +765,8 @@ function renderSheet(){
     h+=`<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>`;
     h+=field('Profesión','profesion',f.profesion||'','txt');
     h+=field('Edad','edad',f.edad||'','txt');
-    h+=field('Dinero','dinero',f.dinero||0,'num');
-    h+=field('Experiencia','exp',f.exp||0,'num');
+    h+=`<label class="f">Dinero<input type="text" inputmode="text" data-f="dinero" value="${num(f.dinero)}" ${S.ro?'disabled':''} title="Escribe un número, o +500 / −200 para sumar o restar" aria-label="Dinero (admite +500 o −200)"></label>`;
+    h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
     if(S.open.src==='master') h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`;
   }
   h+=`</div><div class="note" data-c="sub" style="margin-top:8px"></div></div></div></div>`;
@@ -775,10 +787,12 @@ function renderSheet(){
     </div><div data-c="estfx"></div><div data-c="rascomb"></div></div>`;
   let habOpts;
   if(isP && dx){ habOpts=[...new Set([dx[15],dx[16],dx[17]].filter(x=>x&&x!=='-'))]; }
+  const LK=isLocked(f)&&!S.ro; const lockDis=html=>LK?html.replace(/<(select|input|textarea)\b/g,'<$1 disabled').replace(/<button class="btn sm" data-act="(addMer|rmMer|forma[^"]*)"[^>]*>[^<]*<\/button>/g,''):html; let h0=h.length;
   h+=`<div class="card"><h2>Habilidad</h2><div class="grid g2">`;
   if(habOpts) h+=field('De su especie','habilidad',opts(habOpts.includes(f.habilidad)||!f.habilidad?habOpts:[...habOpts,f.habilidad],f.habilidad,'—'),'sel');
   else h+=`<label class="f">Habilidad<input data-f="habilidad" list="dl-hab" value="${esc(f.habilidad||'')}" placeholder="Escribe una habilidad" ${S.ro?'disabled':''}></label>`;
   h+=`</div><div class="fx-box" data-c="habfx"></div>${isP?formaHTML(f,dx):''}</div>`;
+  h=h.slice(0,h0)+lockDis(h.slice(h0)); h0=h.length;
   // atributos
   h+=`<div class="card"><h2>Atributos <span class="pill" data-c="attrPts"></span></h2><div class="tw"><table class="attrt"><thead><tr><th>Atributo</th>${isP?'<th>Especie</th><th>Nat.</th>':''}<th class="wide">Entrenado</th><th>Bonus</th><th>Rango</th><th>Total</th><th>Tirar</th></tr></thead><tbody>`;
   ATTR.forEach(k=>{ const a=(f.attr||{})[k]||{};
@@ -787,7 +801,8 @@ function renderSheet(){
       <td><select data-f="attr.${k}.r" ${S.ro?'disabled':''} aria-label="Rango de ${ATTR_FULL[k]}">${opts(RANGOS,a.r,'—')}</select></td>
       <td><input type="number" data-f="attr.${k}.b" value="${num(a.b)}" ${S.ro?'disabled':''} aria-label="Bonus de ${ATTR_FULL[k]}"></td>
       <td class="num" data-c="rk${k}"></td><td class="tot" data-c="at${k}"></td><td><button class="d20btn" data-rollattr="${k}" title="Tirar 1d20 + ${ATTR_FULL[k]}" aria-label="Tirar 1d20 + ${ATTR_FULL[k]}">${D20_SVG}</button></td></tr>`; });
-  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div><p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje.</p></div>`;
+  h+=`</tbody></table></div><div class="check" data-c="attrChk"></div>${LK?'<p class="note lknote">🔒 Ficha fijada: solo el bonus se puede cambiar.</p>':''}<p class="note">${isP?'Total = entrenamiento + especie + naturaleza + bonus + rango del Pokémon.':'Total = rango del atributo + bonus + rango del Entrenador.'} Cada nivel entrenado cuesta 1 punto y ninguno supera el Rango del personaje.</p></div>`;
+  if(LK) h=h.slice(0,h0)+h.slice(h0).replace(/<select data-f="attr\./g,'<select disabled data-f="attr.'); h0=h.length;
   if(!isP){
     h+=`<div class="card"><h2>Talentos <span class="pill" data-c="talPts"></span></h2><div class="tal">`;
     for(const [cat,col,list] of TALENTOS){ h+=`<div><div class="cat" style="color:${col}">${cat}</div>`;
@@ -796,6 +811,7 @@ function renderSheet(){
       h+=`</div>`; }
     h+=`</div><div class="check" data-c="talChk"></div><p class="note">Clic en un talento para tirar 1d20 + talento + el atributo que elijas.</p></div>`;
     h+=rasgosCardHTML(f);
+    h=h.slice(0,h0)+lockDis(h.slice(h0));
   }
   h+=`<div class="card"><h2>Movimientos <span class="pill" data-c="mvPts"></span></h2><div class="moves">`;
   const nMv=Math.max(6,(f.moves||[]).length);
@@ -853,13 +869,20 @@ function rasgosCardHTML(f){
     <div class="check" data-c="rasChk"></div>
     </div>`;
 }
+function visHTML(f,isBit){
+  const mine=isBit?(!f.autor||f.autor===S.uid):S.open.uid===S.uid; const dis=S.ro||!mine?'disabled':'';
+  const o=isBit?[['masters','Masters (todos los Masters la ven)'],['yo','Solo yo (oculta para los demás Masters)']]
+    :[['priv','Privada (tú y los Masters)'],['pub','Pública (toda la mesa)'],...(isMaster()?[['yo','Solo yo (oculta también para los demás Masters)']]:[])];
+  const cur=isBit?bitVis(f):notaVis(f);
+  return `<div class="grid g2" style="margin-top:10px"><label class="f">Visibilidad<select data-f="vis" ${dis}>${o.map(([v,t])=>`<option value="${v}"${v===cur?' selected':''}>${t}</option>`).join('')}</select></label></div>
+    <p class="note">${isBit?(cur==='yo'?'Solo tú ves esta entrada.':'Solo los Masters ven la bitácora.'):cur==='pub'?'Toda la mesa puede leer esta nota.':cur==='yo'?'Solo tú ves esta nota.':'Solo tú y los Masters ven esta nota.'}${mine?'':' Solo su autor cambia la visibilidad.'}</p>`; }
 function noteHTML(f){
   const isBit=S.open.src==='bit';
   return `<div class="card"><div class="kind">${isBit?'Bitácora del Master':'Nota de '+esc(S.players[S.open.uid]?.alias||'jugador')}${S.ro?' · solo lectura':''}</div>
     <div class="headline"><input class="name" data-f="titulo" value="${esc(f.titulo||'')}" placeholder="Título" aria-label="Título" ${S.ro?'disabled':''}></div>
     <div class="grid g3" style="margin-top:12px">${field('Fecha','fecha',f.fecha||'','date')}${isBit?field('Tipo','clase',opts(['Sesión','Nota','Trama','Lugar','Personaje'],f.clase||'Sesión'),'sel'):''}</div>
     <div style="margin-top:10px">${field('Texto','texto',f.texto||'','area',16)}</div>
-    <p class="note">${isBit?'Solo los Master ven la bitácora.':'Toda la mesa puede leer esta nota.'} </p></div>
+    ${visHTML(f,isBit)}</div>
     ${S.ro?'':`<div class="row"><button class="btn danger" data-act="del">Borrar</button><span id="delConfirm"></span></div>`}`;
 }
 function emptyHTML(){
@@ -926,10 +949,11 @@ function commit(full){
 }
 function onField(e){
   const el=e.target; const p=el.dataset.f; if(!p||!S.cur||S.ro) return;
+  if(isLocked(S.cur)&&LOCK_RX.test(p)){ showBanner('Esta ficha está fijada por el Master.'); renderSheet(); return; }
   if(el.tagName==='SELECT') selColor(el);
   const f=S.cur; let v=el.value; let full=false;
   if(el.type==='number') v=num(v);
-  if(p==='dano'){ const r=calcExpr(f.dano,v); if(r===null){ el.setCustomValidity('Usa un número, o +15 / −5'); el.reportValidity(); return; } el.setCustomValidity(''); f.dano=r; el.value=r; commit(false); return; }
+  if(p==='dano'||p==='exp'||p==='dinero'){ const r=calcExpr(f[p],v); if(r===null){ el.setCustomValidity('Usa un número, o +15 / −5'); el.reportValidity(); return; } el.setCustomValidity(''); f[p]=r; el.value=r; commit(false); return; }
   if(p==='especieL'){ const id=dexByLabel.get(v)||''; if(v&&(!id||!speciesAllowed(id)&&f.especie!==id)){ el.setCustomValidity(id?'El Master aún no desbloquea esta especie en la Pokédex':'Especie no encontrada'); el.reportValidity(); return;} el.setCustomValidity(''); f.especie=id; const dx=dexById.get(id); if(dx) f.habilidad=dx[15]||''; full=true; }
   else if(p.startsWith('moves.')){ const id=v?atkByName.get(v.toLowerCase().trim())||'':''; if(v&&!id){ el.setCustomValidity('Movimiento no encontrado'); el.reportValidity(); return;} el.setCustomValidity(''); setPath(f,p,id); full=true; }
   else if(p==='entrenador'&&v.startsWith('jug|')){ const [,u,tid]=v.split('|'); capturePokemon(u,tid); return; }
@@ -942,6 +966,7 @@ function onField(e){
     if(v&&(!r||r[1]!==want)){ el.setCustomValidity(r?(want==='D'?'Ese es un Mérito: va en Méritos':'Ese es un Defecto: va en Defectos'):'No está en la lista de '+(want==='D'?'Defectos':'Méritos')); el.reportValidity(); return; }
     el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; if(f.rasgoOp&&f.rasgoOp[k]) f.rasgoOp[k][num(p.split('.')[1])]=''; full=true; }
   else if(p.startsWith('rasgoOp.')){ setPath(f,p,v.trim()); full=true; }
+  else if(p==='vis'){ if(S.open.src==='bit'){ if(f.autor&&f.autor!==S.uid) return; if(!f.autor) f.autor=S.uid; } else if(S.open.uid!==S.uid) return; f.vis=v; full=true; }
   else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); full=true; }
   else setPath(f,p,v);
   commit(full);
@@ -1056,14 +1081,14 @@ ${tbl(['Intentos previos','0','1','2','3','4','5','6+'],[['Evasión base','100 %
 <ul><li><b>Desgaste:</b> cada intento cuenta, salga bien o mal.</li><li><b>Bono de Evasión</b> (−3 a +3, 15 % por punto): Reposicionar +1 o +2, 01 natural +1, fallo crítico −1.</li><li>Fuera del combate, un Pokémon recupera 1 intento por ronda.</li></ul>
 ${ej('Un Pokémon con DES 5, 2 intentos previos y Bono +1 tiene 100 − 30 + 30 + 15 = 115 %, que queda en 100 %. El atacante sacó 12 y conectó; el defensor tira 9, que es ≤ 100 y ≤ 12: esquiva. Si el atacante hubiera sacado 3 (crítico), el defensor necesitaría 3 o menos.')}`},
 {id:'colision',t:'Colisión',h:()=>`<p>En vez de esquivar, el objetivo puede <b>chocar</b> el ataque con un movimiento de daño propio. Gasta su Acción (o toma prestada la de la ronda siguiente; solo una a la vez). Tira la Precisión de su movimiento: si falla, recibe el golpe completo y pierde su Acción. Si conecta, cada lado suma puntos:</p>
-${tbl(['Factor','Puntos'],[['Ser el atacante','+1'],['Nivel del movimiento','Starter 1 · Beginner 2 · Amateur 3 · Elite 4 · Master 5 · Legend 6'],['Tamaño','Contacto 0 · A distancia +1 · Cono, Línea o Área 5 ft +2 · Área 15 ft o Campo +3'],['Tipo contra tipo','Súper eficaz +2 · Poco eficaz −2 · Sin efecto −4'],['Crítico (cualquiera)','+2']])}
+${tbl(['Factor','Puntos'],[['Ser el atacante','+1'],['Nivel del movimiento','Starter 1 · Beginner 2 · Amateur 3 · Elite 4 · Master 5 · Legend 6'],['Tamaño','Contacto 0 · A distancia +1 · Cono, Línea o Área 5 ft +2 · Área 15 ft o Campo +3'],['Tipo contra tipo','Súper eficaz +2 · Poco eficaz −2 · Sin efecto −4'],['Atributo del Pokémon','FUE ÷ 3 si el movimiento es Físico, ENE ÷ 3 si es Especial (hacia arriba)'],['Crítico (cualquiera)','+2']])}
 ${tbl(['Diferencia','Resultado'],[['Empate','Ambos reciben el promedio de la CD y del Atributo de los dos movimientos, sin restar defensas.'],['1 a 3','El perdedor recibe el promedio de la CD de los dos movimientos.'],['4 o más','El perdedor recibe el daño completo del movimiento ganador.']])}
 <ul><li>Solo el ganador aplica sus efectos secundarios; si es crítico, su daño aumenta como en un crítico normal.</li><li>Contra un área, cada defensor colisiona por separado. Una trampa también se puede colisionar.</li><li>El movimiento usado cuenta para la penalización por repetición.</li></ul>
 ${ej('El atacante lanza un movimiento Starter de Fuego a distancia: 1 (atacante) + 1 (nivel) + 1 (tamaño) = 3. El defensor responde con un movimiento Starter de Agua a distancia, súper eficaz contra Fuego: 1 + 1 + 2 = 4. Gana el defensor por 1, así que el atacante recibe el promedio de la CD de ambos movimientos.')}`},
-{id:'comandar',t:'Comandar',h:()=>`<p>El Entrenador usa su Acción para dirigir a uno de sus Pokémon en vez de atacar. No agrega tiradas: usa directamente el bonus del Talento (de +0 a +6).</p>
-${tbl(['Orden','Talento','Efecto (hasta el final del próximo turno del Pokémon)'],[['¡Apunta!','Precisión','Resta 5 × bonus a la tirada de Precisión de su próximo movimiento.'],['¡Esquiva!','Perspicacia','Resta 5 × bonus a su próxima tirada de Esquiva o Temple.'],['¡Punto débil!','Teoría','Suma la mitad del bonus, redondeada hacia arriba, a su Índice de Crítico.'],['¡Muévete!','Presencia','+5 ft de Velocidad por cada 2 puntos de bonus (máximo 60 ft).']])}
-<ul><li><b>¡Ahora!:</b> el Entrenador cede su turno para que uno de sus Pokémon con menor Iniciativa actúe en ese momento.</li><li><b>Retrasar Acción:</b> el Pokémon espera; cuando llega el momento indicado, el Entrenador gasta su Reacción y el Pokémon actúa. Si la ronda termina, se pierde.</li><li>Una Orden por ronda; el Pokémon debe estar a menos de 50 ft o en su línea de vista.</li></ul>
-${ej('Un Entrenador con Precisión [B] (+2) grita «¡Apunta!». Su Pokémon saca 58 en la Precisión de su movimiento y cuenta como 48, así que conecta con un movimiento de 50 %.')}`},
+{id:'comandar',t:'Comandar',h:()=>`<p>En Atacar, el Entrenador tiene la opción <b>Comandar</b> («Toma una acción de entrenador»), que despliega sus acciones. Usa su Acción en vez de atacar; una acción de Entrenador por ronda. Todo Entrenador tiene además <b>Forcejeo</b> como movimiento estándar, sin penalización por repetición.</p>
+${tbl(['Acción','Tirada','Efecto si tiene éxito'],[['¡Apunta!','1d20 + DES + Precisión','El Pokémon resta 10 a la tirada de Precisión de su siguiente ataque.'],['¡Esquiva!','1d20 + SAB + Perspicacia','El Pokémon resta 10 a su siguiente tirada de Esquiva o Temple.'],['¡Punto débil!','1d20 + SAB + Teoría','+1 al Índice de Crítico del siguiente ataque del Pokémon.'],['¡Muévete!','1d20 + CAR + Presencia','+1 etapa de Velocidad (+5 ft).'],['Retrasar Acción','Sin tirada','El Pokémon espera; el jugador indica cuándo actúa, gastando la Reacción del Entrenador.'],['Usar Objeto','1d20 + ENE + Aplicación','El Entrenador usa un objeto de su mochila.'],['Lanzar Pokéball','1d20 + DES + Precisión','Intenta capturar al Pokémon salvaje (efectos pendientes).']])}
+<ul><li>Las Órdenes (¡Apunta!, ¡Esquiva!, ¡Punto débil! y ¡Muévete!) se tiran contra la dificultad del rival de mayor Rango: Starter 9 · Beginner 13 · Amateur 17 · Elite 21 · Master 27 · Legend 33. El 1 natural falla y el 20 natural acierta.</li><li>El bono es fijo: dura hasta usarse o hasta el final de la siguiente ronda.</li><li>El Atributo de cada tirada se puede cambiar al ordenar.</li></ul>
+${ej('En la ronda 2, un Entrenador con DES +2 y Precisión +2 grita «¡Apunta!» contra un rival Beginner (13): saca 11 y suma 15, éxito. Si su Pokémon saca 58 en la Precisión de su siguiente ataque, cuenta como 48. Si no ataca antes del final de la ronda 3, la Orden se pierde.')}`},
 {id:'naturalezas',t:'Naturalezas y Sabores',h:()=>`<p>Cada naturaleza da <b>+1 a un atributo</b> y <b>−1 a otro</b>, y se asocia a un atributo social con un sabor favorito, que importa para las Balls de Bonguri.</p>
 ${tbl(['Naturaleza','+1','−1','Social'],D.nat.map(n=>[esc(n[0]),attrChip(n[2]),attrChip(n[3]),socialChip(n[1])]))}
 ${tbl(['Atributo social','Sabor favorito','Bonguri','Sabores neutros','Sabores que rechaza'],SOC.map(r=>[socialChip(r[0]),...r.slice(1)]))}
@@ -1121,8 +1146,28 @@ const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid
 const T = {hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
-  return ({mov:toolMov,hab:toolHab,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados}[S.tool]||toolDex)();
+  return ({mov:toolMov,hab:toolHab,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
 }
+/* Bloquear Fichas (solo Master): una ficha fijada no deja cambiar Habilidad, Atributos (salvo el bonus), Talentos ni Méritos y Defectos */
+const LOCK_SVG=on=>on?'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>'
+  :'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/></svg>';
+const isLocked=f=>!!(f&&f.bloq);
+const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.)/;
+function lockBtn(x){ const on=isLocked(x.f); return `<button class="lockbtn${on?' on':''}" data-lock="${esc(refKey(x))}" aria-pressed="${on}" title="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}" aria-label="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}">${LOCK_SVG(on)}</button>`; }
+function toolBloq(){
+  const row=(x,sub)=>`<div class="lkrow${sub?' sub':''}${isLocked(x.f)?' on':''}"><span class="n">${esc(charName(x.f))}</span><span class="note">${x.f.tipo==='E'?'Entrenador':'Pokémon'}${x.f.lugar==='caja'?' · caja':''}</span>${lockBtn(x)}</div>`;
+  let h=`<div class="card"><h2>Bloquear Fichas</h2><p class="note">Una ficha fijada ya no deja cambiar su <b>Habilidad</b>, sus <b>Atributos</b> (el bonus sí), sus <b>Talentos</b> ni sus <b>Méritos y Defectos</b>. Vale para todos, Masters incluidos: para editarla, desbloquéala aquí.</p></div>`;
+  const uids=Object.keys(S.players).sort((a,b)=>String(S.players[a].alias).localeCompare(String(S.players[b].alias)));
+  for(const u of uids){ const pool=poolOf('jug',u); if(!pool.length) continue;
+    const tr=pool.filter(x=>x.f.tipo==='E'); const ids=new Set(tr.map(t=>t.id)); const loose=pool.filter(x=>x.f.tipo==='P'&&!ids.has(x.f.entrenador));
+    const all=pool.every(x=>isLocked(x.f));
+    h+=`<div class="card"><h2><span>${esc(S.players[u].alias||'Jugador')}</span><button class="btn sm" data-lockall="${esc(u)}" data-v="${all?0:1}">${all?'Desbloquear todas':'Fijar todas'}</button></h2>`;
+    for(const t of tr){ h+=`<div class="lkgrp">${row(t,false)}${teamOf(t).map(p=>row(p,true)).join('')}</div>`; }
+    if(loose.length) h+=`<div class="lkgrp"><div class="note" style="margin:4px 0">Pokémon sueltos</div>${loose.map(p=>row(p,true)).join('')}</div>`;
+    h+=`</div>`; }
+  return h;
+}
+function setLock(x,on){ if(!isMaster()||!S.canWrite||!x) return; if(isLocked(x.f)===on) return; const nf=structuredClone(x.f); if(on) nf.bloq=true; else delete nf.bloq; saveFicha(x,nf); }
 function toolDano(){
   const refs=visibleRefs().filter(r=>r.f.tipo==='E'||dexById.get(r.f.especie));
   const atk=refByKey(T.atk);
@@ -1499,7 +1544,7 @@ const hasCat=(m,c)=>String(m[13]||'').split(/[;,]\s*/).map(x=>x.trim().toLowerCa
 function repOf(f,mv){ return f.rep&&f.rep.mv===mv?num(f.rep.n):0; }
 function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
-  const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente');
+  const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
   const pen = rec?0:n*(PEN[mi.m[5]]||0);
   const od=f.orden||null; const prec=clamp(mi.prec-pen+(od&&od.k==='apunta'?num(od.v):0),0,100);
   let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0)+(od&&od.k==='critico'?num(od.v):0),0,5);
@@ -1641,6 +1686,7 @@ async function endRound(){
   const lines=[], heals=[];
   for(const x of combatants()){
     const f=structuredClone(x.f); CKEY.set(f,x.key); let changed=false; const name=charName(f); const em=estEffects(f,x.key);
+    if(f.orden&&(f.orden.hasta==null||num(f.orden.hasta)<=cur)){ lines.push({k:'',t:`${name}: la Orden ${f.orden.n||''} de ${f.orden.by||'su Entrenador'} se pierde sin usar.`}); delete f.orden; changed=true; }
     for(const cls of ['F','M']){ const field=cls==='F'?'estF':'estM'; const est=f[field]; if(!est) continue; const e=estMap.get(est); if(!e) continue;
       const fx={r:f.rango||'Starter',n:0,pr:0,...((f.estFx||{})[cls]||{})};
       if(estImmune(f,est)){ f[field]=''; setEstFx(f,cls,null); changed=true; lines.push({k:'ok',t:`${name}: es inmune a ${est} por su tipo; se quita.`}); continue; }
@@ -1685,12 +1731,16 @@ function cbAttackHTML(){
   if(!mine.length) return h+`<p class="note">No controlas a ningún combatiente.</p></div>`;
   if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; CBU.picking=false; }
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
+  if(x.key!==CBU.cmdFor){ CBU.cmdFor=x.key; CBU.cmdOpen=false; }
   const hb=x.f.tipo==='P'&&x.f.habilidad?x.f.habilidad:'';
   h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
   if(hb&&CBU.habMsg&&CBU.habMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px">${CBU.habMsg.lines.map(t=>`<div class="ok">${esc(t)}</div>`).join('')}</div>`;
-  if(x.f.tipo==='E') h+=cmdHTML(x);
-  if(!mvs.length) return h+(x.f.tipo==='E'?'</div>':`<p class="note">Este personaje no tiene movimientos.</p></div>`);
+  if(x.f.tipo==='E'&&!mvs.includes('M0000')) mvs.unshift('M0000'); /* Forcejeo: movimiento estándar de todo Entrenador */
+  if(!mvs.length) return h+`<p class="note">Este personaje no tiene movimientos.</p></div>`;
   h+=`<div class="mvlist">`;
+  if(x.f.tipo==='E') h+=`<div class="mvrow cmdrow${CBU.cmdOpen?' on':''}"><div class="mvhead"><button class="mvname" data-cb="cmdopen" aria-expanded="${!!CBU.cmdOpen}" title="Ver las acciones de Entrenador">Comandar</button></div>
+      <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Acción de Entrenador</span></div>
+      <div class="mvfx">Toma una acción de entrenador.</div>${CBU.cmdOpen?cmdHTML(x):''}</div>`;
   for(const id of mvs){ const ai=attackInfo(x,id); if(!ai) continue; const m=ai.mi.m; const on=CBU.picking&&CBU.mv===id; const mode=targetMode(m);
     h+=`<div class="mvrow${on?' on':''}"><div class="mvhead"><button class="mvname" data-cb="pick" data-mv="${id}" title="Atacar con ${esc(m[1])}">${esc(m[1])}</button>
         <label class="mini" title="Bonus a la Clase de Dado">CD <input type="number" data-cbf="bonus" data-mv="${id}" value="${num(CBU.bon[id])}" aria-label="Bonus CD de ${esc(m[1])}"></label>
@@ -1703,46 +1753,50 @@ function cbAttackHTML(){
     h+=`</div>`; }
   return h+`</div><p class="note">Clic en el nombre de un movimiento para atacar con él. La Precisión ya descuenta las repeticiones.</p></div>`;
 }
-/* ---------- Comandar: acciones del Entrenador como movimientos Sin tipo ---------- */
-/* [nombre, Talento, Atributo por defecto, efecto(bono)] */
+/* ---------- Comandar: acciones del Entrenador (se despliegan desde la opción «Comandar») ---------- */
+/* [nombre, Talento, Atributo por defecto, efecto, clave] · las Órdenes (clave apunta/esquiva/critico/mueve) van a un Pokémon suyo y se tiran contra la dificultad del rival */
 const COMANDAR=[
-  ['¡Apunta!','Precision','DES',b=>`El Pokémon resta ${5*b} (5 × bono) a la tirada de Precisión de su próximo movimiento.`],
-  ['¡Esquiva!','Perspicacia','SAB',b=>`El Pokémon resta ${5*b} (5 × bono) a su próxima tirada de Esquiva o Temple.`],
-  ['¡Punto débil!','Teoria','SAB',b=>`El Pokémon suma +${Math.ceil(b/2)} (la mitad del bono, hacia arriba) a su Índice de Crítico.`],
-  ['¡Muévete!','Presencia','CAR',b=>`El Pokémon gana +${5*Math.floor(b/2)} ft de Velocidad (5 ft por cada 2 de bono; máximo 60 ft).`],
-  ['¡Ahora!','','',()=>'Un Pokémon suyo con Iniciativa menor actúa en este momento.'],
-  ['Retrasar Acción','','',()=>'Su Pokémon espera; actúa cuando el Entrenador gaste su Reacción en la ronda.']];
+  ['¡Apunta!','Precision','DES','El Pokémon resta 10 a la tirada de Precisión de su siguiente ataque.','apunta'],
+  ['¡Esquiva!','Perspicacia','SAB','El Pokémon resta 10 a su siguiente tirada de Esquiva o Temple.','esquiva'],
+  ['¡Punto débil!','Teoria','SAB','+1 al Índice de Crítico del siguiente ataque del Pokémon.','critico'],
+  ['¡Muévete!','Presencia','CAR','+1 etapa de Velocidad del Pokémon (+5 ft).','mueve'],
+  ['Retrasar Acción','','','El Pokémon espera: el jugador indica cuándo actúa, gastando la Reacción del Entrenador. Si la ronda termina, se pierde.',''],
+  ['Usar Objeto','Aplicacion','ENE','El Entrenador usa un objeto de su mochila.','obj'],
+  ['Lanzar Pokéball','Precision','DES','El Entrenador intenta capturar al Pokémon salvaje. (Los efectos de la captura están pendientes.)','ball']];
+const ORDEN_FIJA={apunta:10,esquiva:10,critico:1,mueve:5};
 const DIF_RANGO={Starter:['Fácil',9],Beginner:['Sencilla',13],Amateur:['Media',17],Elite:['Desafiante',21],Master:['Difícil',27],Legend:['Imposible',33]};
 /* Dificultad de Comandar: la del rival de mayor Rango (Starter = Fácil, Beginner = Sencilla…) */
 function cmdDif(x){ const riv=combatants().filter(y=>!aliados(y.key,x.key)&&!(y.src===x.src&&y.uid===x.uid)); let best=null;
   for(const y of riv) if(!best||ri(y.f.rango)>ri(best.f.rango)) best=y;
   const rk=best&&DIF_RANGO[best.f.rango]?best.f.rango:'Starter'; const [n,v]=DIF_RANGO[rk]; return {n,v,rk,by:best?charName(best.f):''}; }
-const ORDEN_K=['apunta','esquiva','critico','mueve'];
-const ORDEN_TXT=o=>o.k==='apunta'?`+${o.v} % de Precisión`:o.k==='esquiva'?`+${o.v} % a su próxima Esquiva o Temple`:o.k==='critico'?`+${o.v} al Índice de Crítico`:`+${o.v} ft de Velocidad`;
-const ordenVal=(k,b)=>k==='apunta'||k==='esquiva'?5*b:k==='critico'?Math.ceil(b/2):5*Math.floor(b/2);
+const ORDEN_TXT=o=>o.k==='apunta'?`−${o.v} a su tirada de Precisión`:o.k==='esquiva'?`−${o.v} a su tirada de Esquiva o Temple`:o.k==='critico'?`+${o.v} al Índice de Crítico`:`+1 etapa de Velocidad (+${o.v} ft)`;
 const misPokemon=x=>combatants().filter(y=>y.f.tipo==='P'&&y.src===x.src&&y.uid===x.uid&&(!y.f.entrenador||y.f.entrenador===x.id));
 function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||= {};
   if(!pk.some(y=>y.key===CBU.cmdT)) CBU.cmdT=pk[0]?pk[0].key:'';
   const dif=cmdDif(x);
-  let h=`<div class="k" style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Comandar · solo una Orden por ronda, en vez de atacar</div>
-    <p class="note" style="margin:0 0 6px">Dificultad <b>${dif.n} (${dif.v})</b>${dif.by?`, por el rival de mayor Rango: ${esc(dif.by)} (${esc(dif.rk)})`:' (no hay rivales)'}. Si la Orden tiene éxito, el bono se aplica al siguiente movimiento del Pokémon.</p>`;
-  h+=pk.length?`<div class="grid g3"><label class="f">Pokémon<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate.</p>';
-  h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], ex=t?ordenExtra(f,combatant(CBU.cmdT)):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0, a=CBU.cmdA[i]||o[2]; const bb=Math.max(0,b);
-    return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${pk.length?'':'disabled'}>${esc(o[0])}</button>
+  let h=`<div class="mvpick cmdpick"><p class="note" style="margin:0 0 6px">Las Órdenes se tiran contra la dificultad <b>${dif.n} (${dif.v})</b>${dif.by?`, por el rival de mayor Rango: ${esc(dif.by)} (${esc(dif.rk)})`:' (no hay rivales)'}. Si tienen éxito, el bono dura hasta usarse o hasta el final de la siguiente ronda. Una acción de Entrenador por ronda.</p>`;
+  h+=pk.length?`<div class="grid g3"><label class="f">Pokémon que recibe la Orden<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate: las Órdenes y Retrasar Acción no están disponibles.</p>';
+  h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], orden=!!ORDEN_FIJA[o[4]], need=orden||!o[4]; const ex=orden?ordenExtra(f,combatant(CBU.cmdT)):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0, a=CBU.cmdA[i]||o[2];
+    return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${need&&!pk.length?'disabled':''}>${esc(o[0])}</button>
       ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
       <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b>${ex.why.length?` <span class="note">(${esc(ex.why.join(', '))})</span>`:''}</span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
-      <div class="mvfx">${esc(o[3](bb))}</div></div>`; }).join('')+`</div>`;
-  if(CBU.cmdMsg&&CBU.cmdMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px"><div class="ok">${esc(CBU.cmdMsg.t)}</div></div>`;
+      <div class="mvfx">${esc(o[3])}</div></div>`; }).join('')+`</div></div>`;
   return h; }
-function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; const y=combatant(CBU.cmdT); if(!o||!y) return;
-  const f=x.f, c=calc(f), t=o[1], ex=t?ordenExtra(f,y):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0; let txt;
-  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b; const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v);
-    const bb=Math.max(0,b), k=ORDEN_K[i], v=ordenVal(k,bb);
-    txt=`${charName(f)} ordena ${o[0]} a ${charName(y.f)}: 1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''} = ${tot} contra ${dif.n} (${dif.v}) → ${ok?`éxito: ${charName(y.f)} tendrá ${ORDEN_TXT({k,v})} en su siguiente movimiento.`:'falla, la Orden no se cumple.'}`;
-    if(ok) mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:charName(f)}; });
-    CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)}): 1d20 [${r}] + ${a} + ${TAL_LABEL(t)} = ${tot} vs ${dif.v} · ${ok?'éxito':'falla'}`,tot); }
-  else { txt=`${charName(f)}: ${o[0]} con ${charName(y.f)}. ${o[3](b)}`; CBU.cmdMsg={k:x.key,t:txt}; logRoll(charName(f),`Comandar ${o[0]} (${charName(y.f)})`,null); }
-  markActed(x.key); renderSheet(); }
+function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; if(!o) return;
+  const orden=!!ORDEN_FIJA[o[4]], need=orden||!o[4]; const y=combatant(CBU.cmdT); if(need&&!y) return;
+  const f=x.f, c=calc(f), t=o[1], ex=orden?ordenExtra(f,y):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0; const steps=[]; let val=null, short;
+  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b; val=tot;
+    const roll=`1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''} = ${tot}`;
+    if(orden){ const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v); const k=o[4], v=ORDEN_FIJA[k];
+      steps.push({k:ok?'ok':'ko',t:`${roll} contra ${dif.n} (${dif.v}) → ${ok?'éxito':'falla'}${r===20?' (20 natural)':r===1?' (1 natural)':''}`});
+      if(ok){ mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:charName(f),hasta:num(CB.ronda)+1}; }); steps.push({k:'ok',t:`${charName(y.f)}: ${ORDEN_TXT({k,v})} hasta usarlo o hasta el final de la ronda ${num(CB.ronda)+1}.`}); }
+      else steps.push({k:'ko',t:'La Orden no se cumple.'});
+      short=`${o[0]} (${charName(y.f)}): ${roll} vs ${dif.v} · ${ok?'éxito':'falla'}`; }
+    else { steps.push({k:'',t:roll}); steps.push({k:'fx',t:o[3]}); short=`${o[0]}: ${roll}`; } }
+  else { steps.push({k:'fx',t:`${charName(y.f)} espera. ${o[3]}`}); short=`${o[0]} (${charName(y.f)})`; }
+  const last={ts:Date.now(),by:charName(f),byKey:x.key,mv:o[0],mvId:'',cls:'Comandar',cmd:true,go:true,steps,res:[],selfDone:true};
+  cbWrite({last}); logRoll(charName(f),'Comandar '+short,val);
+  CBU.cmdOpen=false; markActed(x.key); renderSheet(); }
 function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
   const isNum=typeof m[7]==='number'&&m[7]>0;
@@ -1866,7 +1920,7 @@ function connectHit(L,z,extra){
 }
 function cbLastHTML(){
   const L=CB.last; if(!L) return '';
-  let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
+  let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${L.cmd?'Comandar: ':''}${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
   if(L.res&&L.res.length) h+=`<div class="res" style="margin-top:10px">`+L.res.map(z=>{ const fk=`${L.ts}|${z.key}`; const fx=CB.lastFx[fk]||{}; const t=combatant(z.key); const can=t&&canEditRef(t)&&S.canWrite;
     const canCol=!z.heal&&L.cls!=='Estado'&&t&&dmgMoves(t.f).length>0&&z.key!==L.byKey;
     let btns='';
@@ -1878,9 +1932,10 @@ function cbLastHTML(){
     if(can&&!fx.done&&CBU.colFor===fk&&t){ colPick=`<div class="colpick"><div class="note">Elige el movimiento para colisionar (se tira su Precisión):</div><div class="row" style="margin-top:6px">${dmgMoves(t.f).map(id=>{ const ai=attackInfo(t,id); return ai?`<button class="btn sm" data-cb="colmv" data-k="${esc(z.key)}" data-mv="${id}">${esc(ai.mi.m[1])} <span class="note">${ai.prec}%${ai.pen?' (−'+ai.pen+')':''}</span></button>`:''; }).join('')}<button class="btn sm" data-cb="colno">Cancelar</button></div></div>`; }
     return `<div class="r"><div><div class="note">${z.heal?'Curación a':'Daño a'} ${esc(z.name)}${z.est?` · ${esc(z.est)}`:''}</div><div class="big ${fx.ev?'ko':''}">${z.val??'—'}</div><div class="note">${esc(z.det)}</div>${(fx.log||[]).map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')}</div>
       <div class="row" style="justify-content:flex-end;align-content:flex-start">${btns}</div>${colPick}</div>`; }).join('')+`</div>`;
+  if(!L.res||!L.res.length) return h+`</div>`;
   return h+`<p class="note">Cada defensor elige: <b>Evadir</b> (su d100 debe ser ≤ su Evasión y ≤ ${L.d100}), <b>Colisionar</b> con un movimiento de daño, o <b>Recibir</b>. Si no logra evitarlo, el daño y los efectos se aplican solos.</p></div>`;
 }
-function combatHTML(){ return cbOrderHTML()+cbAttackHTML()+cbLastHTML()+cbClashHTML(); }
+function combatHTML(){ return cbOrderHTML()+cbLastHTML()+cbAttackHTML()+cbClashHTML(); }
 /* ---------- colisión ---------- */
 const CL={am:'',dm:'',ca:false,cd:false};
 const dmgMoves=f=>(f.moves||[]).filter(id=>{ const m=atkById.get(id); return m&&m[3]!=='Estado'; });
@@ -1900,6 +1955,7 @@ function clashSide(x,mv,other,isAtk,crit){
   if(e.immune) add(`${m[2]} contra ${om[2]}: sin efecto`,-4);
   else if(e.steps>0) add(`${m[2]} contra ${om[2]}: súper eficaz`,2);
   else if(e.steps<0) add(`${m[2]} contra ${om[2]}: poco eficaz`,-2);
+  const ak=m[3]==='Fisico'?'FUE':m[3]==='Especial'?'ENE':''; if(ak){ const av=num(c.A[ak]); add(`${ak} ${av} ÷ 3 (hacia arriba)`,Math.ceil(av/3)); }
   if(crit) add('Crítico',2);
   return {x,c,mi,m,rows,tot,ai:attackInfo(x,mv)};
 }
@@ -1937,7 +1993,7 @@ function cbClashHTML(){
   if(!win) out=`<b>Empate.</b> Ambos reciben el promedio de las CD (<b>${avgDice}</b>, sin STAB) más el promedio del Atributo de los dos movimientos, sin restar defensas. Nadie aplica efectos secundarios.`;
   else if(ad<=3) out=`<b>Gana ${esc(win.m[1])} por ${ad}.</b> El perdedor recibe el promedio de las CD de los dos movimientos (<b>${avgDice}</b>, sin STAB)${(win===SA?CL.ca:CL.cd)?' × 2 por el crítico del ganador':''}. Solo el ganador aplica sus efectos secundarios.`;
   else out=`<b>Gana ${esc(win.m[1])} por ${ad}.</b> El perdedor recibe el daño completo de ${esc(win.m[1])}${(win===SA?CL.ca:CL.cd)?' × 2 por el crítico':''}. Solo el ganador aplica sus efectos secundarios.`;
-  return h+`<div class="fx-box" style="margin-top:10px">${out}${win?`<div class="note" style="margin-top:4px">Efecto de ${esc(win.m[1])}: ${esc(win.m[11])}</div>`:''}</div></div>`;
+  return h+`<div class="fx-box" style="margin-top:10px">${out}${win?`<div class="note" style="margin-top:4px">Efecto de ${esc(win.m[1])}: ${esc(win.m[11])}</div>`:''}</div><p class="note">En combate cada lado suma además su FUE ÷ 3 (movimiento Físico) o su ENE ÷ 3 (Especial), redondeado hacia arriba; aquí no se cuenta porque no hay participantes.</p></div>`;
 }
 function clChange(el){
   const k=el.dataset.clf;
@@ -2006,6 +2062,7 @@ function cbClick(b){
     if(targetMode(m)==='none'){ CBU.picking=false; doAttack(); return; } CBU.picking=true; renderSheet(); }
   else if(act==='hab'){ activarHab(); }
   else if(act==='cmd'){ doComandar(num(b.dataset.i)); }
+  else if(act==='cmdopen'){ CBU.cmdOpen=!CBU.cmdOpen; CBU.picking=false; renderSheet(); }
   else if(act==='rs'){ const k=b.dataset.k, mm=b.dataset.m; CBU.rs=CBU.rs&&CBU.rs.k===k&&CBU.rs.m===mm?null:{k,m:mm,r:'',t:'',msg:''}; renderSheet(); }
   else if(act==='rsNo'){ CBU.rs=null; renderSheet(); }
   else if(act==='rsGo'){ rsGo(); }
@@ -2059,6 +2116,9 @@ document.addEventListener('toggle',e=>{ const k=e.target.dataset&&e.target.datas
 document.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-dsel]')){ e.preventDefault(); e.target.click(); }});
 document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
+  const lk=e.target.closest('[data-lock]'); if(lk){ const x=refByKey(lk.dataset.lock); if(x) setLock(x,!isLocked(x.f)); renderSheet(); return; }
+  const la=e.target.closest('[data-lockall]'); if(la){ const on=la.dataset.v==='1'; poolOf('jug',la.dataset.lockall).forEach(x=>setLock(x,on)); renderSheet(); return; }
+  const nt=e.target.closest('[data-notes]'); if(nt){ toggleNotes(nt.dataset.notes); return; }
   const tg=e.target.closest('[data-team]'); if(tg){ toggleTeam(tg.dataset.team); return; }
   const cb=e.target.closest('[data-cb]'); if(cb){ cbClick(cb); return; }
   const dpp=e.target.closest('[data-dexpop]'); if(dpp){ e.stopPropagation(); T.dpop=T.dpop===dpp.dataset.dexpop?'':dpp.dataset.dexpop; renderSheet(); return; }
@@ -2080,8 +2140,8 @@ document.addEventListener('click',async e=>{
   const folder=a.dataset.folder||'';
   if(act==='newE') createDoc('jug',newTrainer());
   else if(act==='newP') createDoc('jug',newPokemon());
-  else if(act==='newNota') createDoc('nota',{titulo:'Nueva nota',fecha:new Date().toISOString().slice(0,10),texto:'',creado:new Date().toISOString()});
-  else if(act==='newBit') createDoc('bit',{titulo:'Sesión',clase:'Sesión',fecha:new Date().toISOString().slice(0,10),texto:'',creado:new Date().toISOString()});
+  else if(act==='newNota') createDoc('nota',{vis:'priv',titulo:'Nueva nota',fecha:new Date().toISOString().slice(0,10),texto:'',creado:new Date().toISOString()});
+  else if(act==='newBit') createDoc('bit',{autor:S.uid,vis:'masters',titulo:'Sesión',clase:'Sesión',fecha:new Date().toISOString().slice(0,10),texto:'',creado:new Date().toISOString()});
   else if(act==='newNpc') createDoc('master',newTrainer({nombre:'Nuevo NPC',cat:'npc',carpeta:folder}));
   else if(act==='newFolderNpc'){ const n=$('#newFolder').value.trim(); if(!n){ $('#newFolder').focus(); return; } createDoc('master',newTrainer({nombre:'Nuevo NPC',cat:'npc',carpeta:n})); }
   else if(act==='newWild') createDoc('master',newPokemon({cat:'salvaje',nat:pick(D.nat)[0],carpeta:folder}));
