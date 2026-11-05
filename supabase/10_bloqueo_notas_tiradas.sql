@@ -9,6 +9,7 @@
 --    o 'yo' (solo su dueño; opción de los Masters).
 -- 3. Bitácora: data.vis = 'yo' la deja solo para su autor (data.autor); si no, la ven todos los Masters.
 -- 4. Historial de dados: se guardan solo las últimas 50 tiradas de la mesa.
+-- 5. El combate empieza en la Ronda 1 (un combate sin ronda guardada, o con 0, cuenta como 1).
 -- =====================================================================
 
 -- 1. Fichas fijadas ---------------------------------------------------
@@ -45,6 +46,9 @@ create trigger ficha_fijada before update on public.fichas
 -- 2. Notas de jugador -------------------------------------------------
 drop policy if exists not_ver on public.notas;
 drop policy if exists not_escribir on public.notas;
+drop policy if exists not_crear on public.notas;
+drop policy if exists not_editar on public.notas;
+drop policy if exists not_borrar on public.notas;
 create policy not_ver on public.notas for select to authenticated
   using (owner = auth.uid()
          or coalesce(data->>'vis','priv') = 'pub'
@@ -59,6 +63,10 @@ create policy not_borrar on public.notas for delete to authenticated
 
 -- 3. Bitácora ---------------------------------------------------------
 drop policy if exists bit_master on public.bitacora;
+drop policy if exists bit_ver on public.bitacora;
+drop policy if exists bit_crear on public.bitacora;
+drop policy if exists bit_editar on public.bitacora;
+drop policy if exists bit_borrar on public.bitacora;
 create policy bit_ver on public.bitacora for select to authenticated
   using (public.es_master() and (coalesce(data->>'vis','masters') <> 'yo' or coalesce(data->>'autor','') in ('', auth.uid()::text)));
 create policy bit_crear on public.bitacora for insert to authenticated
@@ -81,3 +89,14 @@ drop trigger if exists tiradas_50 on public.tiradas;
 create trigger tiradas_50 after insert on public.tiradas
   for each statement execute function public.recortar_tiradas();
 delete from public.tiradas t where t.id not in (select id from public.tiradas order by ts desc, id desc limit 50);
+
+-- 5. El combate empieza en la Ronda 1 ----------------------------------
+create or replace function public.avanzar_ronda(esperada int) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.participa_en_combate() then return false; end if;
+  update public.combate
+     set data = jsonb_set(data, '{ronda}', to_jsonb(esperada + 1))
+   where id = 1 and coalesce(nullif((data->>'ronda')::int, 0), 1) = esperada;
+  return found;
+end $$;
