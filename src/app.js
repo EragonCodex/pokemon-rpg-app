@@ -229,11 +229,16 @@ function habMov(m,em){
   o.ignEv=hkOf(em,/^ignoraEvasion$/).length>0; o.siempre=hkOf(em,/^siempreGolpea$/).length>0;
   for(const h of hkOf(em,/^re$/)) o.reMul=hval(h.v)===0?0:2;
   return o; }
+/* «No le reducen atributos» (Cuerpo Puro, Humo Blanco, Guardia Metálica: clave noBajaAttr:atributos o :todos) o solo uno (Corte Fuerte, Sacapecho) */
+const noBaja=(rows,k)=>rows.some(r=>r[5]==='noBajaAttr:todos'||r[5]==='noBajaAttr:atributos'||r[5]==='noBajaAttr:'+k);
+const reflejaBaja=rows=>rows.find(r=>r[5]==='reflejaBaja');
 function bumpAttr(f,k,v){ f.attr ||= blankAttr(); f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b), b1=clamp(b0+v,-6,6); f.attr[k].b=b1; return b1-b0; }
 /* Cambia un atributo por una Habilidad (respeta «No le reducen» y Simple/Respondón) */
 function habAttr(f,k,v,why,riv){ if(k==='max') k=bestAttr(f); if(k==='azar') k=pick(ATTR);
   const own=habRowsOf(f);
-  if(v<0&&own.some(r=>r[5]==='noBajaAttr:todos'||r[5]==='noBajaAttr:'+k)) return `${charName(f)}: ${habOf(f)} impide bajar ${k}`;
+  if(v<0&&riv&&noBaja(own,k)) return `${charName(f)}: ${habOf(f)} impide bajar ${k}`;
+  const rf=v<0&&typeof riv==='string'?reflejaBaja(own):null;
+  if(rf&&combatant(riv)){ let n=''; mutate(riv,af=>{ n=habAttr(af,k,v,`${rf[0]} de ${charName(f)}`,true); }); return `${charName(f)}: ${rf[0]} devuelve la baja de ${k}${n?' → '+n:''}`; }
   const ca=own.find(r=>r[5]==='cambiosAttr'); if(ca) v=ca[6]==='×2'?v*2:-v;
   const d=bumpAttr(f,k,v); let t=`${charName(f)} ${d?sg(d):'±0'} ${k} (${why})`;
   if(riv&&d<0) for(const r of habRowsOf(f,['Al cambiar atributos'])) if(r[3]==='rivalBaja'){ const mm=/^attr:(\w+)$/.exec(r[5]); if(mm){ const d2=bumpAttr(f,mm[1],hval(r[6])); t+=` · ${r[0]}: ${sg(d2)} ${mm[1]}`; } }
@@ -368,7 +373,7 @@ function activarHab(){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.ti
       if((mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(k))){ let a=mm[1];
         if(mm[2]){ const rv=rivales[0]; const A=rv?calc(rv.f).A:null; a=A&&A.VIT<A.SAB?mm[1]:mm[2]; }
         const dest=r[4]==='Rivales'?rivales:r[4]==='Todos los demás'?otros:r[4]==='Aliados'?alis:r[4]==='Equipo'?[x,...alis]:[x];
-        for(const y of dest){ let n=''; mutate(y.key,f=>{ n=habAttr(f,a,v,h,!aliados(y.key,x.key)); }); if(n) lines.push(n); }
+        for(const y of dest){ let n=''; mutate(y.key,f=>{ n=habAttr(f,a,v,h,!aliados(y.key,x.key)&&x.key); }); if(n) lines.push(n); }
         if(!dest.length) lines.push(`${h}: no hay a quién afectar.`); }
       else if(k==='curaPS'&&r[4]==='Aliado'){ const best=alis.map(y=>({y,c:calc(y.f)})).sort((a,b)=>a.c.act/a.c.ps-b.c.act/b.c.ps)[0];
         if(best){ const val=num(calc(x.f).A.CAR); mutate(best.y.key,f=>{ f.dano=Math.max(0,num(f.dano)-val); }); lines.push(`${charName(best.y.f)} recupera ${val} PS (${h}).`); } else lines.push(`${h}: no hay aliados en su Equipo.`); }
@@ -570,19 +575,19 @@ function mochilaHTML(f){
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
   const dis=S.ro?'disabled':'';
-  let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
+  let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
   items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" value="${esc(it.obj)}" ${dis} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${dis} aria-label="Peso en kg"></td>
-    <td style="width:90px"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${dis} aria-label="Precio unitario"></td>
+    <td style="width:110px"><span class="money"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${dis} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
     <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${dis} aria-label="Efecto"></td>
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="7" class="note">La mochila está vacía.</td></tr>`;
   h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">Cada punto de Fuerza del Entrenador carga 5 kg. Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
-function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor $${t.valor}`; el.classList.toggle('ko',t.peso>t.cap); } }
+function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
 
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
@@ -765,7 +770,7 @@ function renderSheet(){
     h+=`<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>`;
     h+=field('Profesión','profesion',f.profesion||'','txt');
     h+=field('Edad','edad',f.edad||'','txt');
-    h+=`<label class="f">Dinero<input type="text" inputmode="text" data-f="dinero" value="${num(f.dinero)}" ${S.ro?'disabled':''} title="Escribe un número, o +500 / −200 para sumar o restar" aria-label="Dinero (admite +500 o −200)"></label>`;
+    h+=`<label class="f">Dinero (₽)<span class="money"><input type="text" inputmode="text" data-f="dinero" value="${num(f.dinero)}" ${S.ro?'disabled':''} title="Escribe un número, o +500 / −200 para sumar o restar" aria-label="Dinero en Pokepesos (admite +500 o −200)"><i aria-hidden="true">₽</i></span></label>`;
     h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
     if(S.open.src==='master') h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`;
   }
@@ -1617,8 +1622,10 @@ function applyOps(f,ops,role,ctx){
     if(op.k==='est'){ const n=op.rand?pick(op.names):op.names[0]; const t=giveEstado(f,n,ctx,false); if(t) notes.push(t); }
     else if(op.k==='attr'){ const at={...op.at}; if(at.__rand){ at[pick(ATTR)]=(at[pick(ATTR)]||0)+at.__rand; delete at.__rand; }
       f.attr ||= blankAttr(); const own=role==='target'?habRowsOf(f):[]; const ca=own.find(r=>r[5]==='cambiosAttr');
+      const riv=role==='target'&&!!ctx.by&&!!ctx.tk&&ctx.by!==ctx.tk&&!aliados(ctx.by,ctx.tk); const rf=riv?reflejaBaja(own):null;
       for(let [k,v] of Object.entries(at)){ if(!ATTR.includes(k)) continue;
-        if(v<0&&own.some(r=>r[5]==='noBajaAttr:todos'||r[5]==='noBajaAttr:'+k)){ notes.push(`${habOf(f)} impide bajar ${k}`); continue; }
+        if(v<0&&riv&&noBaja(own,k)){ notes.push(`${habOf(f)} impide bajar ${k}`); continue; }
+        if(v<0&&rf&&combatant(ctx.by)){ let n=''; mutate(ctx.by,af=>{ n=habAttr(af,k,v,`${rf[0]} de ${charName(f)}`,true); }); notes.push(`${rf[0]} devuelve la baja de ${k}${n?' → '+n:''}`); continue; }
         if(ca){ v=ca[6]==='×2'?v*2:-v; }
         if(v<0&&role==='target'&&ctx.by&&ctx.tk&&ctx.by!==ctx.tk&&!aliados(ctx.by,ctx.tk)) ctx.rivalBaja=true;
         f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b); const b1=clamp(b0+v,-6,6); f.attr[k].b=b1; if(b1!==b0) notes.push(`${b1-b0>0?'+':''}${b1-b0} ${k} (bono ${b1>0?'+':''}${b1})`); else notes.push(`${k} ya está en el tope (${b0>0?'+':''}${b0})`); }
@@ -1915,7 +1922,7 @@ function habAlGolpear(L,z,t,A,m,act0,act1,ps){ const out=[]; const dmg=num(z.val
   const x={recibe:{mov:m,crit:!!(z.crit??L.crit),tipo:L.tipo||m[2]},ko:act1<=0&&act0>0,cruza:act0>=ps/2&&act1<ps/2&&act1>0};
   if(dmg) for(const r of habRowsOf(t.f,['Al recibir un ataque'])){ if(!habCondOk(r[3],t.f,z.key,x)) continue; const k=r[5], v=r[6]; let mm;
     if(r[7]&&d(100)>hval(r[7])) continue;
-    if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)); }); if(n) out.push(n); }
+    if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)&&z.key); }); if(n) out.push(n); }
     else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${charName(A.f)} ${n}`); }
     else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
   if(dmg&&m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
@@ -1928,6 +1935,13 @@ function connectHit(L,z,extra){
   const A=combatant(L.byKey); const m=atkById.get(L.mvId); const ops=m?parseFx(m):[]; const ctx={re:!!L.re,rank:L.rank,by:L.byKey,tk:z.key};
   const out=[]; const tc0=calc(t.f); const ps=tc0.ps, act0=tc0.act; let act1=act0;
   if((tc0.em.hk||[]).some(h=>h.k==='noReRecv')) ctx.re=false; /* Polvo Escudo */
+  /* Espejo Mágico: un movimiento de Estado de un rival se devuelve a quien lo usó */
+  const em=m&&A&&m[3]==='Estado'&&!z.heal&&!z.selfMove&&z.key!==L.byKey&&!aliados(L.byKey,z.key)?habRowsOf(t.f).find(r=>r[5]==='reflejaEstado'):null;
+  if(em){ const out=[`${em[0]}: devuelve ${L.mv} a ${charName(A.f)}`]; const c2={...ctx,by:z.key,tk:L.byKey};
+    mutate(L.byKey,f=>{ out.push(...applyOps(f,ops,'target',c2)); });
+    if(!L.selfDone){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
+    logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')}${extra?' · '+extra:''}`,null);
+    return out; }
   mutate(z.key,f=>{
     if(z.val){ if(z.heal) f.dano=Math.max(0,num(f.dano)-z.val); else { f.dano=num(f.dano)+z.val;
         const sv=(tc0.em.hk||[]).find(h=>h.k==='sobrevive1PS'); if(sv&&act0>=ps&&num(f.dano)>=ps){ f.dano=ps-1; out.push(`${sv.nm}: queda con 1 PS`); } }
@@ -2060,7 +2074,7 @@ function doCollide(L,z,mv){
       if(ad<=3){ avgHit(SB,wcrit); const zz={...z,val:null}; connectHit(L,zz,'Colisión perdida').forEach(o=>log.push({k:'',t:o})); }
       else { connectHit(L,z,'Colisión perdida por 4 o más').forEach(o=>log.push({k:'',t:o})); }
     } else { // gana el defensor: su movimiento conecta con el atacante
-      const ctx={re:dre,rank:dm[5],by:t.key}; const ops=parseFx(dm); const out=[];
+      const ctx={re:dre,rank:dm[5],by:t.key,tk:A.key}; const ops=parseFx(dm); const out=[];
       let val=null, det='';
       if(ad<=3){ const rl=rollDice(avgDice); val=rl.t*(wcrit?2:1); det=`promedio de CD ${avgDice} [${rl.r.join(', ')}]${wcrit?' × 2':''}`; }
       else { const dr=rollDamage(dai,A,wcrit,0); val=dr.val; det=dr.det; }
