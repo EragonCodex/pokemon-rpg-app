@@ -153,7 +153,11 @@ async function writeDoc(r, data, uidActual) {
     case 'master': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'master', owner: null, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
     case 'notas': { const { error } = await sb.from('notas').upsert({ id: r.id, owner: r.uid, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
     case 'bitacora': { const { error } = await sb.from('bitacora').upsert({ id: r.id, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
-    case 'combate': { const { error } = await sb.from('combate').upsert({ id: r.mesa, data }); return fail(error); }
+    case 'combate': {
+      const { data: up, error } = await sb.from('combate').update({ data }).eq('id', r.mesa).select('id'); fail(error);
+      if (!up || !up.length) fail((await sb.from('combate').insert({ id: r.mesa, data })).error); /* primera vez en una mesa nueva (solo un Master) */
+      return;
+    }
     case 'mesas': { const { error } = await sb.from('config').upsert({ clave: 'mesas', valor: data }); return fail(error); }
     case 'masters': {
       const { data: cur, error } = await sb.from('masters').select('user_id').eq('mesa_id', r.mesa); fail(error);
@@ -243,7 +247,7 @@ export const db = { doc: docRef, collection: collectionRef };
 export function makeUser(session) {
   const u = session.user; const md = u.user_metadata || {};
   let master = null;
-  const isMaster = async () => { if (master === null) { const { data } = await sb.rpc('es_master'); master = !!data; } return master; };
+  const isMaster = async () => { if (master === null) { const { data } = await sb.rpc('es_dueno'); master = !!data; } return master; }; /* el dueño es Master en todas las mesas */
   return {
     me: async () => ({ id: u.id, name: md.full_name || md.name || u.email, avatarUrl: md.avatar_url || md.picture || '', color: '#888', email: u.email, isOwner: await isMaster(), canEdit: true }),
     id: async () => u.id,
