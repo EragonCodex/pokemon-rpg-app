@@ -517,7 +517,7 @@ const veJug=(k,id)=>!vistaOn(k)||VSET[k].has(id);
 const vistaVe=(k,id)=>isMaster()||veJug(k,id);
 function saveVistas(){ for(const k of ['mov','hab','pre']) S.vistas[k].ids=[...VSET[k]]; queueSave('config/vistas',structuredClone(S.vistas),500); renderSheet(); }
 function vistaBar(k,ids,nombre){ if(!isMaster()) return ''; const on=vistaOn(k); const vis=ids.filter(id=>VSET[k].has(id)).length;
-  return `<div class="row vistabar" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${on?'pri':''}" data-vista="${k}" aria-pressed="${on}" title="Con el bloqueo activo, los jugadores solo ven ${nombre} desbloqueados">${on?'Bloqueo de jugadores activo · Desactivar':'Bloquear lo que ven los jugadores'}</button>${on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button>`:''}</div>`; }
+  return `<div class="row vistabar" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${on?'pri':''}" data-vista="${k}" aria-pressed="${on}" title="Con el bloqueo activo, los jugadores solo ven ${nombre} desbloqueados">${on?'Bloqueo de jugadores activo · Desactivar':'Bloquear lo que ven los jugadores'}</button>${on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:''}</div>`; }
 const vistaBtn=(k,id)=>isMaster()&&vistaOn(k)?`<button class="lockbtn vbtn" data-vistaid="${k}|${esc(id)}" aria-pressed="${VSET[k].has(id)}" title="${VSET[k].has(id)?'Visible para los jugadores: clic para ocultar':'Oculto para los jugadores: clic para mostrar'}" aria-label="${VSET[k].has(id)?'Ocultar a los jugadores':'Mostrar a los jugadores'}">${VSET[k].has(id)?'👁':'🔒'}</button> `:'';
 const VLAST={mov:[],hab:[],pre:[]};
 function saveVis(){ const jug={}; for(const [u,set] of Object.entries(S.visJ)) if(set.size) jug[u]=[...set]; queueSave('pokedex/visibles',{ids:[...S.vis],jug,evento:!!S.evento},600); buildDexList(); renderSheet(); }
@@ -1167,7 +1167,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {pfl:{e:'',g:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {popen:'', pfl:{e:'',g:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
@@ -1343,7 +1343,7 @@ function toolPre(){
     <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span></div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
   h+=`<div class="card"><h2>${esc(T.pfl.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span></h2><div class="tw"><table class="mtable"><thead><tr>${sortHead(PCOLS,T.psort,'psort')}</tr></thead><tbody>`;
-  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<b>${esc(r[4])}</b></td><td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+'\u00a0₽':esc(r[5]??'—')}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td></tr>`;
+  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td><td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+'\u00a0₽':esc(r[5]??'—')}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td></tr>${T.popen===r[3]?`<tr class="fx"><td colspan="5">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
   return h+`</tbody></table></div></div>`;
 }
 // rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
@@ -1619,12 +1619,13 @@ const EST_RX=new RegExp('\\b('+EST_NAMES.join('|')+')\\b','g');
 const FX_CACHE=new Map();
 /* ---- Mecánicas de movimientos (2026-11-08): según el Blanco, límite de usos, preparación (bajo tierra, agua, aire), empuje y Reserva ---- */
 const LUGAR={tierra:'Bajo tierra',agua:'Bajo el agua',aire:'En el aire',sombra:'Desaparecido',carga:'Cargando'};
-const ALCANZA={tierra:['Terremoto','Magnitud','Fisura'],agua:['Surf','Torbellino'],aire:['Gancho Alto','Mil Flechas','Antiaereo','Trueno','Vendaval','Tornado'],sombra:[]};
-const DOBLE_OC={tierra:['Terremoto'],agua:['Surf','Torbellino'],aire:[],sombra:[]};
+/* Quién alcanza a cada uno, con daño doble (decisión del usuario 2026-11-08) */
+const ALCANZA={tierra:['Terremoto','Magnitud','Fisura','Mil Temblores'],agua:['Surf','Torbellino','Tromba Marina','Remolino'],aire:['Gancho Alto','Mil Flechas','Antiaereo','Trueno','Vendaval','Tornado'],sombra:[]};
+const DOBLE_OC=ALCANZA;
+/* Categorías Alejarse (preparación: bajo tierra, agua, aire o desaparece) y Carga */
 function prepDe(m){ const t=String(m[11]||''); let r;
-  if(m[1]==='Excavar') return {l:'tierra'};
-  if((r=/Requiere una ronda de preparaci[oó]n (bajo el agua|en el aire|en la que el usuario desaparece)/.exec(t))) return {l:r[1]==='bajo el agua'?'agua':r[1]==='en el aire'?'aire':'sombra'};
-  if((r=/Requiere una ronda de carga(?:, salvo con ([^.]+))?/.exec(t))) return {l:'carga',salvo:r[1]?r[1].split(/,\s*|\s+o\s+/).map(z=>z.trim()):[]};
+  if(hasCat(m,'Alejarse')||/Requiere una ronda de preparaci[oó]n/.test(t)) return {l:/bajo el agua/.test(t)?'agua':/desaparece/.test(t)?'sombra':(m[1]==='Excavar'||/bajo tierra/.test(t))?'tierra':'aire'};
+  if(hasCat(m,'Carga')||/Requiere una ronda de carga/.test(t)){ r=/salvo con ([^.]+)/.exec(t); return {l:'carga',salvo:r?r[1].split(/,\s*|\s+o\s+/).map(z=>z.trim()):[]}; }
   return null; }
 function ocBadge(f){ if(!f) return ''; let h=''; if(f.oculto) h+=' '+badge(LUGAR[f.oculto.l]||'Oculto','5b6b7a'); if(num(f.reserva)) h+=' '+badge(`Reserva ${f.reserva}`,'8a6d3b'); return h; }
 function cumpleEstado(f,q){ if(!f) return false; q=String(q).trim(); let r;
@@ -1637,12 +1638,18 @@ function condBlanco(m,A,Tf){ const t=String(m[11]||''); const o={x2:false,prec:0
   if((r=/Si el Blanco (est[aá] [^,]+), aumenta su Precisi[oó]n en (\d+)\s*%/.exec(t))&&cumpleEstado(Tf,r[1])){ o.prec=Number(r[2]); o.notes.push(`el Blanco ${r[1]}: +${r[2]} % Precisión`); }
   if((r=/Si el Blanco est[aá] (\w+), le cura ese estado y el usuario recupera PS iguales a todo el da[ñn]o causado/.exec(t))&&cumpleEstado(Tf,'está '+r[1])) o.drainAll=r[1];
   return o; }
-function empuje(m,f){ const r=/empujado (\d+) pies, y se reduce (\d+) pies por (FUE|VIT|ENE|SAB|DES|CAR) del objetivo/.exec(String(m[11]||'')); if(!r||!f) return null; const v=num(calc(f).A[r[3]]); return {ft:Math.max(5,Number(r[1])-Number(r[2])*v),base:Number(r[1]),paso:Number(r[2]),k:r[3],v}; }
+/* Empuje: fijo (Cola Dragón, Llave Giro: 40 ft) o según el usuario (Remolino ENE, Rugido CAR, Tromba Marina DES: 5 ft por punto, máx. 40); menos 5 ft por punto del Atributo del Blanco; mínimo 5 ft */
+function empuje(m,f,A){ const t=String(m[11]||''); if(!f) return null; let r, base, txt;
+  if((r=/empujado (\d+) pies por cada punto de (FUE|VIT|ENE|SAB|DES|CAR) del usuario \(m[aá]x\. (\d+) pies\)/.exec(t))){ const u=A?num(calc(A).A[r[2]]):0; base=Math.min(Number(r[3]),Number(r[1])*u); txt=`${r[1]} × ${r[2]} ${u}${Number(r[1])*u>Number(r[3])?` (máx. ${r[3]})`:''}`; }
+  else if((r=/empujado (\d+) pies,/.exec(t))){ base=Number(r[1]); txt=String(base); }
+  else return null;
+  const q=/se reduce (\d+) pies por (FUE|VIT|ENE|SAB|DES|CAR) del objetivo/.exec(t); const v=q?num(calc(f).A[q[2]]):0;
+  return {ft:Math.max(5,base-(q?Number(q[1])*v:0)),det:`${txt}${q?` − ${q[1]} × ${q[2]} ${v}`:''}, mínimo 5`}; }
 function fallaUso(m,f,tkeys){ const t=String(m[11]||''); let r; const b=k=>num(((f.attr||{})[k]||{}).b);
   if((r=/Falla si el usuario ya tiene \+(\d+) o m[aá]s en (FUE|VIT|ENE|SAB|DES|CAR) y en (FUE|VIT|ENE|SAB|DES|CAR)/.exec(t))&&b(r[2])>=Number(r[1])&&b(r[3])>=Number(r[1])) return `ya tiene +${r[1]} o más en ${r[2]} y en ${r[3]}`;
   if(/Acumula un punto de Reserva/.test(t)&&num(f.reserva)>=3) return 'ya acumuló 3 puntos de Reserva (máx. 3)';
   if(/(puntos de Reserva acumulados|punto Reserva acumulado)/.test(t)&&!num(f.reserva)) return 'no tiene puntos de Reserva';
-  if(/su Base es \d+ veces la FUE actualizada del Blanco/.test(t)&&tkeys.length&&tkeys.every(k=>{ const y=combatant(k); return y&&num(((y.f.attr||{}).FUE||{}).b)<=-6; })) return 'la FUE del Blanco ya está en el mínimo (−6)';
+  if(/su Base es \d+ veces la FUE actualizada del Blanco/.test(t)&&tkeys.length&&tkeys.every(k=>{ const y=combatant(k); return y&&(num(((y.f.attr||{}).FUE||{}).b)<=-6||num(calc(y.f).A.FUE)<=1); })) return 'la FUE del Blanco ya está en −6 o en 1';
   return ''; }
 function baseDe(m,A,Tf){ const t=String(m[11]||''); let r;
   if((r=/su Base es (\d+) veces los puntos de Reserva/.exec(t))) return clamp(Number(r[1])*num(A&&A.reserva),0,24);
@@ -2056,7 +2063,7 @@ function connectHit(L,z,extra){
     if((z.crit??L.crit)&&m&&!z.heal){ const ce=critEstado(m); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } }
     const n=applyOps(f,ops,'target',ctx); out.push(...n);
     if(cbx&&cbx.drainAll&&(f.estF===cbx.drainAll||f.estM===cbx.drainAll)){ if(f.estF===cbx.drainAll){ f.estF=''; setEstFx(f,'F',null); } else { f.estM=''; setEstFx(f,'M',null); } out.push(`se cura de ${cbx.drainAll}`); }
-    const ep=m?empuje(m,f):null; if(ep) out.push(`es empujado ${ep.ft} ft (${ep.base} − ${ep.paso} × ${ep.k} ${ep.v}, mínimo 5)`);
+    const ep=m?empuje(m,f,A&&A.f):null; if(ep) out.push(`es empujado ${ep.ft} ft (${ep.det})`);
   });
   if(selfHeal&&num(z.val)>0&&A){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-num(z.val)); }); out.push(`${charName(A.f)} recupera ${z.val} PS`); }
   if(m&&A&&!z.heal&&!z.selfMove&&z.key!==L.byKey) out.push(...habAlGolpear(L,z,t,A,m,act0,act1,ps));
@@ -2268,6 +2275,8 @@ document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
   const vs=e.target.closest('[data-vista]'); if(vs&&isMaster()){ const k=vs.dataset.vista; S.vistas[k].on=!S.vistas[k].on; saveVistas(); return; }
   const vb=e.target.closest('[data-vistabulk]'); if(vb&&isMaster()){ const [k,v]=vb.dataset.vistabulk.split('|'); for(const id of VLAST[k]) v==='1'?VSET[k].add(id):VSET[k].delete(id); saveVistas(); return; }
+  const va=e.target.closest('[data-vistaall]'); if(va&&isMaster()){ const [k,v]=va.dataset.vistaall.split('|'); const all=k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3]); VSET[k]=v==='1'?new Set(all):new Set(); saveVistas(); return; }
+  const pe=e.target.closest('[data-preopen]'); if(pe){ const id=pe.dataset.preopen; T.popen=T.popen===id?'':id; renderSheet(); return; }
   const vi=e.target.closest('[data-vistaid]'); if(vi&&isMaster()){ const i=vi.dataset.vistaid.indexOf('|'); const k=vi.dataset.vistaid.slice(0,i), id=vi.dataset.vistaid.slice(i+1); VSET[k].has(id)?VSET[k].delete(id):VSET[k].add(id); saveVistas(); return; }
   const lk=e.target.closest('[data-lock]'); if(lk){ const x=refByKey(lk.dataset.lock); if(x) setLock(x,!isLocked(x.f)); renderSheet(); return; }
   const la=e.target.closest('[data-lockall]'); if(la){ const on=la.dataset.v==='1'; poolOf('jug',la.dataset.lockall).forEach(x=>setLock(x,on)); renderSheet(); return; }
