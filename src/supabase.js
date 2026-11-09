@@ -71,8 +71,8 @@ function parse1(path) {
 const tiradasCache = {}; // uid -> Map(ts -> id)
 async function readCollection(r) {
   if (r.kind === 'jugadores') {
-    const { data, error } = await sb.from('jugadores').select('id,alias,creado,foto'); fail(error);
-    return data.map(x => docSnap(x.id, { alias: x.alias, creado: x.creado, ...(x.foto ? { foto: x.foto } : {}) }));
+    const { data, error } = await sb.from('jugadores').select('id,alias,creado,foto,color,tema,visto'); fail(error);
+    return data.map(x => docSnap(x.id, { alias: x.alias, creado: x.creado, ...(x.foto ? { foto: x.foto } : {}), ...(x.color ? { color: x.color } : {}), ...(x.tema ? { tema: x.tema } : {}), ...(x.visto ? { visto: x.visto } : {}) }));
   }
   if (r.kind === 'fichas') {
     const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'jug').eq('owner', r.uid).eq('mesa_id', r.mesa); fail(error);
@@ -130,7 +130,7 @@ async function readDoc(r) {
     return data ? data.data : undefined;
   }
   if (r.kind === 'jugador') {
-    const { data, error } = await sb.from('jugadores').select('alias,creado,foto').eq('id', r.uid).maybeSingle(); fail(error);
+    const { data, error } = await sb.from('jugadores').select('alias,creado,foto,color,tema,visto').eq('id', r.uid).maybeSingle(); fail(error);
     return data || undefined;
   }
   const tbl = r.kind === 'master' || r.kind === 'fichas' ? 'fichas' : r.kind;
@@ -148,7 +148,7 @@ function deepMerge(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Obje
 
 async function writeDoc(r, data, uidActual) {
   switch (r.kind) {
-    case 'jugador': { const { error } = await sb.from('jugadores').update({ alias: data.alias, foto: data.foto ?? null }).eq('id', r.uid); return fail(error); }
+    case 'jugador': { const { error } = await sb.from('jugadores').update({ alias: data.alias, foto: data.foto ?? null, color: data.color ?? null, tema: data.tema ?? null, visto: data.visto ?? null }).eq('id', r.uid); return fail(error); }
     case 'fichas': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'jug', owner: r.uid, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
     case 'master': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'master', owner: null, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
     case 'notas': { const { error } = await sb.from('notas').upsert({ id: r.id, owner: r.uid, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }

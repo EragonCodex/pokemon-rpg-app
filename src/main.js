@@ -48,13 +48,9 @@ async function start() {
   window.claude = { use: async n => (n === 'db' ? db : n === 'user' ? user : null) };
   gate.hidden = true;
   document.getElementById('app').hidden = false;
+  // «Salir» va al final del menú del perfil (lo dibuja la app)
+  window.__salir = async () => { await sb.auth.signOut(); location.reload(); };
   await import('./app.js');
-  const who = document.querySelector('.who');
-  if (who) {
-    const b = document.createElement('button'); b.className = 'btn sm'; b.textContent = 'Salir';
-    b.onclick = async () => { await sb.auth.signOut(); location.reload(); };
-    who.appendChild(b);
-  }
 }
 sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') location.reload(); });
 start().catch(e => { console.error(e); showLogin('Algo falló al conectar. Recarga la página.'); });

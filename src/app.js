@@ -514,14 +514,23 @@ const misMesas=()=>mesaLista().filter(x=>S.owner||enMesa(S.uid,num(x.id)));
 function aplicarMiembros(){ S.players=Object.fromEntries(Object.entries(S.allPlayers||{}).filter(([u])=>enMesa(u)||(u===S.uid&&S.owner))); }
 function cambiarMesa(id){ try{ localStorage.setItem('pkrpg.mesa',String(id)); }catch(_){} location.reload(); }
 async function saveMesas(){ try{ await S.raw.doc('config/mesas').set(S.mesasDoc); setStatus('Guardado'); }catch(e){ onWriteError(e); } renderWho(); render(); }
+const colorDe=u=>((S.allPlayers||{})[u]||{}).color||'';
+const enLinea=u=>{ const v=((S.allPlayers||{})[u]||{}).visto; return !!v&&Date.now()-Date.parse(v)<150000; };
+const puntoDe=u=>`<span class="status" data-st="${u===S.uid||enLinea(u)?'ok':'off'}" title="${u===S.uid||enLinea(u)?'Conectado':'Desconectado'}" aria-label="${u===S.uid||enLinea(u)?'Conectado':'Desconectado'}"></span>`;
+function aplicarTema(){ const t=((S.allPlayers||{})[S.uid]||{}).tema||(()=>{ try{ return localStorage.getItem('pkrpg.tema')||''; }catch(_){ return ''; } })(); if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme; }
+function guardarPerfil(campos){ if(!S.uid) return; const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),...campos}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd,200); }
+/* latido: cada minuto el perfil marca la hora, así la Mesa muestra quién está conectado */
+function latido(){ if(!S.uid||!S.canWrite||document.hidden||!S.allPlayers[S.uid]) return; const dd={...S.allPlayers[S.uid],visto:new Date().toISOString()}; S.allPlayers[S.uid]=dd; if(!pend[`jug/${S.uid}`]) S.raw.doc(`jug/${S.uid}`).set(dd).catch(()=>{}); }
 function fotoDe(u){ const p=(S.allPlayers||{})[u]||{}; return p.foto||(u===S.uid&&S.me&&S.me.avatarUrl)||''; }
 function renderWho(){ const b=$('#whoName'); if(!b) return; const me=(S.allPlayers||{})[S.uid]||{}; b.textContent=me.alias||S.me?.name||'';
   const av=$('#avatar'); const f=fotoDe(S.uid); if(av){ av.hidden=!f; if(f) av.src=f; } const mt=$('#mesaTag'); if(mt) mt.textContent=mesaNombre(MESA);
   const m=$('#whoMenu'); if(!m||m.hidden) return; const mesas=misMesas();
   m.innerHTML=`<div class="wm-sec"><label class="f">Tu nombre en la mesa<input id="alias" value="${esc(me.alias||S.me?.name||'')}" ${S.canWrite?'':'disabled'}></label></div>
    <div class="wm-sec"><span class="lbl">Foto de perfil</span><div class="row" style="gap:8px;align-items:center">${f?`<img class="wm-foto" src="${esc(f)}" alt="">`:'<span class="wm-foto wm-vacia" aria-hidden="true">?</span>'}<label class="btn sm">Subir foto<input type="file" id="fotoIn" accept="image/*" hidden ${S.canWrite?'':'disabled'}></label>${me.foto?'<button class="btn sm" data-act="fotoQuitar">Quitar</button>':''}</div></div>
+   <div class="wm-sec"><div class="row" style="gap:10px;align-items:end"><label class="f" style="flex:0 0 auto">Color propio<input type="color" id="colorIn" class="colorin" value="${esc(colorDe(S.uid)||'#3b82f6')}" ${S.canWrite?'':'disabled'} aria-label="Color propio"></label>
+     <label class="f" style="flex:1">Tema<select id="temaSel">${[['','Automático'],['light','Claro'],['dark','Oscuro']].map(([v,n])=>`<option value="${v}"${(me.tema||'')===v?' selected':''}>${n}</option>`).join('')}</select></label></div></div>
    <div class="wm-sec"><label class="f">Mesa<select id="mesaSel">${mesas.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}</option>`).join('')}</select></label>
-   ${S.owner?`<label class="f">Nombre de esta mesa<input id="mesaNom" value="${esc(mesaNombre(MESA))}"></label><button class="btn sm" data-act="mesaNueva">+ Nueva mesa</button>`:''}</div>`; }
+   ${S.owner?`<label class="f">Nombre de esta mesa<input id="mesaNom" value="${esc(mesaNombre(MESA))}"></label><button class="btn sm" data-act="mesaNueva">+ Nueva mesa</button>`:''}</div>${window.__salir?'<div class="wm-sec"><button class="btn" data-act="salir">Salir</button></div>':''}`; }
 async function subirFoto(file){ if(!file||!S.uid) return; const img=new Image(); const url=URL.createObjectURL(file);
   img.onload=()=>{ const n=128, c=document.createElement('canvas'); c.width=c.height=n; const g=c.getContext('2d'); const s0=Math.min(img.width,img.height);
     g.drawImage(img,(img.width-s0)/2,(img.height-s0)/2,s0,s0,0,0,n,n); URL.revokeObjectURL(url);
@@ -529,9 +538,9 @@ async function subirFoto(file){ if(!file||!S.uid) return; const img=new Image();
   img.src=url; }
 async function copiarAMesa(M){ const r=S.open; if(!r||!M||(r.src!=='jug'&&r.src!=='master')) return; const pool=poolOf(r.src,r.uid); const x=pool.find(y=>y.id===r.id); if(!x) return;
   const grupo=[x,...(x.f.tipo==='E'?pool.filter(y=>y.f.entrenador===x.id):[])]; const ids={}; grupo.forEach(y=>ids[y.id]=newId());
-  try{ for(const y of grupo){ const f=structuredClone(y.f); if(f.entrenador&&ids[f.entrenador]) f.entrenador=ids[f.entrenador]; delete f.bloq;
+  try{ for(const y of grupo){ const f=structuredClone(y.f); if(f.entrenador&&ids[f.entrenador]) f.entrenador=ids[f.entrenador]; delete f.bloq; if(M===MESA&&y===x) f.nombre=`${f.nombre||'Ficha'} (copia)`;
       const base=r.src==='master'?`master/${ids[y.id]}`:`jug/${r.uid}/fichas/${ids[y.id]}`; await S.raw.doc(mesaPath(base,M)).set(f); }
-    showBanner(`Copiado a ${mesaNombre(M)}: ${grupo.length} ficha${grupo.length>1?'s':''} nueva${grupo.length>1?'s':''}, sin sincronizar con estas.`); setStatus('Guardado'); }catch(e){ onWriteError(e); } }
+    showBanner(M===MESA?`Copia creada en esta mesa: ${grupo.length} ficha${grupo.length>1?'s':''} nueva${grupo.length>1?'s':''}.`:`Copiado a ${mesaNombre(M)}: ${grupo.length} ficha${grupo.length>1?'s':''} nueva${grupo.length>1?'s':''}, sin sincronizar con estas.`); setStatus('Guardado'); }catch(e){ onWriteError(e); } }
 const isMaster = ()=> S.owner || (!!S.uid && S.masters.includes(S.uid));
 const setStatus = t=>{ const el=$('#status'); if(!el) return; el.title=t; el.setAttribute('aria-label',t); el.dataset.st=/^(Conectado|Guardado)/.test(t)?'ok':/(Conectando|sin guardar|Guardando)/i.test(t)?'busy':'err'; };
 function pathOf(r){ return r.src==='master'?`master/${r.id}`: r.src==='bit'?`bitacora/${r.id}` : r.src==='nota'?`jug/${r.uid}/notas/${r.id}` : `jug/${r.uid}/fichas/${r.id}`; }
@@ -603,7 +612,7 @@ function allRolls(){
 function histHTML(limit=MAX_TIR){
   const rs=allRolls().slice(0,limit);
   if(!rs.length) return '<p class="note">Todavía no hay tiradas. Tira un dado desde una ficha (clic en un atributo, un talento o el botón d100 de un movimiento) o desde Herramientas › Dados.</p>';
-  return `<div class="hist">${rs.map(r=>`<div class="h"><span class="t">${hhmm(r.ts)}</span><span><b>${esc(r.quien||'—')}</b> <span class="w">${esc(r.uid==='__local'?'(solo tú)':(S.players[r.uid]?.alias||''))}</span></span><span class="v">${r.val??''}</span><span class="d">${esc(r.txt)}${canDelRolls()&&r.uid!=='__local'?` <button class="btn sm" data-act="rmRoll" data-u="${esc(r.uid)}" data-ts="${r.ts}" aria-label="Eliminar tirada">Eliminar</button>`:''}</span></div>`).join('')}</div>`;
+  return `<div class="hist">${rs.map(r=>`<div class="h"><span class="t">${hhmm(r.ts)}</span><span><b>${esc(r.quien||'—')}</b> <span class="w"${colorDe(r.uid)?` style="color:${esc(colorDe(r.uid))}"`:''}>${esc(r.uid==='__local'?'(solo tú)':(S.players[r.uid]?.alias||''))}</span></span><span class="v">${r.val??''}</span><span class="d">${esc(r.txt)}${canDelRolls()&&r.uid!=='__local'?` <button class="btn sm" data-act="rmRoll" data-u="${esc(r.uid)}" data-ts="${r.ts}" aria-label="Eliminar tirada">Eliminar</button>`:''}</span></div>`).join('')}</div>`;
 }
 
 
@@ -747,7 +756,7 @@ function renderList(){
     const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
     h+=`<div class="dlist" data-scope="mesa">`;
     for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=notasDe(u);
-      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${puntoDe(u)}${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
     h+=`</div>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
@@ -886,8 +895,7 @@ function renderSheet(){
   }
   if(!isP) h+=mochilaHTML(f);
   h+=`<div class="card"><h2>Notas</h2>${field('','notas',f.notas||'','area')}</div>`;
-  const otras=misMesas().filter(x=>num(x.id)!==MESA&&(S.open.src!=='master'||S.owner));
-  if(!S.ro) h+=`<div class="row">${otras.length&&(S.open.src==='jug'||S.open.src==='master')?`<select id="copyMesa" class="btn" aria-label="Copiar a otra mesa"><option value="">Copiar a otra mesa…</option>${otras.map(x=>`<option value="${num(x.id)}">${esc(x.nombre)}</option>`).join('')}</select>`:''}${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
+  if(!S.ro) h+=`<div class="row">${S.open.src==='jug'||S.open.src==='master'?'<button class="btn" data-act="copyOpen">Copiar</button><span id="copyConfirm" class="row" style="gap:6px"></span>':''}${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
   el.innerHTML=h; fillComputed(); fillMochila(); colorSelects();
   const im=$('#imgIn'); if(im) im.addEventListener('change',onImage);
 }
@@ -1434,8 +1442,7 @@ function toolDex(){
   const pageRows=res.slice(T.dpage*per,(T.dpage+1)*per);
   const nPart=M?D.dex.filter(r=>visState(r[0])==='some').length:0; const nMine=M?0:D.dex.filter(r=>visFor(r[0])).length;
   let h=`<div class="card"><h2>Pokédex <span class="pill">${M?`${S.vis.size} para todos · ${nPart} por jugador`:`${nMine} de ${D.dex.length} desbloqueadas`}${S.evento?' · modo evento':''}</span></h2>
-    ${M&&S.canWrite?`<div class="row" style="margin-bottom:10px"><button class="btn sm ${T.vopen.dex?'pri':''}" data-vopen="dex" aria-expanded="${!!T.vopen.dex}">Visibilidad</button>${S.evento&&!T.vopen.dex?'<span class="note ok">Modo evento activo: todas visibles.</span>':''}</div>`:''}
-    ${M&&S.canWrite&&T.vopen.dex?`<div class="row" style="margin-bottom:10px"><button class="btn sm ${S.evento?'pri':''}" data-act="dexEvento" aria-pressed="${!!S.evento}">${S.evento?'Modo evento activo: todas visibles · Desactivar':'Activar modo evento (mostrar todas)'}</button><span class="note">El modo evento muestra todas las especies sin tocar las desbloqueadas; al desactivarlo vuelven las de antes.</span></div>`:M?'':(S.evento?'<p class="note ok">Modo evento: todas las especies están visibles por ahora.</p>':'')}
+    ${!M&&S.evento?'<p class="note ok">Modo evento: todas las especies están visibles por ahora.</p>':''}
     <div class="grid g4">
     <label class="f">Nombre o número<input id="dq" value="${esc(T.dq)}" placeholder="p. ej. Pikachu o P0025"></label>
     <label class="f">Tipo<select data-dfl="tipo">${opts(D.types,T.dfl.tipo,'Todos')}</select></label>
@@ -1444,11 +1451,11 @@ function toolDex(){
     <label class="f">Habilidad<input data-dfl="hab" list="dl-hab" value="${esc(T.dfl.hab)}" placeholder="p. ej. Espesura"></label>
     <label class="f">Puntos Base<div class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" min="0" data-dfl="bmin" value="${esc(T.dfl.bmin)}" placeholder="mín." aria-label="Puntos Base mínimos" style="width:50%"><input type="number" min="0" data-dfl="bmax" value="${esc(T.dfl.bmax)}" placeholder="máx." aria-label="Puntos Base máximos" style="width:50%"></div></label>
     ${M?`<label class="f">Estado<select data-dfl="estado"><option value="">Todas</option><option value="vis"${T.dfl.estado==='vis'?' selected':''}>Para todos</option><option value="parcial"${T.dfl.estado==='parcial'?' selected':''}>Para algunos jugadores</option><option value="oculto"${T.dfl.estado==='oculto'?' selected':''}>Ocultas</option></select></label>`:`<label class="f">Estado<select data-dfl="pest"><option value="todos"${T.dfl.pest==='todos'?' selected':''}>Desbloqueadas para todos</option><option value="mio"${T.dfl.pest==='mio'?' selected':''}>Desbloqueadas para mí</option><option value="bloq"${T.dfl.pest==='bloq'?' selected':''}>Bloqueadas</option><option value=""${!T.dfl.pest?' selected':''}>Pokédex completa</option></select></label>`}
-    </div>${M&&S.canWrite&&T.vopen.dex?`<div class="row" style="margin-top:10px"><select id="dexFor" class="btn sm" aria-label="Para quién"><option value="">Para todos</option>${dexPlayers().map(u=>`<option value="${esc(u)}"${T.dfor===u?' selected':''}>Para ${esc(S.players[u].alias||'Jugador')}</option>`).join('')}</select><button class="btn sm" data-dexall="1">Desbloquear las ${res.length} filtradas</button><button class="btn sm" data-dexall="0">Ocultar las ${res.length} filtradas</button><span class="note">Toca la Poké Ball de una especie para elegir qué jugadores la ven.</span></div>`:(M?(S.canWrite?'<p class="note">Abre «Visibilidad» para elegir qué especies ven los jugadores.</p>':''):'<p class="note">El Master va desbloqueando especies a medida que las encuentran.</p>')}</div>`;
+    </div>${M&&S.canWrite?`<div class="row vistabar" style="margin-top:10px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${T.vopen.dex?'pri':''}" data-vopen="dex" aria-expanded="${!!T.vopen.dex}">Visibilidad</button>${T.vopen.dex?`<button class="btn sm ${S.evento?'pri':''}" data-act="dexEvento" aria-pressed="${!!S.evento}">${S.evento?'Modo evento activo: todas visibles · Desactivar':'Activar modo evento (mostrar todas)'}</button><span class="note">El modo evento muestra todas las especies sin tocar las desbloqueadas; al desactivarlo vuelven las de antes.</span><select id="dexFor" class="btn sm" aria-label="Para quién"><option value="">Para todos</option>${dexPlayers().map(u=>`<option value="${esc(u)}"${T.dfor===u?' selected':''}>Para ${esc(S.players[u].alias||'Jugador')}</option>`).join('')}</select><button class="btn sm" data-dexall="1">Desbloquear las ${res.length} filtradas</button><button class="btn sm" data-dexall="0">Ocultar las ${res.length} filtradas</button><span class="note">Toca la Poké Ball de una especie para elegir qué jugadores la ven.</span>`:(S.evento?'<span class="note ok">Modo evento activo: todas visibles.</span>':'')}</div>`:(M?'':'<p class="note">El Master va desbloqueando especies a medida que las encuentran.</p>')}</div>`;
   const sel=T.dsel&&dexById.get(T.dsel); if(sel&&(M||visFor(sel[0]))) h+=dexDetail(sel);
   h+=`<div class="card"><div class="dex">${pageRows.map(r=>{ const v=visFor(r[0]); const st=M?visState(r[0]):''; const shown=M||v;
       const pop = M&&T.dpop===r[0] ? `<div class="dexpop"><label class="row" style="gap:6px"><input type="checkbox" data-dexall1="${r[0]}" ${st==='all'?'checked':''} ${S.canWrite?'':'disabled'}> <b>Todos los jugadores</b></label>${dexPlayers().map(u=>`<label class="row" style="gap:6px"><input type="checkbox" data-dexj="${esc(u)}" data-id="${r[0]}" ${st==='all'||(S.visJ[u]&&S.visJ[u].has(r[0]))?'checked':''} ${st==='all'||!S.canWrite?'disabled':''}> ${esc(S.players[u].alias||'Jugador')}</label>`).join('')||'<span class="note">Aún no hay jugadores.</span>'}<button class="btn sm" data-dexpop="">Listo</button></div>` : '';
-      return `<div class="sp${shown?'':' hidden'}" ${shown?`data-dsel="${r[0]}" role="button" tabindex="0"`:''} aria-current="${T.dsel===r[0]}"><div class="no"><span>#${esc(String(r[19]).slice(1))} · ${esc(r[18])}</span>${M&&T.vopen.dex?`<button class="ballbtn" data-dexpop=""${r[0]}" title="${st==='all'?'Visible para todos':st==='some'?'Visible para algunos jugadores':'Oculta'}: clic para elegir quién la ve" aria-label="Elegir quién ve ${esc(dexLabel(r))}"><span class="ball${st==='none'?' off':st==='some'?' some':''}"></span></button>`:M?`<span class="ball${st==='none'?' off':st==='some'?' some':''}" aria-hidden="true"></span>`:(v?'<span class="ball" aria-hidden="true"></span>':'')}</div>
+      return `<div class="sp${shown?'':' hidden'}" ${shown?`data-dsel="${r[0]}" role="button" tabindex="0"`:''} aria-current="${T.dsel===r[0]}"><div class="no"><span>#${esc(String(r[19]).slice(1))} · ${esc(r[18])}</span>${M&&T.vopen.dex?`<button class="ballbtn" data-dexpop="${r[0]}" title="${st==='all'?'Visible para todos':st==='some'?'Visible para algunos jugadores':'Oculta'}: clic para elegir quién la ve" aria-label="Elegir quién ve ${esc(dexLabel(r))}"><span class="ball${st==='none'?' off':st==='some'?' some':''}"></span></button>`:M?`<span class="ball${st==='none'?' off':st==='some'?' some':''}" aria-hidden="true"></span>`:(v?'<span class="ball" aria-hidden="true"></span>':'')}</div>
         <div class="nm">${shown?esc(dexLabel(r)):'???'}</div><div>${shown?dexTypes(r).map(chip).join(' '):'<span class="note">Sin registrar</span>'}</div>${pop}</div>`;}).join('')||'<p class="note">Nada coincide con los filtros.</p>'}</div>
       ${pages>1?`<div class="row" style="margin-top:10px;justify-content:center"><button class="btn sm" data-dpage="-1" ${T.dpage===0?'disabled':''}>Anterior</button><span class="pill">Página ${T.dpage+1} de ${pages}</span><button class="btn sm" data-dpage="1" ${T.dpage>=pages-1?'disabled':''}>Siguiente</button></div>`:''}</div>`;
   return h;
@@ -1776,7 +1783,7 @@ function cbOrderHTML(){
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     const rsOn=CBU.rs&&CBU.rs.k===x.key;
-    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
+    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}${x.src==='jug'&&colorDe(x.uid)?` style="border-left:4px solid ${esc(colorDe(x.uid))}"`:''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}${x.f.orden?`<div class="note cond-cn">Orden ${esc(x.f.orden.n)} de ${esc(x.f.orden.by)}: ${esc(ORDEN_TXT(x.f.orden))} en su siguiente movimiento</div>`:''}</div>
       <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
@@ -2314,6 +2321,8 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
   if(e.target.id==='alias'&&S.canWrite){ const a=e.target.value.trim()||'Jugador'; const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),alias:a}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd); renderWho(); }
+  if(e.target.id==='colorIn'&&S.canWrite){ guardarPerfil({color:e.target.value}); render(); }
+  if(e.target.id==='temaSel'){ const v=e.target.value; try{ localStorage.setItem('pkrpg.tema',v); }catch(_){} if(S.canWrite) guardarPerfil({tema:v}); aplicarTema(); }
   if(e.target.id==='fotoIn'&&S.canWrite){ subirFoto(e.target.files&&e.target.files[0]); }
   if(e.target.id==='mesaSel'){ const v=num(e.target.value); if(v&&v!==MESA) cambiarMesa(v); }
   if(e.target.id==='mesaNom'&&S.owner){ const n=e.target.value.trim()||`RPG ${MESA}`; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.lista=mesaLista().map(x=>num(x.id)===MESA?{...x,nombre:n}:x); saveMesas(); }
@@ -2387,6 +2396,11 @@ document.addEventListener('click',async e=>{
   else if(act==='clearRolls'){ const c=$('#clrConfirm'); if(c) c.innerHTML='<button class="btn sm danger" data-act="clearYes">Sí, vaciar</button> <button class="btn sm" data-act="clearNo">Cancelar</button>'; }
   else if(act==='clearNo'){ const c=$('#clrConfirm'); if(c) c.innerHTML=''; }
   else if(act==='clearYes'){ clearRolls(); }
+  else if(act==='copyOpen'){ const c=$('#copyConfirm'); if(!c) return; const ms=misMesas().filter(x=>num(x.id)===MESA||S.open.src!=='master'||S.owner);
+    c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
+  else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
+  else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
+  else if(act==='salir'){ if(window.__salir) window.__salir(); }
   else if(act==='fotoQuitar'){ const dd={...(S.allPlayers[S.uid]||{})}; delete dd.foto; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd,100); renderWho(); render(); }
   else if(act==='mesaNueva'&&S.owner){ const l=mesaLista(); const id=Math.max(...l.map(x=>num(x.id)))+1; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.lista=[...l,{id,nombre:`RPG ${id}`}]; S.mesasDoc.miembros={...(S.mesasDoc.miembros||{}),[id]:{[S.uid]:'master'}}; await saveMesas(); cambiarMesa(id); }
   else if(act==='del'){ const c=$('#delConfirm'); c.innerHTML='<button class="btn danger" data-act="delYes">Sí, borrar para siempre</button> <button class="btn" data-act="delNo">Cancelar</button>'; }
@@ -2492,8 +2506,9 @@ async function boot(){
     if(S.view==='mesa'&&(!S.open||S.open.src==='hist') || S.view==='tools'&&S.tool==='dados') safeSheet(); if(S.view==='mesa') renderList(); },e=>console.warn(e));
   S.raw.collection('jug').onSnapshot(snap=>{ const m=snapMap(snap);
     if(S.uid && S.allPlayers[S.uid] && !m[S.uid]) m[S.uid]=S.allPlayers[S.uid];
-    S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); renderWho(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
+    S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); renderWho(); aplicarTema(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
   if(S.uid) subPlayer(S.uid);
   if(S.owner) subMaster();
+  aplicarTema(); setTimeout(latido,4000); setInterval(latido,60000);
 }
 boot().then(loadEspecies);
