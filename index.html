@@ -23,7 +23,7 @@
     <button data-v="tools" aria-pressed="false">Herramientas</button>
     <button data-v="glos" aria-pressed="false">Glosario</button>
   </nav>
-  <div class="who"><span class="status" id="status">Conectando…</span><img id="avatar" alt="" hidden><span id="whoName"></span></div>
+  <div class="who"><span class="status" id="status" data-st="busy" title="Conectando…" aria-label="Conectando…"></span><button id="whoBtn" class="whobtn" aria-haspopup="true" aria-expanded="false" title="Perfil y mesa"><img id="avatar" alt="" hidden><span id="whoName"></span><span class="mesatag" id="mesaTag"></span><span aria-hidden="true">▾</span></button><div id="whoMenu" class="whomenu" hidden></div></div>
 </header>
 <div class="banner" id="banner" hidden></div>
 <main id="main">

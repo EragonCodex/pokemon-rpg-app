@@ -493,10 +493,47 @@ function checkSheet(f,c){
 }
 
 /* ---------- estado ---------- */
-const S = { db:null, user:null, uid:null, me:null, owner:false, canWrite:false, masters:[], players:{}, fichas:{}, notas:{}, master:{}, bit:{}, tir:{}, vis:new Set(), visJ:{}, evento:false, vistas:{mov:{on:false,ids:[]},hab:{on:false,ids:[]},pre:{on:false,ids:[]}}, view:'mis', open:null, cur:null, subs:{}, tool:'dex', folders:{} };
+const S = { db:null, user:null, uid:null, me:null, owner:false, canWrite:false, masters:[], players:{}, fichas:{}, notas:{}, master:{}, bit:{}, tir:{}, mesasDoc:null, allPlayers:{}, raw:null, vis:new Set(), visJ:{}, evento:false, vistas:{mov:{on:false,ids:[]},hab:{on:false,ids:[]},pre:{on:false,ids:[]}}, view:'mis', open:null, cur:null, subs:{}, tool:'dex', folders:{} };
 try{ const v=localStorage.getItem('pkrpg.view'); if(v) S.view=v; const t=localStorage.getItem('pkrpg.tool'); if(t) S.tool=t; const fo=JSON.parse(localStorage.getItem('pkrpg.folders')||'{}'); S.folders=fo||{}; }catch(e){}
+/* ---- Varias mesas (2026-11-08): cada mesa tiene sus fichas, notas, Bitácora, tiradas, combate y Visibilidad. La RPG 1 usa las rutas de siempre. ---- */
+let MESA=1; try{ MESA=Math.max(1,parseInt(localStorage.getItem('pkrpg.mesa')||'1',10)||1); }catch(_){}
+function mesaPath(p,M){ if(M===1) return p; let r;
+  if((r=/^jug\/([^/]+)\/(fichas|notas)(\/.*)?$/.exec(p))) return `jug/${r[1]}/${r[2]}_m${M}${r[3]||''}`;
+  if((r=/^master(\/.*)?$/.exec(p))) return `master/m${M}/fichas${r[1]||''}`;
+  if((r=/^bitacora(\/.*)?$/.exec(p))) return `bitacora/m${M}/notas${r[1]||''}`;
+  if((r=/^tiradas(\/.*)?$/.exec(p))) return `tiradas/m${M}/log${r[1]||''}`;
+  if(/^(combate\/actual|pokedex\/visibles|config\/vistas|config\/mesa)$/.test(p)) return `${p}_m${M}`;
+  return p; }
+const scopeDb=(db,M)=>M===1?db:{doc:p=>db.doc(mesaPath(p,M)),collection:p=>db.collection(mesaPath(p,M))};
+const sinMesas=m=>{ for(const k of Object.keys(m)) if(/^m\d+$/.test(k)) delete m[k]; return m; };
+const mesaLista=()=>{ const l=[...((S.mesasDoc||{}).lista||[])]; if(!l.some(x=>num(x.id)===1)) l.unshift({id:1,nombre:'RPG 1'}); return l.sort((a,b)=>num(a.id)-num(b.id)); };
+const mesaNombre=id=>(mesaLista().find(x=>num(x.id)===num(id))||{}).nombre||`RPG ${id}`;
+function miembrosDe(M){ const mm=((S.mesasDoc||{}).miembros||{})[M]; return mm===undefined&&num(M)===1?null:(mm||{}); } /* null: la RPG 1 de siempre, todos son parte */
+function enMesa(u,M=MESA){ const mm=miembrosDe(M); return mm===null||!!mm[u]||(num(M)===MESA&&S.masters.includes(u)); }
+const misMesas=()=>mesaLista().filter(x=>S.owner||enMesa(S.uid,num(x.id)));
+function aplicarMiembros(){ S.players=Object.fromEntries(Object.entries(S.allPlayers||{}).filter(([u])=>enMesa(u)||(u===S.uid&&S.owner))); }
+function cambiarMesa(id){ try{ localStorage.setItem('pkrpg.mesa',String(id)); }catch(_){} location.reload(); }
+async function saveMesas(){ try{ await S.raw.doc('config/mesas').set(S.mesasDoc); setStatus('Guardado'); }catch(e){ onWriteError(e); } renderWho(); render(); }
+function fotoDe(u){ const p=(S.allPlayers||{})[u]||{}; return p.foto||(u===S.uid&&S.me&&S.me.avatarUrl)||''; }
+function renderWho(){ const b=$('#whoName'); if(!b) return; const me=(S.allPlayers||{})[S.uid]||{}; b.textContent=me.alias||S.me?.name||'';
+  const av=$('#avatar'); const f=fotoDe(S.uid); if(av){ av.hidden=!f; if(f) av.src=f; } const mt=$('#mesaTag'); if(mt) mt.textContent=mesaNombre(MESA);
+  const m=$('#whoMenu'); if(!m||m.hidden) return; const mesas=misMesas();
+  m.innerHTML=`<div class="wm-sec"><label class="f">Tu nombre en la mesa<input id="alias" value="${esc(me.alias||S.me?.name||'')}" ${S.canWrite?'':'disabled'}></label></div>
+   <div class="wm-sec"><span class="lbl">Foto de perfil</span><div class="row" style="gap:8px;align-items:center">${f?`<img class="wm-foto" src="${esc(f)}" alt="">`:'<span class="wm-foto wm-vacia" aria-hidden="true">?</span>'}<label class="btn sm">Subir foto<input type="file" id="fotoIn" accept="image/*" hidden ${S.canWrite?'':'disabled'}></label>${me.foto?'<button class="btn sm" data-act="fotoQuitar">Quitar</button>':''}</div></div>
+   <div class="wm-sec"><label class="f">Mesa<select id="mesaSel">${mesas.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+   ${S.owner?`<label class="f">Nombre de esta mesa<input id="mesaNom" value="${esc(mesaNombre(MESA))}"></label><button class="btn sm" data-act="mesaNueva">+ Nueva mesa</button>`:''}</div>`; }
+async function subirFoto(file){ if(!file||!S.uid) return; const img=new Image(); const url=URL.createObjectURL(file);
+  img.onload=()=>{ const n=128, c=document.createElement('canvas'); c.width=c.height=n; const g=c.getContext('2d'); const s0=Math.min(img.width,img.height);
+    g.drawImage(img,(img.width-s0)/2,(img.height-s0)/2,s0,s0,0,0,n,n); URL.revokeObjectURL(url);
+    const foto=c.toDataURL('image/jpeg',0.82); const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),foto}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd,100); renderWho(); render(); };
+  img.src=url; }
+async function copiarAMesa(M){ const r=S.open; if(!r||!M||(r.src!=='jug'&&r.src!=='master')) return; const pool=poolOf(r.src,r.uid); const x=pool.find(y=>y.id===r.id); if(!x) return;
+  const grupo=[x,...(x.f.tipo==='E'?pool.filter(y=>y.f.entrenador===x.id):[])]; const ids={}; grupo.forEach(y=>ids[y.id]=newId());
+  try{ for(const y of grupo){ const f=structuredClone(y.f); if(f.entrenador&&ids[f.entrenador]) f.entrenador=ids[f.entrenador]; delete f.bloq;
+      const base=r.src==='master'?`master/${ids[y.id]}`:`jug/${r.uid}/fichas/${ids[y.id]}`; await S.raw.doc(mesaPath(base,M)).set(f); }
+    showBanner(`Copiado a ${mesaNombre(M)}: ${grupo.length} ficha${grupo.length>1?'s':''} nueva${grupo.length>1?'s':''}, sin sincronizar con estas.`); setStatus('Guardado'); }catch(e){ onWriteError(e); } }
 const isMaster = ()=> S.owner || (!!S.uid && S.masters.includes(S.uid));
-const setStatus = t=>{ $('#status').textContent=t; };
+const setStatus = t=>{ const el=$('#status'); if(!el) return; el.title=t; el.setAttribute('aria-label',t); el.dataset.st=/^(Conectado|Guardado)/.test(t)?'ok':/(Conectando|sin guardar|Guardando)/i.test(t)?'busy':'err'; };
 function pathOf(r){ return r.src==='master'?`master/${r.id}`: r.src==='bit'?`bitacora/${r.id}` : r.src==='nota'?`jug/${r.uid}/notas/${r.id}` : `jug/${r.uid}/fichas/${r.id}`; }
 function bucket(r,create){ if(r.src==='master') return S.master; if(r.src==='bit') return S.bit; const m=r.src==='nota'?S.notas:S.fichas; if(create) m[r.uid] ||= {}; return m[r.uid]||{}; }
 const getF = r=>bucket(r)[r.id];
@@ -518,8 +555,7 @@ const vistaVe=(k,id)=>isMaster()||veJug(k,id);
 function saveVistas(){ for(const k of ['mov','hab','pre']) S.vistas[k].ids=[...VSET[k]]; queueSave('config/vistas',structuredClone(S.vistas),500); renderSheet(); }
 function vistaBar(k,ids,nombre){ if(!isMaster()) return ''; const op=!!T.vopen[k], on=vistaOn(k); const vis=ids.filter(id=>VSET[k].has(id)).length;
   let h=`<div class="row vistabar" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${op?'pri':''}" data-vopen="${k}" aria-expanded="${op}">Visibilidad</button>`;
-  if(op){ h+=`<button class="btn sm ${on?'pri':''}" data-vista="${k}" aria-pressed="${on}" title="Con el bloqueo activo, los jugadores solo ven ${nombre} desbloqueados">${on?'Bloqueo activo · Desactivar':'Activar bloqueo'}</button>`;
-    h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
+  if(op){ h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
   return h+'</div>'; }
 const vistaBtn=(k,id)=>isMaster()&&T.vopen[k]&&vistaOn(k)?`<button class="lockbtn vbtn" data-vistaid="${k}|${esc(id)}" aria-pressed="${VSET[k].has(id)}" title="${VSET[k].has(id)?'Visible para los jugadores: clic para ocultar':'Oculto para los jugadores: clic para mostrar'}" aria-label="${VSET[k].has(id)?'Ocultar a los jugadores':'Mostrar a los jugadores'}">${VSET[k].has(id)?'👁':'🔒'}</button> `:'';
 const VLAST={mov:[],hab:[],pre:[]};
@@ -544,9 +580,9 @@ function onWriteError(e){
 }
 function showBanner(t){ const b=$('#banner'); b.textContent=t; b.hidden=!t; }
 async function ensurePlayerDoc(){
-  if(!S.uid||S.players[S.uid]) return;
+  if(!S.uid||S.allPlayers[S.uid]) return;
   const dd={alias:S.me?.name||'Jugador', creado:new Date().toISOString()};
-  S.players[S.uid]=dd;
+  S.allPlayers[S.uid]=dd; aplicarMiembros();
   try{ await S.db.doc(`jug/${S.uid}`).set(dd);}catch(e){onWriteError(e)}
 }
 
@@ -682,6 +718,11 @@ function endDrag(e){ if(!DRAG||e.pointerId!==DRAG.id) return; const {el,box,move
   if(moved) saveOrder(box.dataset.scope,[...box.children].filter(x=>x.classList.contains('ditem')).map(x=>x.dataset.drag)); renderList(); }
 window.addEventListener('pointerup',endDrag); window.addEventListener('pointercancel',endDrag);
 /* tocar el asa no abre ni pliega nada */
+/* menú del perfil: nombre, foto y mesa */
+document.addEventListener('click',e=>{ const m=$('#whoMenu'); if(!m) return; const b=e.target.closest('#whoBtn');
+  if(b){ m.hidden=!m.hidden; b.setAttribute('aria-expanded',String(!m.hidden)); renderWho(); return; }
+  if(!m.hidden&&!e.target.closest('#whoMenu')){ m.hidden=true; $('#whoBtn').setAttribute('aria-expanded','false'); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ const m=$('#whoMenu'); if(m&&!m.hidden){ m.hidden=true; $('#whoBtn').setAttribute('aria-expanded','false'); $('#whoBtn').focus(); } } });
 document.addEventListener('click',e=>{ if(e.target.closest('[data-grip]')||Date.now()-DRAG_END<250&&e.target.closest('.dlist')){ e.preventDefault(); e.stopPropagation(); } },true);
 function folderHTML(pool,addAct){
   const groups={}; pool.forEach(x=>{ if(x.f.tipo==='P'&&x.f.entrenador&&pool.some(t=>t.id===x.f.entrenador)) return; const k=x.f.carpeta||''; (groups[k] ||= []).push(x); });
@@ -698,7 +739,6 @@ function renderList(){
     const g=groupHTML(poolOf('jug',S.uid),'mis');
     const alias = (S.players[S.uid]||{}).alias || S.me?.name || '';
     const notas=notasDe(S.uid);
-    h+=`<div class="grp"><h3>Tu nombre en la mesa</h3><input id="alias" class="btn" style="width:100%;text-align:left" value="${esc(alias)}" ${S.canWrite?'':'disabled'} aria-label="Tu nombre en la mesa"></div>`;
     h+=`<div class="grp"><h3>Mis notas ${S.canWrite?'<button class="btn sm" data-act="newNota">+ Nota</button>':''}</h3><div class="items">${notesBlock(S.uid,notas,'Notas de tu personaje. Son privadas (solo tú y los Masters) hasta que las hagas públicas.')}</div></div>`;
     h+=`<div class="grp"><h3>Entrenadores ${S.canWrite?'<button class="btn sm" data-act="newE">+ Entrenador</button>':''}</h3><div class="items">${g.h||'<p class="note">Aún no tienes entrenadores.</p>'}</div></div>`;
     h+=`<div class="grp"><h3>Pokémon sueltos ${S.canWrite?'<button class="btn sm" data-act="newP">+ Pokémon</button>':''}</h3><div class="items">${g.loose||'<p class="note">Pokémon sin entrenador, para probar o guardar.</p>'}</div></div>`;
@@ -707,7 +747,7 @@ function renderList(){
     const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
     h+=`<div class="dlist" data-scope="mesa">`;
     for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=notasDe(u);
-      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}${esc(S.players[u].alias||'Jugador')}${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
     h+=`</div>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
@@ -719,9 +759,9 @@ function renderList(){
       ${folderHTML(npcs,'newNpc')||'<p class="note">Entrenadores y Pokémon de NPC, ordenados por carpeta.</p>'}</div>`;
     h+=`<div class="grp"><h3>Salvajes ${S.canWrite?'<button class="btn sm" data-act="newWild" data-folder="">+ Salvaje</button>':''}</h3>${folderHTML(wild,'newWild')||'<p class="note">Pokémon salvajes para los encuentros. También admiten carpetas (p. ej. Ruta 1).</p>'}</div>`;
     if(S.owner){
-      const others=Object.keys(S.players).filter(u=>u!==S.uid&&!S.masters.includes(u));
-      h+=`<div class="grp"><h3>Masters</h3><div class="items">${S.masters.map(u=>`<div class="row"><span>${esc((S.players[u]||{}).alias||'Jugador')}</span><button class="btn sm" data-rmmaster="${esc(u)}">Quitar</button></div>`).join('')||'<p class="note">Solo tú.</p>'}
-      ${others.length?`<div class="row"><select id="addMasterSel" class="btn">${others.map(u=>`<option value="${esc(u)}">${esc(S.players[u].alias||'Jugador')}</option>`).join('')}</select><button class="btn sm" data-act="addMaster">Hacer Master</button></div>`:''}</div></div>`;
+      const mm=miembrosDe(MESA); const todos=Object.keys(S.allPlayers).filter(u=>u!==S.uid).sort((a,b)=>String(S.allPlayers[a].alias).localeCompare(String(S.allPlayers[b].alias)));
+      h+=`<div class="grp"><h3>Mesa · ${esc(mesaNombre(MESA))}</h3><div class="items">${todos.map(u=>{ const r=mm===null?(S.masters.includes(u)?'master':'jug'):(mm[u]||(S.masters.includes(u)?'master':'')); return `<label class="row mrow"><span>${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}${esc(S.allPlayers[u].alias||'Jugador')}</span><select class="btn sm" data-mrole="${esc(u)}" aria-label="Rol de ${esc(S.allPlayers[u].alias||'Jugador')} en esta mesa"><option value=""${r===''?' selected':''}>No participa</option><option value="jug"${r==='jug'?' selected':''}>Jugador</option><option value="master"${r==='master'?' selected':''}>Master</option></select></label>`; }).join('')||'<p class="note">Aún no hay perfiles.</p>'}
+      <p class="note">${mm===null?'En la RPG 1 todos participan hasta que cambies a alguien.':'Solo quienes participan ven esta mesa.'} Tú eres Master en todas.</p></div></div>`;
     }
   } else if(S.view==='combate'){
     const ord=cbOrder();
@@ -846,7 +886,8 @@ function renderSheet(){
   }
   if(!isP) h+=mochilaHTML(f);
   h+=`<div class="card"><h2>Notas</h2>${field('','notas',f.notas||'','area')}</div>`;
-  if(!S.ro) h+=`<div class="row">${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
+  const otras=misMesas().filter(x=>num(x.id)!==MESA&&(S.open.src!=='master'||S.owner));
+  if(!S.ro) h+=`<div class="row">${otras.length&&(S.open.src==='jug'||S.open.src==='master')?`<select id="copyMesa" class="btn" aria-label="Copiar a otra mesa"><option value="">Copiar a otra mesa…</option>${otras.map(x=>`<option value="${num(x.id)}">${esc(x.nombre)}</option>`).join('')}</select>`:''}${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
   el.innerHTML=h; fillComputed(); fillMochila(); colorSelects();
   const im=$('#imgIn'); if(im) im.addEventListener('change',onImage);
 }
@@ -1792,7 +1833,7 @@ function rsGo(){ const R=CBU.rs; if(!R) return; const x=combatant(R.k); if(!x||!
 async function endRound(){
   if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
   const cur=num(CB.ronda); const sb=window.__sb;
-  if(sb){ const {data,error}=await sb.rpc('avanzar_ronda',{esperada:cur}); if(error){ onWriteError({code:'invalid_argument'}); return; } if(!data){ showBanner('Otra persona ya terminó esta ronda. Revisa el resumen.'); return; } }
+  if(sb){ const {data,error}=await sb.rpc('avanzar_ronda',MESA===1?{esperada:cur}:{esperada:cur,mesa:MESA}); if(error){ onWriteError({code:'invalid_argument'}); return; } if(!data){ showBanner('Otra persona ya terminó esta ronda. Revisa el resumen.'); return; } }
   CB.ronda=cur+1;
   const lines=[], heals=[];
   for(const x of combatants()){
@@ -2272,12 +2313,22 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.clf){ clChange(e.target); return; }
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
-  if(e.target.id==='alias'&&S.canWrite){ const a=e.target.value.trim()||'Jugador'; const dd={...(S.players[S.uid]||{creado:new Date().toISOString()}),alias:a}; S.players[S.uid]=dd; queueSave(`jug/${S.uid}`,dd); }});
+  if(e.target.id==='alias'&&S.canWrite){ const a=e.target.value.trim()||'Jugador'; const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),alias:a}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd); renderWho(); }
+  if(e.target.id==='fotoIn'&&S.canWrite){ subirFoto(e.target.files&&e.target.files[0]); }
+  if(e.target.id==='mesaSel'){ const v=num(e.target.value); if(v&&v!==MESA) cambiarMesa(v); }
+  if(e.target.id==='mesaNom'&&S.owner){ const n=e.target.value.trim()||`RPG ${MESA}`; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.lista=mesaLista().map(x=>num(x.id)===MESA?{...x,nombre:n}:x); saveMesas(); }
+  if(e.target.id==='copyMesa'){ const v=num(e.target.value); e.target.value=''; if(v) copiarAMesa(v); }
+  if(e.target.dataset&&e.target.dataset.mrole&&S.owner){ const u=e.target.dataset.mrole, v=e.target.value; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.miembros ||= {};
+    let mm=miembrosDe(MESA); if(mm===null){ mm={}; Object.keys(S.allPlayers).forEach(k=>mm[k]=S.masters.includes(k)?'master':'jug'); } mm={...mm}; if(v) mm[u]=v; else delete mm[u]; S.mesasDoc.miembros[MESA]=mm;
+    const ms=S.masters.filter(k=>k!==u); if(v==='master') ms.push(u); S.masters=ms; saveMasters(); saveMesas(); }});
 document.addEventListener('toggle',e=>{ const k=e.target.dataset&&e.target.dataset.fold; if(k===undefined) return; S.folders[k]=e.target.open; try{localStorage.setItem('pkrpg.folders',JSON.stringify(S.folders))}catch(_){} },true);
 document.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-dsel]')){ e.preventDefault(); e.target.click(); }});
 document.addEventListener('click',async e=>{
   const gv=e.target.closest('[data-glove]'); if(gv){ toggleGlove(gv.dataset.glove); return; }
-  const vo=e.target.closest('[data-vopen]'); if(vo&&isMaster()){ const k=vo.dataset.vopen; T.vopen[k]=!T.vopen[k]; renderSheet(); return; }
+  const vo=e.target.closest('[data-vopen]'); if(vo&&isMaster()){ const k=vo.dataset.vopen; T.vopen[k]=!T.vopen[k];
+    /* la primera vez se activa el bloqueo con todo visible: los jugadores no notan nada hasta que el Master oculta algo */
+    if(T.vopen[k]&&k!=='dex'&&!vistaOn(k)){ S.vistas[k].on=true; VSET[k]=new Set(k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3])); saveVistas(); return; }
+    renderSheet(); return; }
   const vs=e.target.closest('[data-vista]'); if(vs&&isMaster()){ const k=vs.dataset.vista; S.vistas[k].on=!S.vistas[k].on; saveVistas(); return; }
   const vb=e.target.closest('[data-vistabulk]'); if(vb&&isMaster()){ const [k,v]=vb.dataset.vistabulk.split('|'); for(const id of VLAST[k]) v==='1'?VSET[k].add(id):VSET[k].delete(id); saveVistas(); return; }
   const va=e.target.closest('[data-vistaall]'); if(va&&isMaster()){ const [k,v]=va.dataset.vistaall.split('|'); const all=k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3]); VSET[k]=v==='1'?new Set(all):new Set(); saveVistas(); return; }
@@ -2336,6 +2387,8 @@ document.addEventListener('click',async e=>{
   else if(act==='clearRolls'){ const c=$('#clrConfirm'); if(c) c.innerHTML='<button class="btn sm danger" data-act="clearYes">Sí, vaciar</button> <button class="btn sm" data-act="clearNo">Cancelar</button>'; }
   else if(act==='clearNo'){ const c=$('#clrConfirm'); if(c) c.innerHTML=''; }
   else if(act==='clearYes'){ clearRolls(); }
+  else if(act==='fotoQuitar'){ const dd={...(S.allPlayers[S.uid]||{})}; delete dd.foto; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd,100); renderWho(); render(); }
+  else if(act==='mesaNueva'&&S.owner){ const l=mesaLista(); const id=Math.max(...l.map(x=>num(x.id)))+1; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.lista=[...l,{id,nombre:`RPG ${id}`}]; S.mesasDoc.miembros={...(S.mesasDoc.miembros||{}),[id]:{[S.uid]:'master'}}; await saveMesas(); cambiarMesa(id); }
   else if(act==='del'){ const c=$('#delConfirm'); c.innerHTML='<button class="btn danger" data-act="delYes">Sí, borrar para siempre</button> <button class="btn" data-act="delNo">Cancelar</button>'; }
   else if(act==='delNo'){ $('#delConfirm').innerHTML=''; }
   else if(act==='delYes'){ deleteRef(S.open); }
@@ -2410,33 +2463,36 @@ function subPlayer(u){
   S.subs['n'+u]=S.db.collection(`jug/${u}/notas`).onSnapshot(snap=>{ S.notas[u]=keepPending(`jug/${u}/notas/`,S.notas[u],snapMap(snap)); onRemote(); },err=>console.warn(err));
 }
 function subMaster(){ if(S.subs.__m) return;
-  S.subs.__m=S.db.collection('master').onSnapshot(snap=>{ S.master=keepPending('master/',S.master,snapMap(snap)); buildFolderList(); onRemote(); },e=>console.warn(e));
-  S.subs.__b=S.db.collection('bitacora').onSnapshot(snap=>{ S.bit=keepPending('bitacora/',S.bit,snapMap(snap)); onRemote(); },e=>console.warn(e));
+  S.subs.__m=S.db.collection('master').onSnapshot(snap=>{ S.master=keepPending('master/',S.master,sinMesas(snapMap(snap))); buildFolderList(); onRemote(); },e=>console.warn(e));
+  S.subs.__b=S.db.collection('bitacora').onSnapshot(snap=>{ S.bit=keepPending('bitacora/',S.bit,sinMesas(snapMap(snap))); onRemote(); },e=>console.warn(e));
 }
 async function boot(){
   render();
   const C=window.claude; const db=C&&C.use?await C.use('db'):null; const user=C&&C.use?await C.use('user'):null;
   if(!db){ setStatus('Sin conexión'); showBanner('No se pudo conectar con la base de datos. Recarga la página.'); return; }
-  S.db=db; S.user=user;
+  S.raw=db; S.db=scopeDb(db,MESA); S.user=user;
   if(user){ S.me=await user.me(); S.uid=S.me.id; S.owner=!!S.me.isOwner;
     let w=null; try{ w=await user.can('data.write'); }catch(_){}
     S.canWrite = !!S.uid && w!==false;
-    $('#whoName').textContent=S.me.name||''; if(S.me.avatarUrl){ $('#avatar').src=S.me.avatarUrl; $('#avatar').hidden=false; } }
+    renderWho(); }
   if(!S.uid) showBanner('Entra con tu cuenta de Google para crear fichas.');
   
   setStatus('Conectado');
   if(window.__PRUEBAS) showBanner('Versión de pruebas en Claude: aquí se revisan los cambios antes de pasarlos a la app de la mesa. Las fichas de esta versión no son las de la web.');
-  db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
-  db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda)||1; /* el combate empieza en la Ronda 1 */ CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null; CB.tn=dd.tn||null;
+  S.raw.doc('config/mesas').onSnapshot(s=>{ S.mesasDoc=s.exists?s.data():{lista:[],miembros:{}}; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer);
+    if(S.uid&&!S.owner&&!enMesa(S.uid)){ const otra=misMesas()[0]; if(otra&&num(otra.id)!==MESA) cambiarMesa(num(otra.id)); else showBanner('Aún no participas en ninguna mesa. Pide al Master que te agregue.'); }
+    renderWho(); onRemote(); },e=>console.warn(e));
+  S.db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; aplicarMiembros(); buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
+  S.db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda)||1; /* el combate empieza en la Ronda 1 */ CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null; CB.tn=dd.tn||null;
     if(missingSpecies()) reloadEspecies(); /* las copias de los Pokémon del Master traen especies que aún no se cargaron */
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
-  db.doc('config/vistas').onSnapshot(s=>{ if(pend['config/vistas']||inflight['config/vistas']) return; setVistas(s.exists?s.data():{}); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
-  db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
-  db.collection('tiradas').onSnapshot(snap=>{ const m=snapMap(snap); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
+  S.db.doc('config/vistas').onSnapshot(s=>{ if(pend['config/vistas']||inflight['config/vistas']) return; setVistas(s.exists?s.data():{}); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
+  S.db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
+  S.db.collection('tiradas').onSnapshot(snap=>{ const m=sinMesas(snapMap(snap)); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
     if(S.view==='mesa'&&(!S.open||S.open.src==='hist') || S.view==='tools'&&S.tool==='dados') safeSheet(); if(S.view==='mesa') renderList(); },e=>console.warn(e));
-  db.collection('jug').onSnapshot(snap=>{ const m=snapMap(snap);
-    if(S.uid && S.players[S.uid] && !m[S.uid]) m[S.uid]=S.players[S.uid];
-    S.players=m; Object.keys(m).forEach(subPlayer); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
+  S.raw.collection('jug').onSnapshot(snap=>{ const m=snapMap(snap);
+    if(S.uid && S.allPlayers[S.uid] && !m[S.uid]) m[S.uid]=S.allPlayers[S.uid];
+    S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); renderWho(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
   if(S.uid) subPlayer(S.uid);
   if(S.owner) subMaster();
 }

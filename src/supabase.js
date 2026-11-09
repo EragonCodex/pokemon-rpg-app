@@ -40,7 +40,18 @@ const docSnap = (id, data) => ({ id, exists: data !== undefined && data !== null
 const querySnap = docs => ({ docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: META });
 const fail = (error) => { if (error) { console.warn(error); throw { code: error.code === '42501' ? 'invalid_argument' : 'unavailable', message: error.message }; } };
 
+/* Varias mesas: la app pide rutas como jug/<uid>/fichas_m2, master/m2/fichas, bitacora/m2/notas, tiradas/m2/log, combate/actual_m2.
+   Sin sufijo es la mesa 1 (RPG 1). Cada fila guarda su mesa en mesa_id; el combate de la mesa N es la fila id = N. */
+const cfgKey = (k, M) => M > 1 ? `${k}:${M}` : k;
 function parse(path) {
+  let M = 1; let m;
+  if ((m = /^jug\/([^/]+)\/(fichas|notas)_m(\d+)(?:\/(.+))?$/.exec(path))) return { kind: m[2], uid: m[1], id: m[4], mesa: +m[3] };
+  if ((m = /^(master|bitacora|tiradas)\/m(\d+)\/(?:fichas|notas|log)(?:\/(.+))?$/.exec(path))) { const k = m[1]; M = +m[2]; return k === 'tiradas' ? { kind: k, uid: m[3], mesa: M } : { kind: k, id: m[3], mesa: M }; }
+  if ((m = /^(combate\/actual|pokedex\/visibles|config\/vistas|config\/mesa)_m(\d+)$/.exec(path))) { const r = parse(m[1]); r.mesa = +m[2]; return r; }
+  if (path === 'config/mesas') return { kind: 'mesas' };
+  const r = parse1(path); r.mesa = 1; return r;
+}
+function parse1(path) {
   const p = path.split('/');
   if (p[0] === 'jug' && p.length === 1) return { kind: 'jugadores' };
   if (p[0] === 'jug' && p.length === 2) return { kind: 'jugador', uid: p[1] };
@@ -60,27 +71,27 @@ function parse(path) {
 const tiradasCache = {}; // uid -> Map(ts -> id)
 async function readCollection(r) {
   if (r.kind === 'jugadores') {
-    const { data, error } = await sb.from('jugadores').select('id,alias,creado'); fail(error);
-    return data.map(x => docSnap(x.id, { alias: x.alias, creado: x.creado }));
+    const { data, error } = await sb.from('jugadores').select('id,alias,creado,foto'); fail(error);
+    return data.map(x => docSnap(x.id, { alias: x.alias, creado: x.creado, ...(x.foto ? { foto: x.foto } : {}) }));
   }
   if (r.kind === 'fichas') {
-    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'jug').eq('owner', r.uid); fail(error);
+    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'jug').eq('owner', r.uid).eq('mesa_id', r.mesa); fail(error);
     return data.map(x => docSnap(x.id, x.data));
   }
   if (r.kind === 'notas') {
-    const { data, error } = await sb.from('notas').select('id,data').eq('owner', r.uid); fail(error);
+    const { data, error } = await sb.from('notas').select('id,data').eq('owner', r.uid).eq('mesa_id', r.mesa); fail(error);
     return data.map(x => docSnap(x.id, x.data));
   }
   if (r.kind === 'master') {
-    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'master'); fail(error);
+    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'master').eq('mesa_id', r.mesa); fail(error);
     return data.map(x => docSnap(x.id, x.data));
   }
   if (r.kind === 'bitacora') {
-    const { data, error } = await sb.from('bitacora').select('id,data'); fail(error);
+    const { data, error } = await sb.from('bitacora').select('id,data').eq('mesa_id', r.mesa); fail(error);
     return data.map(x => docSnap(x.id, x.data));
   }
   if (r.kind === 'tiradas') {
-    const { data, error } = await sb.from('tiradas').select('id,user_id,quien,txt,val,ts').order('ts', { ascending: false }).limit(400); fail(error);
+    const { data, error } = await sb.from('tiradas').select('id,user_id,quien,txt,val,ts').eq('mesa_id', r.mesa).order('ts', { ascending: false }).limit(400); fail(error);
     const by = {};
     for (const k of Object.keys(tiradasCache)) tiradasCache[k] = new Map();
     for (const x of data.reverse()) {
@@ -93,29 +104,33 @@ async function readCollection(r) {
   throw new Error('Colección no soportada');
 }
 async function readDoc(r) {
+  if (r.kind === 'mesas') {
+    const { data, error } = await sb.from('config').select('valor').eq('clave', 'mesas').maybeSingle(); fail(error);
+    return data ? data.valor : undefined;
+  }
   if (r.kind === 'masters') {
-    const { data, error } = await sb.from('masters').select('user_id'); fail(error);
+    const { data, error } = await sb.from('masters').select('user_id').eq('mesa_id', r.mesa); fail(error);
     return { masters: data.map(x => x.user_id) };
   }
   if (r.kind === 'pokedex') {
     const [{ data: rows, error: e1 }, { data: cfg, error: e2 }] = await Promise.all([
-      selectAll('pokedex_visible', 'especie_id,user_id', ['especie_id', 'user_id']),
-      sb.from('config').select('valor').eq('clave', 'pokedex_evento').maybeSingle()]);
+      selectAll('pokedex_visible', 'especie_id,user_id,mesa_id', ['especie_id', 'user_id']),
+      sb.from('config').select('valor').eq('clave', cfgKey('pokedex_evento', r.mesa)).maybeSingle()]);
     fail(e1); fail(e2);
     const ids = [], jug = {};
-    for (const x of rows) { if (x.user_id) (jug[x.user_id] ||= []).push(x.especie_id); else ids.push(x.especie_id); }
+    for (const x of rows.filter(x => (x.mesa_id ?? 1) === r.mesa)) { if (x.user_id) (jug[x.user_id] ||= []).push(x.especie_id); else ids.push(x.especie_id); }
     return { ids, jug, evento: cfg ? cfg.valor === true : false };
   }
   if (r.kind === 'vistas') {
-    const { data, error } = await sb.from('config').select('valor').eq('clave', 'vistas').maybeSingle(); fail(error);
+    const { data, error } = await sb.from('config').select('valor').eq('clave', cfgKey('vistas', r.mesa)).maybeSingle(); fail(error);
     return data ? data.valor : undefined;
   }
   if (r.kind === 'combate') {
-    const { data, error } = await sb.from('combate').select('data').eq('id', 1).maybeSingle(); fail(error);
+    const { data, error } = await sb.from('combate').select('data').eq('id', r.mesa).maybeSingle(); fail(error);
     return data ? data.data : undefined;
   }
   if (r.kind === 'jugador') {
-    const { data, error } = await sb.from('jugadores').select('alias,creado').eq('id', r.uid).maybeSingle(); fail(error);
+    const { data, error } = await sb.from('jugadores').select('alias,creado,foto').eq('id', r.uid).maybeSingle(); fail(error);
     return data || undefined;
   }
   const tbl = r.kind === 'master' || r.kind === 'fichas' ? 'fichas' : r.kind;
@@ -124,7 +139,7 @@ async function readDoc(r) {
 }
 const TABLES = {
   jugadores: ['jugadores'], jugador: ['jugadores'], fichas: ['fichas'], master: ['fichas'], notas: ['notas'],
-  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], vistas: ['config'], combate: ['combate']
+  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], vistas: ['config'], mesas: ['config'], combate: ['combate']
 };
 
 /* ---------- escrituras ---------- */
@@ -133,34 +148,36 @@ function deepMerge(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Obje
 
 async function writeDoc(r, data, uidActual) {
   switch (r.kind) {
-    case 'jugador': { const { error } = await sb.from('jugadores').update({ alias: data.alias }).eq('id', r.uid); return fail(error); }
-    case 'fichas': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'jug', owner: r.uid, data, actualizado: new Date().toISOString() }); return fail(error); }
-    case 'master': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'master', owner: null, data, actualizado: new Date().toISOString() }); return fail(error); }
-    case 'notas': { const { error } = await sb.from('notas').upsert({ id: r.id, owner: r.uid, data, actualizado: new Date().toISOString() }); return fail(error); }
-    case 'bitacora': { const { error } = await sb.from('bitacora').upsert({ id: r.id, data, actualizado: new Date().toISOString() }); return fail(error); }
-    case 'combate': { const { error } = await sb.from('combate').update({ data }).eq('id', 1); return fail(error); }
+    case 'jugador': { const { error } = await sb.from('jugadores').update({ alias: data.alias, foto: data.foto ?? null }).eq('id', r.uid); return fail(error); }
+    case 'fichas': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'jug', owner: r.uid, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
+    case 'master': { const { error } = await sb.from('fichas').upsert({ id: r.id, ambito: 'master', owner: null, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
+    case 'notas': { const { error } = await sb.from('notas').upsert({ id: r.id, owner: r.uid, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
+    case 'bitacora': { const { error } = await sb.from('bitacora').upsert({ id: r.id, mesa_id: r.mesa, data, actualizado: new Date().toISOString() }); return fail(error); }
+    case 'combate': { const { error } = await sb.from('combate').upsert({ id: r.mesa, data }); return fail(error); }
+    case 'mesas': { const { error } = await sb.from('config').upsert({ clave: 'mesas', valor: data }); return fail(error); }
     case 'masters': {
-      const { data: cur, error } = await sb.from('masters').select('user_id'); fail(error);
+      const { data: cur, error } = await sb.from('masters').select('user_id').eq('mesa_id', r.mesa); fail(error);
       const have = new Set(cur.map(x => x.user_id)), want = new Set(data.masters || []);
       const add = [...want].filter(u => !have.has(u)), del = [...have].filter(u => !want.has(u));
-      if (add.length) fail((await sb.from('masters').insert(add.map(user_id => ({ user_id })))).error);
-      if (del.length) fail((await sb.from('masters').delete().in('user_id', del)).error);
+      if (add.length) fail((await sb.from('masters').insert(add.map(user_id => ({ user_id, mesa_id: r.mesa })))).error);
+      if (del.length) fail((await sb.from('masters').delete().eq('mesa_id', r.mesa).in('user_id', del)).error);
       return;
     }
-    case 'vistas': { const { error } = await sb.from('config').upsert({ clave: 'vistas', valor: data }); return fail(error); }
+    case 'vistas': { const { error } = await sb.from('config').upsert({ clave: cfgKey('vistas', r.mesa), valor: data }); return fail(error); }
     case 'pokedex': {
-      const { data: cur, error } = await selectAll('pokedex_visible', 'especie_id,user_id', ['especie_id', 'user_id']); fail(error);
+      const { data: all, error } = await selectAll('pokedex_visible', 'especie_id,user_id,mesa_id', ['especie_id', 'user_id']); fail(error);
+      const cur = all.filter(x => (x.mesa_id ?? 1) === r.mesa);
       const key = (e, u) => e + '|' + (u || '');
       const have = new Set(cur.map(x => key(x.especie_id, x.user_id)));
       const want = new Set([...(data.ids || []).map(e => key(e, null)), ...Object.entries(data.jug || {}).flatMap(([u, l]) => l.map(e => key(e, u)))]);
-      const add = [...want].filter(k => !have.has(k)).map(k => { const [e, u] = k.split('|'); return { especie_id: e, user_id: u || null }; });
+      const add = [...want].filter(k => !have.has(k)).map(k => { const [e, u] = k.split('|'); return { especie_id: e, user_id: u || null, mesa_id: r.mesa }; });
       const del = [...have].filter(k => !want.has(k)).map(k => k.split('|'));
       for (let i = 0; i < add.length; i += 500) fail((await sb.from('pokedex_visible').insert(add.slice(i, i + 500))).error);
       const delAll = del.filter(([, u]) => !u).map(([e]) => e);
-      for (let i = 0; i < delAll.length; i += 200) fail((await sb.from('pokedex_visible').delete().is('user_id', null).in('especie_id', delAll.slice(i, i + 200))).error);
+      for (let i = 0; i < delAll.length; i += 200) fail((await sb.from('pokedex_visible').delete().eq('mesa_id', r.mesa).is('user_id', null).in('especie_id', delAll.slice(i, i + 200))).error);
       const byU = {}; del.filter(([, u]) => u).forEach(([e, u]) => (byU[u] ||= []).push(e));
-      for (const [u, l] of Object.entries(byU)) for (let i = 0; i < l.length; i += 200) fail((await sb.from('pokedex_visible').delete().eq('user_id', u).in('especie_id', l.slice(i, i + 200))).error);
-      fail((await sb.from('config').upsert({ clave: 'pokedex_evento', valor: !!data.evento })).error);
+      for (const [u, l] of Object.entries(byU)) for (let i = 0; i < l.length; i += 200) fail((await sb.from('pokedex_visible').delete().eq('mesa_id', r.mesa).eq('user_id', u).in('especie_id', l.slice(i, i + 200))).error);
+      fail((await sb.from('config').upsert({ clave: cfgKey('pokedex_evento', r.mesa), valor: !!data.evento })).error);
       return;
     }
     case 'tiradas': {
@@ -168,7 +185,7 @@ async function writeDoc(r, data, uidActual) {
       const log = data.log || [];
       const nuevos = log.filter(e => !cache.has(e.ts));
       if (nuevos.length) {
-        const { data: ins, error } = await sb.from('tiradas').insert(nuevos.map(e => ({ user_id: u, quien: e.quien || '', txt: e.txt, val: e.val, ts: new Date(e.ts).toISOString() }))).select('id,ts'); fail(error);
+        const { data: ins, error } = await sb.from('tiradas').insert(nuevos.map(e => ({ user_id: u, mesa_id: r.mesa, quien: e.quien || '', txt: e.txt, val: e.val, ts: new Date(e.ts).toISOString() }))).select('id,ts'); fail(error);
         ins.forEach(x => cache.set(new Date(x.ts).getTime(), x.id));
       }
       // Borrados: vaciar el historial, o quitar una tirada concreta (no las que solo salen por el recorte a 50)
