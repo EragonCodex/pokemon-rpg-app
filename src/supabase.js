@@ -51,6 +51,7 @@ function parse(path) {
   if (p[0] === 'tiradas') return { kind: 'tiradas', uid: p[1] };
   if (path === 'config/mesa') return { kind: 'masters' };
   if (path === 'pokedex/visibles') return { kind: 'pokedex' };
+  if (path === 'config/vistas') return { kind: 'vistas' };
   if (path === 'combate/actual') return { kind: 'combate' };
   throw new Error('Ruta no soportada: ' + path);
 }
@@ -105,6 +106,10 @@ async function readDoc(r) {
     for (const x of rows) { if (x.user_id) (jug[x.user_id] ||= []).push(x.especie_id); else ids.push(x.especie_id); }
     return { ids, jug, evento: cfg ? cfg.valor === true : false };
   }
+  if (r.kind === 'vistas') {
+    const { data, error } = await sb.from('config').select('valor').eq('clave', 'vistas').maybeSingle(); fail(error);
+    return data ? data.valor : undefined;
+  }
   if (r.kind === 'combate') {
     const { data, error } = await sb.from('combate').select('data').eq('id', 1).maybeSingle(); fail(error);
     return data ? data.data : undefined;
@@ -119,7 +124,7 @@ async function readDoc(r) {
 }
 const TABLES = {
   jugadores: ['jugadores'], jugador: ['jugadores'], fichas: ['fichas'], master: ['fichas'], notas: ['notas'],
-  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], combate: ['combate']
+  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], vistas: ['config'], combate: ['combate']
 };
 
 /* ---------- escrituras ---------- */
@@ -142,6 +147,7 @@ async function writeDoc(r, data, uidActual) {
       if (del.length) fail((await sb.from('masters').delete().in('user_id', del)).error);
       return;
     }
+    case 'vistas': { const { error } = await sb.from('config').upsert({ clave: 'vistas', valor: data }); return fail(error); }
     case 'pokedex': {
       const { data: cur, error } = await selectAll('pokedex_visible', 'especie_id,user_id', ['especie_id', 'user_id']); fail(error);
       const key = (e, u) => e + '|' + (u || '');
