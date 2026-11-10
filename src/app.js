@@ -1219,7 +1219,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pfl:{e:'',g:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, popen:'', pfl:{e:null,g:null,min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
@@ -1382,21 +1382,33 @@ function toolHab(){
 }
 // precios: 0 Etapa,1 ID grupo,2 Grupo,3 ID ítem,4 Ítem,5 Precio,6 Rareza,7 Tipo de gasto,8 Acceso por Rango
 const PCOLS=[['Ítem',4],['Precio',5],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
+const RAREZAS=['Común','Poco común','Raro','Muy raro','Único'];
 function toolPre(){
-  const rows=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
-  const etapas=[...new Set(rows.map(r=>r[0]))];
-  if(!etapas.includes(T.pfl.e)) T.pfl.e=etapas[0]||'';
-  const enE=rows.filter(r=>r[0]===T.pfl.e); const grupos=[...new Set(enE.map(r=>r[2]))];
-  if(!grupos.includes(T.pfl.g)) T.pfl.g=grupos[0]||'';
-  const res=sortRows(enE.filter(r=>r[2]===T.pfl.g),T.psort,4);
+  const F=T.pfl; const all=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
+  const etapas=[...new Set(all.map(r=>r[0]))];
+  if(F.e==null||(F.e!==''&&!etapas.includes(F.e))) F.e=etapas[0]||'';   /* '' = Todo */
+  const enE=all.filter(r=>F.e===''||r[0]===F.e); const grupos=[...new Set(enE.map(r=>r[2]))];
+  if(F.g==null||(F.g!==''&&!grupos.includes(F.g))) F.g=grupos[0]||'';
+  const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b)); });
+  const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
+  const mn=F.min===''||F.min==null?null:num(F.min), mx=F.max===''||F.max==null?null:num(F.max);
+  const res=sortRows(enE.filter(r=>(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
+    &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
+  const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
   let h=`<div class="card"><h2>Precios</h2><div class="grid g4">
-    <label class="f">Etapa<select data-pfl="e">${opts(etapas,T.pfl.e)}</select></label>
-    <label class="f">Grupo<select data-pfl="g">${opts(grupos,T.pfl.g)}</select></label>
-    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span></div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
+    <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
+    <label class="f">Grupo<select data-pfl="g">${opts(grupos,F.g,'Todo')}</select></label>
+    <label class="f">Precio mínimo (₽)<input type="number" min="0" data-pfl="min" value="${esc(F.min??'')}" placeholder="Sin mínimo"></label>
+    <label class="f">Precio máximo (₽)<input type="number" min="0" data-pfl="max" value="${esc(F.max??'')}" placeholder="Sin máximo"></label>
+    <label class="f">Rareza<select data-pfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
+    <label class="f">Tipo de gasto<select data-pfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
+    <label class="f">Rango<select data-pfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
+    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span>${F.min||F.max||F.rar||F.gas||F.ran?' <button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
-  h+=`<div class="card"><h2>${esc(T.pfl.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span></h2><div class="tw"><table class="mtable"><thead><tr>${sortHead(PCOLS,T.psort,'psort')}</tr></thead><tbody>`;
-  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td><td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+'\u00a0₽':esc(r[5]??'—')}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td></tr>${T.popen===r[3]?`<tr class="fx"><td colspan="5">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
-  return h+`</tbody></table></div></div>`;
+  const tit=F.g!==''?`${esc(F.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span>`:F.e!==''?`${esc(F.e)} · todos los grupos`:'Todos los ítems';
+  h+=`<div class="card"><h2>${tit}</h2>${res.length?`<div class="tw"><table class="mtable"><thead><tr>${sortHead(cols,T.psort,'psort')}</tr></thead><tbody>`:'<p class="note">Ningún ítem cumple los filtros.</p>'}`;
+  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td>${F.g===''?`<td>${esc(r[2])}</td>`:''}${F.e===''?`<td>${esc(r[0])}</td>`:''}<td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+' ₽':esc(r[5]??'—')}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td></tr>${T.popen===r[3]?`<tr class="fx"><td colspan="${cols.length}">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
+  return h+(res.length?`</tbody></table></div>`:'')+`</div>`;
 }
 // rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
 const RCOLS=[['Rasgo',0],['Tipo',1],['Valor',3],['Categoría',2],['Aplicación',4]];
@@ -2398,6 +2410,7 @@ document.addEventListener('click',async e=>{
   else if(act==='clearYes'){ clearRolls(); }
   else if(act==='copyOpen'){ const c=$('#copyConfirm'); if(!c) return; const ms=misMesas().filter(x=>num(x.id)===MESA||S.open.src!=='master'||S.owner);
     c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
+  else if(act==='preLimpiar'){ Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
   else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
   else if(act==='salir'){ if(window.__salir) window.__salir(); }
