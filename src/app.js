@@ -631,13 +631,17 @@ function eqItemHTML(f){
 }
 /* Carga del Entrenador: 20 kg + 5 kg por punto de FUE (propuesta del 2026-11-09) */
 const CARGA_BASE=20, CARGA_FUE=5;
+/* Objetos de la lista de Precios para la Mochila (sin Servicios; el jugador solo ve los visibles) */
+function preNombres(){ const m=new Map(); (D.pre||[]).forEach(r=>{ const n=String(r[4]||'').trim(); if(n&&r[7]!=='Servicio'&&vistaVe('pre',r[3])&&!m.has(n)) m.set(n,r); }); return m; }
+function preDe(nombre){ const n=String(nombre||'').trim().toLowerCase(); if(!n) return null; for(const [k,r] of preNombres()) if(k.toLowerCase()===n) return r; return null; }
 function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ peso+=num(it.peso)*num(it.cant); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
 function mochilaHTML(f){
+  mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
   const dis=S.ro?'disabled':'';
   let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
-  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" value="${esc(it.obj)}" ${dis} aria-label="Objeto"></td>
+  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${dis} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${dis} aria-label="Peso en kg"></td>
@@ -645,7 +649,7 @@ function mochilaHTML(f){
     <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${dis} aria-label="Efecto"></td>
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="7" class="note">La mochila está vacía.</td></tr>`;
-  h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la lista de Precios, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en Precios). Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
@@ -1029,6 +1033,10 @@ function onField(e){
   else if(p==='entrenador'&&v.startsWith('jug|')){ const [,u,tid]=v.split('|'); capturePokemon(u,tid); return; }
   else if(p==='entrenador'){ if(v){ const team=teamOf({...S.open,id:v}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); f.lugar= team.length>=6?'caja':''; } else f.lugar=''; f.entrenador=v; full=true; }
   else if(p==='lugar'){ if(!v){ const team=teamOf({...S.open,id:f.entrenador}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); if(team.length>=6){ showBanner('El equipo ya tiene 6 Pokémon. Pasa uno a la caja primero.'); el.value='caja'; return;} } f.lugar=v; }
+  else if(/^mochila\.\d+\.obj$/.test(p)){ const it=f.mochila[num(p.split('.')[1])]; const antes=preDe(it.obj), r=preDe(v); it.obj=r?String(r[4]).trim():v;
+    if(r){ it.peso=typeof r[10]==='number'?r[10]:0; it.precio=typeof r[5]==='number'?r[5]:0; it.efecto=r[9]&&r[9]!=='-'?r[9]:''; }
+    else if(antes){ it.peso=0; it.precio=0; it.efecto=''; }
+    full=!!(r||antes); }
   else if(/^mochila\.\d+\.eq$/.test(p)){ if(v) (f.mochila||[]).forEach(it=>{ if(it.eq===v) it.eq=''; }); setPath(f,p,v); full=true; }
   else if(p.startsWith('mochila.')){ setPath(f,p,v); fillMochila(); }
   else if(p.startsWith('tal.')||p==='cat'){ setPath(f,p,v); full=true; }
