@@ -629,13 +629,19 @@ function eqItemHTML(f){
   const it=(tr.f.mochila||[]).find(x=>x.eq===holder&&x.obj);
   return it? `<b>${esc(it.obj)}</b>${it.efecto?` <span class="note">— ${esc(it.efecto)}</span>`:''}` : '<span class="note">Selecciona en Mochila</span>';
 }
-function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ peso+=num(it.peso)*num(it.cant); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:Math.max(0,c.A.FUE)*5}; }
+/* Carga del Entrenador: 20 kg + 5 kg por punto de FUE (propuesta del 2026-11-09) */
+const CARGA_BASE=20, CARGA_FUE=5;
+/* Objetos de la lista de Precios para la Mochila (sin Servicios; el jugador solo ve los visibles) */
+function preNombres(){ const m=new Map(); (D.pre||[]).forEach(r=>{ const n=String(r[4]||'').trim(); if(n&&r[7]!=='Servicio'&&vistaVe('pre',r[3])&&!m.has(n)) m.set(n,r); }); return m; }
+function preDe(nombre){ const n=String(nombre||'').trim().toLowerCase(); if(!n) return null; for(const [k,r] of preNombres()) if(k.toLowerCase()===n) return r; return null; }
+function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ peso+=num(it.peso)*num(it.cant); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
 function mochilaHTML(f){
+  mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
   const dis=S.ro?'disabled':'';
   let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
-  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" value="${esc(it.obj)}" ${dis} aria-label="Objeto"></td>
+  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${dis} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${dis} aria-label="Peso en kg"></td>
@@ -643,7 +649,7 @@ function mochilaHTML(f){
     <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${dis} aria-label="Efecto"></td>
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="7" class="note">La mochila está vacía.</td></tr>`;
-  h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">Cada punto de Fuerza del Entrenador carga 5 kg. Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la lista de Precios, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en Precios). Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
@@ -1027,6 +1033,10 @@ function onField(e){
   else if(p==='entrenador'&&v.startsWith('jug|')){ const [,u,tid]=v.split('|'); capturePokemon(u,tid); return; }
   else if(p==='entrenador'){ if(v){ const team=teamOf({...S.open,id:v}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); f.lugar= team.length>=6?'caja':''; } else f.lugar=''; f.entrenador=v; full=true; }
   else if(p==='lugar'){ if(!v){ const team=teamOf({...S.open,id:f.entrenador}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); if(team.length>=6){ showBanner('El equipo ya tiene 6 Pokémon. Pasa uno a la caja primero.'); el.value='caja'; return;} } f.lugar=v; }
+  else if(/^mochila\.\d+\.obj$/.test(p)){ const it=f.mochila[num(p.split('.')[1])]; const antes=preDe(it.obj), r=preDe(v); it.obj=r?String(r[4]).trim():v;
+    if(r){ it.peso=typeof r[10]==='number'?r[10]:0; it.precio=typeof r[5]==='number'?r[5]:0; it.efecto=r[9]&&r[9]!=='-'?r[9]:''; }
+    else if(antes){ it.peso=0; it.precio=0; it.efecto=''; }
+    full=!!(r||antes); }
   else if(/^mochila\.\d+\.eq$/.test(p)){ if(v) (f.mochila||[]).forEach(it=>{ if(it.eq===v) it.eq=''; }); setPath(f,p,v); full=true; }
   else if(p.startsWith('mochila.')){ setPath(f,p,v); fillMochila(); }
   else if(p.startsWith('tal.')||p==='cat'){ setPath(f,p,v); full=true; }
@@ -1219,7 +1229,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pfl:{e:'',g:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:null,min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
@@ -1382,21 +1392,52 @@ function toolHab(){
 }
 // precios: 0 Etapa,1 ID grupo,2 Grupo,3 ID ítem,4 Ítem,5 Precio,6 Rareza,7 Tipo de gasto,8 Acceso por Rango
 const PCOLS=[['Ítem',4],['Precio',5],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
+const RAREZAS=['Común','Poco común','Raro','Muy raro','Único'];
+/* Comprar desde Precios: elige el Entrenador, suma el ítem a su Mochila y descuenta el precio */
+function compradores(){ const l=[]; const add=(src,uid,lbl)=>poolOf(src,uid).filter(x=>x.f.tipo==='E').forEach(x=>l.push({k:`${src}|${uid||''}|${x.id}`,n:`${charName(x.f)}${lbl}`,f:x.f}));
+  if(S.uid) add('jug',S.uid,''); if(isMaster()) add('master',null,' (Master)'); return l; }
+function compraHTML(r,span){ const cs=compradores(); const sel=T.pbuyK&&cs.some(c=>c.k===T.pbuyK)?T.pbuyK:(cs[0]||{}).k; const c=cs.find(x=>x.k===sel); const n=Math.max(1,num(T.pbuyN)||1); const tot=r[5]*n;
+  if(!cs.length) return `<tr class="fx"><td colspan="${span}"><span class="note">No tienes Entrenadores en esta mesa.</span> <button class="btn sm" data-act="buyNo">Cerrar</button></td></tr>`;
+  const din=c?num(c.f.dinero):0; const falta=din<tot;
+  return `<tr class="fx"><td colspan="${span}"><div class="row" style="gap:8px;align-items:end;flex-wrap:wrap"><label class="f" style="min-width:220px">Entrenador<select id="buyWho">${cs.map(x=>`<option value="${esc(x.k)}"${x.k===sel?' selected':''}>${esc(x.n)} · ${num(x.f.dinero).toLocaleString('es-CL')} ₽</option>`).join('')}</select></label>
+    <label class="f" style="width:90px">Cantidad<input type="number" min="1" id="buyN" value="${n}"></label>
+    <span class="pill">Total ${tot.toLocaleString('es-CL')}\u00a0₽${r[7]==='Servicio'?' · servicio, no va a la Mochila':''}</span>
+    <button class="btn pri" data-act="buyYes" data-id="${esc(r[3])}"${falta?' disabled':''}>Confirmar</button><button class="btn" data-act="buyNo">Cancelar</button>
+    ${falta?`<span class="note ko">No le alcanza: tiene ${din.toLocaleString('es-CL')} ₽.</span>`:''}</div></td></tr>`; }
+function comprar(id){ const r=(D.pre||[]).find(x=>x[3]===id); const cs=compradores(); const k=T.pbuyK&&cs.some(c=>c.k===T.pbuyK)?T.pbuyK:(cs[0]||{}).k; if(!r||!k) return; const [src,uid,fid]=k.split('|');
+  const x=poolOf(src,uid||null).find(y=>y.id===fid); if(!x) return; const n=Math.max(1,num(T.pbuyN)||1), tot=r[5]*n; const f=structuredClone(x.f);
+  if(num(f.dinero)<tot){ showBanner(`No le alcanza: ${charName(f)} tiene ${num(f.dinero).toLocaleString('es-CL')} ₽.`); return; }
+  f.dinero=num(f.dinero)-tot;
+  if(r[7]!=='Servicio'){ f.mochila ||= []; const it=f.mochila.find(o=>o.obj===r[4]); if(it) it.cant=num(it.cant)+n; else f.mochila.push({obj:r[4],eq:'',cant:n,peso:typeof r[10]==='number'?r[10]:0,precio:r[5],efecto:r[9]&&r[9]!=='-'?r[9]:''}); }
+  saveFicha({src,uid:uid||null,id:fid},f); logRoll(charName(f),`Compra: ${n} × ${r[4]} por ${tot.toLocaleString('es-CL')} ₽`,null);
+  const t=mochilaTotals(f); showBanner(`${charName(f)} compró ${n} × ${r[4]} por ${tot.toLocaleString('es-CL')} ₽. Le quedan ${num(f.dinero).toLocaleString('es-CL')} ₽.${t.peso>t.cap?` Ojo: su Mochila pesa ${t.peso} kg y carga ${t.cap} kg.`:''}`);
+  T.pbuy=''; T.pbuyN=1; renderSheet(); }
 function toolPre(){
-  const rows=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
-  const etapas=[...new Set(rows.map(r=>r[0]))];
-  if(!etapas.includes(T.pfl.e)) T.pfl.e=etapas[0]||'';
-  const enE=rows.filter(r=>r[0]===T.pfl.e); const grupos=[...new Set(enE.map(r=>r[2]))];
-  if(!grupos.includes(T.pfl.g)) T.pfl.g=grupos[0]||'';
-  const res=sortRows(enE.filter(r=>r[2]===T.pfl.g),T.psort,4);
+  const F=T.pfl; const all=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
+  const etapas=[...new Set(all.map(r=>r[0]))];
+  if(F.e==null||(F.e!==''&&!etapas.includes(F.e))) F.e=etapas[0]||'';   /* '' = Todo */
+  const enE=all.filter(r=>F.e===''||r[0]===F.e); const grupos=[...new Set(enE.map(r=>r[2]))];
+  if(F.g==null||(F.g!==''&&!grupos.includes(F.g))) F.g=grupos[0]||'';
+  const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b)); });
+  const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
+  const mn=F.min===''||F.min==null?null:num(F.min), mx=F.max===''||F.max==null?null:num(F.max);
+  const res=sortRows(enE.filter(r=>(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
+    &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
+  const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
   let h=`<div class="card"><h2>Precios</h2><div class="grid g4">
-    <label class="f">Etapa<select data-pfl="e">${opts(etapas,T.pfl.e)}</select></label>
-    <label class="f">Grupo<select data-pfl="g">${opts(grupos,T.pfl.g)}</select></label>
-    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span></div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
+    <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
+    <label class="f">Grupo<select data-pfl="g">${opts(grupos,F.g,'Todo')}</select></label>
+    <label class="f">Precio mínimo (₽)<input type="number" min="0" data-pfl="min" value="${esc(F.min??'')}" placeholder="Sin mínimo"></label>
+    <label class="f">Precio máximo (₽)<input type="number" min="0" data-pfl="max" value="${esc(F.max??'')}" placeholder="Sin máximo"></label>
+    <label class="f">Rareza<select data-pfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
+    <label class="f">Tipo de gasto<select data-pfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
+    <label class="f">Rango<select data-pfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
+    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span>${F.min||F.max||F.rar||F.gas||F.ran?' <button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
-  h+=`<div class="card"><h2>${esc(T.pfl.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span></h2><div class="tw"><table class="mtable"><thead><tr>${sortHead(PCOLS,T.psort,'psort')}</tr></thead><tbody>`;
-  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td><td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+'\u00a0₽':esc(r[5]??'—')}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td></tr>${T.popen===r[3]?`<tr class="fx"><td colspan="5">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
-  return h+`</tbody></table></div></div>`;
+  const tit=F.g!==''?`${esc(F.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span>`:F.e!==''?`${esc(F.e)} · todos los grupos`:'Todos los ítems';
+  h+=`<div class="card"><h2>${tit}</h2>${res.length?`<div class="tw"><table class="mtable"><thead><tr>${sortHead(cols,T.psort,'psort')}${S.canWrite?'<th><span class="sr">Comprar</span></th>':''}</tr></thead><tbody>`:'<p class="note">Ningún ítem cumple los filtros.</p>'}`;
+  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td>${F.g===''?`<td>${esc(r[2])}</td>`:''}${F.e===''?`<td>${esc(r[0])}</td>`:''}<td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+' ₽':esc(r[5]??'—')}</td><td class="num">${typeof r[10]==='number'?String(r[10]).replace('.',',')+' kg':'—'}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td>${S.canWrite?`<td>${typeof r[5]==='number'&&r[7]!=='No venta'?`<button class="btn sm" data-prebuy="${esc(r[3])}" aria-expanded="${T.pbuy===r[3]}">Comprar</button>`:''}</td>`:''}</tr>${T.pbuy===r[3]?compraHTML(r,cols.length+(S.canWrite?1:0)):''}${T.popen===r[3]?`<tr class="fx"><td colspan="${cols.length+(S.canWrite?1:0)}">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
+  return h+(res.length?`</tbody></table></div>`:'')+`</div>`;
 }
 // rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
 const RCOLS=[['Rasgo',0],['Tipo',1],['Valor',3],['Categoría',2],['Aplicación',4]];
@@ -2326,6 +2367,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='fotoIn'&&S.canWrite){ subirFoto(e.target.files&&e.target.files[0]); }
   if(e.target.id==='mesaSel'){ const v=num(e.target.value); if(v&&v!==MESA) cambiarMesa(v); }
   if(e.target.id==='mesaNom'&&S.owner){ const n=e.target.value.trim()||`RPG ${MESA}`; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.lista=mesaLista().map(x=>num(x.id)===MESA?{...x,nombre:n}:x); saveMesas(); }
+  if(e.target.id==='buyWho'){ T.pbuyK=e.target.value; renderSheet(); }
+  if(e.target.id==='buyN'){ T.pbuyN=Math.max(1,num(e.target.value)||1); renderSheet(); }
   if(e.target.id==='copyMesa'){ const v=num(e.target.value); e.target.value=''; if(v) copiarAMesa(v); }
   if(e.target.dataset&&e.target.dataset.mrole&&S.owner){ const u=e.target.dataset.mrole, v=e.target.value; S.mesasDoc ||= {lista:[],miembros:{}}; S.mesasDoc.miembros ||= {};
     let mm=miembrosDe(MESA); if(mm===null){ mm={}; Object.keys(S.allPlayers).forEach(k=>mm[k]=S.masters.includes(k)?'master':'jug'); } mm={...mm}; if(v) mm[u]=v; else delete mm[u]; S.mesasDoc.miembros[MESA]=mm;
@@ -2341,6 +2384,7 @@ document.addEventListener('click',async e=>{
   const vs=e.target.closest('[data-vista]'); if(vs&&isMaster()){ const k=vs.dataset.vista; S.vistas[k].on=!S.vistas[k].on; saveVistas(); return; }
   const vb=e.target.closest('[data-vistabulk]'); if(vb&&isMaster()){ const [k,v]=vb.dataset.vistabulk.split('|'); for(const id of VLAST[k]) v==='1'?VSET[k].add(id):VSET[k].delete(id); saveVistas(); return; }
   const va=e.target.closest('[data-vistaall]'); if(va&&isMaster()){ const [k,v]=va.dataset.vistaall.split('|'); const all=k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3]); VSET[k]=v==='1'?new Set(all):new Set(); saveVistas(); return; }
+  const pb=e.target.closest('[data-prebuy]'); if(pb){ const id=pb.dataset.prebuy; T.pbuy=T.pbuy===id?'':id; T.pbuyN=1; renderSheet(); return; }
   const pe=e.target.closest('[data-preopen]'); if(pe){ const id=pe.dataset.preopen; T.popen=T.popen===id?'':id; renderSheet(); return; }
   const vi=e.target.closest('[data-vistaid]'); if(vi&&isMaster()){ const i=vi.dataset.vistaid.indexOf('|'); const k=vi.dataset.vistaid.slice(0,i), id=vi.dataset.vistaid.slice(i+1); VSET[k].has(id)?VSET[k].delete(id):VSET[k].add(id); saveVistas(); return; }
   const lk=e.target.closest('[data-lock]'); if(lk){ const x=refByKey(lk.dataset.lock); if(x) setLock(x,!isLocked(x.f)); renderSheet(); return; }
@@ -2398,6 +2442,9 @@ document.addEventListener('click',async e=>{
   else if(act==='clearYes'){ clearRolls(); }
   else if(act==='copyOpen'){ const c=$('#copyConfirm'); if(!c) return; const ms=misMesas().filter(x=>num(x.id)===MESA||S.open.src!=='master'||S.owner);
     c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
+  else if(act==='buyYes'){ comprar(a.dataset.id); }
+  else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
+  else if(act==='preLimpiar'){ Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
   else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
   else if(act==='salir'){ if(window.__salir) window.__salir(); }
