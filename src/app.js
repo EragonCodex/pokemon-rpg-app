@@ -645,25 +645,22 @@ function mochilaHTML(f){
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b),'es'); });
   const conInfo=info.filter(Boolean); const etapas=ord(conInfo.map(r=>r[0]),[]);
   if(F.e&&!etapas.includes(F.e)) F.e=''; const grupos=ord(conInfo.filter(r=>!F.e||r[0]===F.e).map(r=>r[2]),[]); if(F.g&&!grupos.includes(F.g)) F.g='';
-  const rarezas=ord(conInfo.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(conInfo.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(conInfo.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
-  const mn=F.min===''?null:num(F.min), mx=F.max===''?null:num(F.max); const catF=F.e||F.g||F.rar||F.gas||F.ran; const hayF=catF||mn!=null||mx!=null;
+  const rarezas=ord(conInfo.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(conInfo.map(r=>r[7]).filter(v=>v&&v!=='-'),[]);
+  const catF=F.e||F.g||F.rar||F.gas; const hayF=catF;
   let vis=items.map((it,i)=>i).filter(i=>{ const r=info[i], it=items[i]; if(catF&&!r) return false;
-    if(r&&((F.e&&r[0]!==F.e)||(F.g&&r[2]!==F.g)||(F.rar&&r[6]!==F.rar)||(F.gas&&r[7]!==F.gas)||(F.ran&&r[8]!==F.ran))) return false;
-    return (mn==null||num(it.precio)>=mn)&&(mx==null||num(it.precio)<=mx); });
+    if(r&&((F.e&&r[0]!==F.e)||(F.g&&r[2]!==F.g)||(F.rar&&r[6]!==F.rar)||(F.gas&&r[7]!==F.gas))) return false;
+    return true; });
   const st=T.bsort, sorted=st.col!==''&&st.dir;
   if(sorted){ const k=st.col; const val=i=>k==='eq'?((holders.find(x=>x[0]===items[i].eq)||[,''])[1]):items[i][k];
     vis.sort((a,b)=>{ const A=val(a),B=val(b); const r=['cant','peso','precio'].includes(k)?num(A)-num(B):String(A??'').localeCompare(String(B??''),'es',{sensitivity:'base',numeric:true}); return r*st.dir||String(items[a].obj).localeCompare(String(items[b].obj),'es'); }); }
   const canDrag=!S.ro&&!sorted&&items.length>1;
   const BCOLS=[['Objeto','obj'],['Equipado','eq'],['Cant.','cant'],['Peso (kg)','peso'],['Precio (₽)','precio'],['Efecto','efecto']];
-  let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2>${items.length?`<div class="grid g4 mfl">
+  let h=`<div class="card"><h2><span class="row" style="gap:8px;letter-spacing:inherit">Mochila${items.length?`<span class="pill" style="text-transform:none;letter-spacing:0">${vis.length} de ${items.length} objetos</span>${hayF?'<button class="btn sm" data-act="mochLimpiar" style="text-transform:none;letter-spacing:0">Quitar filtros</button>':''}`:''}</span><span class="pill" data-c="mochTot"></span></h2>${items.length?`<div class="grid g4 mfl">
     <label class="f">Etapa<select data-bfl="e">${opts(etapas,F.e,'Todo')}</select></label>
     <label class="f">Grupo<select data-bfl="g">${opts(grupos,F.g,'Todo')}</select></label>
-    <label class="f">Precio mínimo (₽)<input type="number" min="0" data-bfl="min" value="${esc(F.min)}" placeholder="Sin mínimo"></label>
-    <label class="f">Precio máximo (₽)<input type="number" min="0" data-bfl="max" value="${esc(F.max)}" placeholder="Sin máximo"></label>
     <label class="f">Rareza<select data-bfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
     <label class="f">Tipo de gasto<select data-bfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
-    <label class="f">Rango<select data-bfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
-    <div class="f" style="justify-content:end"><span class="pill">${vis.length} de ${items.length} objetos</span>${hayF?' <button class="btn sm" data-act="mochLimpiar">Quitar filtros</button>':''}</div></div>`:''}
+</div>`:''}
     <div class="tw"><table class="moch"><thead><tr>${S.ro?'':'<th><span class="sr">Ordenar</span></th>'}${sortHead(BCOLS,st,'bsort')}${S.ro?'':'<th></th>'}</tr></thead><tbody class="dlist" data-scope="moch">`;
   vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
@@ -1258,7 +1255,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',min:'',max:'',rar:'',gas:'',ran:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
@@ -2544,7 +2541,7 @@ document.addEventListener('click',async e=>{
     c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
   else if(act==='buyYes'){ comprar(a.dataset.id); }
   else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
-  else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
+  else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',rar:'',gas:''}); renderSheet(); }
   else if(act==='mochFijarOrden'&&S.cur&&!S.ro){ const ids=[...document.querySelectorAll('tbody[data-scope="moch"] > tr.ditem')].map(x=>num(x.dataset.drag)); const rest=S.cur.mochila.map((_,i)=>i).filter(i=>!ids.includes(i)); S.cur.mochila=[...ids,...rest].map(i=>S.cur.mochila[i]); T.bsort={col:'',dir:0}; commit(true); }
   else if(act==='preLimpiar'){ Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
