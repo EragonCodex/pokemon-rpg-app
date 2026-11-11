@@ -640,18 +640,45 @@ function mochilaHTML(f){
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
   const dis=S.ro?'disabled':'', lk=S.ro||isLocked(f)?'disabled':''; /* ficha fijada: solo usar, equipar o quitar */
-  let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
-  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto"></td>
+  /* filtros de la Tienda (según el ítem de la Tienda con el mismo nombre) y orden por columna o arrastrando */
+  const F=T.bfl, info=items.map(it=>preDe(it.obj));
+  const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b),'es'); });
+  const conInfo=info.filter(Boolean); const etapas=ord(conInfo.map(r=>r[0]),[]);
+  if(F.e&&!etapas.includes(F.e)) F.e=''; const grupos=ord(conInfo.filter(r=>!F.e||r[0]===F.e).map(r=>r[2]),[]); if(F.g&&!grupos.includes(F.g)) F.g='';
+  const rarezas=ord(conInfo.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(conInfo.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(conInfo.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
+  const mn=F.min===''?null:num(F.min), mx=F.max===''?null:num(F.max); const catF=F.e||F.g||F.rar||F.gas||F.ran; const hayF=catF||mn!=null||mx!=null;
+  let vis=items.map((it,i)=>i).filter(i=>{ const r=info[i], it=items[i]; if(catF&&!r) return false;
+    if(r&&((F.e&&r[0]!==F.e)||(F.g&&r[2]!==F.g)||(F.rar&&r[6]!==F.rar)||(F.gas&&r[7]!==F.gas)||(F.ran&&r[8]!==F.ran))) return false;
+    return (mn==null||num(it.precio)>=mn)&&(mx==null||num(it.precio)<=mx); });
+  const st=T.bsort, sorted=st.col!==''&&st.dir;
+  if(sorted){ const k=st.col; const val=i=>k==='eq'?((holders.find(x=>x[0]===items[i].eq)||[,''])[1]):items[i][k];
+    vis.sort((a,b)=>{ const A=val(a),B=val(b); const r=['cant','peso','precio'].includes(k)?num(A)-num(B):String(A??'').localeCompare(String(B??''),'es',{sensitivity:'base',numeric:true}); return r*st.dir||String(items[a].obj).localeCompare(String(items[b].obj),'es'); }); }
+  const canDrag=!S.ro&&!sorted&&items.length>1;
+  const BCOLS=[['Objeto','obj'],['Equipado','eq'],['Cant.','cant'],['Peso (kg)','peso'],['Precio (₽)','precio'],['Efecto','efecto']];
+  let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2>${items.length?`<div class="grid g4 mfl">
+    <label class="f">Etapa<select data-bfl="e">${opts(etapas,F.e,'Todo')}</select></label>
+    <label class="f">Grupo<select data-bfl="g">${opts(grupos,F.g,'Todo')}</select></label>
+    <label class="f">Precio mínimo (₽)<input type="number" min="0" data-bfl="min" value="${esc(F.min)}" placeholder="Sin mínimo"></label>
+    <label class="f">Precio máximo (₽)<input type="number" min="0" data-bfl="max" value="${esc(F.max)}" placeholder="Sin máximo"></label>
+    <label class="f">Rareza<select data-bfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
+    <label class="f">Tipo de gasto<select data-bfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
+    <label class="f">Rango<select data-bfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
+    <div class="f" style="justify-content:end"><span class="pill">${vis.length} de ${items.length} objetos</span>${hayF?' <button class="btn sm" data-act="mochLimpiar">Quitar filtros</button>':''}</div></div>`:''}
+    <div class="tw"><table class="moch"><thead><tr>${S.ro?'':'<th><span class="sr">Ordenar</span></th>'}${sortHead(BCOLS,st,'bsort')}${S.ro?'':'<th></th>'}</tr></thead><tbody class="dlist" data-scope="moch">`;
+  vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${lk} aria-label="Peso en kg"></td>
     <td style="width:110px"><span class="money"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${lk} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
     <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${lk} aria-label="Efecto"></td>
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
-  if(!items.length) h+=`<tr><td colspan="7" class="note">La mochila está vacía.</td></tr>`;
-  h+=`</tbody></table></div>${S.ro||isLocked(f)?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${isLocked(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
+  const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
+  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||isLocked(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${isLocked(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
+/* nuevo orden de los objetos visibles (índices originales): ocupan, en ese orden, los mismos lugares que tenían */
+function moverMochila(orden){ const f=S.cur; if(!f||S.ro||!f.mochila) return; const pos=[...orden].sort((a,b)=>a-b); const src=f.mochila.slice(); pos.forEach((p,k)=>{ f.mochila[p]=src[orden[k]]; }); commit(true); }
 function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
 
 /* ---------- plantillas ---------- */
@@ -730,6 +757,7 @@ window.addEventListener('pointermove',e=>{ if(!DRAG||e.pointerId!==DRAG.id) retu
   const after=sibs.find(x=>{ const r=x.getBoundingClientRect(); return e.clientY<r.top+r.height/2; });
   const ref=after||null; if(DRAG.el.nextElementSibling!==ref||(!ref&&DRAG.box.lastElementChild!==DRAG.el)){ DRAG.box.insertBefore(DRAG.el,ref); DRAG.moved=true; } },{passive:false});
 function endDrag(e){ if(!DRAG||e.pointerId!==DRAG.id) return; const {el,box,moved}=DRAG; DRAG=null; el.classList.remove('dragging'); document.body.classList.remove('is-dragging'); DRAG_END=Date.now();
+  if(box.dataset.scope==='moch'){ if(moved) moverMochila([...box.children].filter(x=>x.classList.contains('ditem')).map(x=>num(x.dataset.drag))); return; }
   if(moved) saveOrder(box.dataset.scope,[...box.children].filter(x=>x.classList.contains('ditem')).map(x=>x.dataset.drag)); renderList(); }
 window.addEventListener('pointerup',endDrag); window.addEventListener('pointercancel',endDrag);
 /* tocar el asa no abre ni pliega nada */
@@ -1230,7 +1258,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',min:'',max:'',rar:'',gas:'',ran:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
@@ -2427,6 +2455,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.condby&&isMaster()){ const cls=e.target.dataset.condby; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,by:e.target.value}}}); renderSheet(); return; }
   if(e.target.dataset.clf){ clChange(e.target); return; }
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
+  if(e.target.dataset.bfl){ const k=e.target.dataset.bfl; T.bfl[k]=e.target.value; if(k==='e') T.bfl.g=''; renderSheet(); return; }
   if(e.target.dataset.kit||e.target.dataset.kiti){ kitField(e.target); return; }
   if(e.target.dataset.kitto!==undefined){ const k=e.target.dataset.kitto; e.target.checked?T.kitTo.add(k):T.kitTo.delete(k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
@@ -2475,6 +2504,7 @@ document.addEventListener('click',async e=>{
   const rt=e.target.closest('[data-rolltal]'); if(rt){ openRP({kind:'tal',attr:'DES',tal:rt.dataset.rolltal,x:0}); return; }
   const rm2=e.target.closest('[data-rollmv]'); if(rm2){ openRP({kind:'move',i:num(rm2.dataset.rollmv)}); return; }
   const rm=e.target.closest('[data-rmmaster]'); if(rm){ S.masters=S.masters.filter(u=>u!==rm.dataset.rmmaster); saveMasters(); return; }
+  const bs=e.target.closest('[data-bsort]'); if(bs){ const st=T.bsort, c=bs.dataset.bsort; if(String(st.col)!==c){ st.col=c; st.dir=1; } else st.dir=st.dir===1?-1:st.dir===-1?0:1; renderSheet(); return; }
   const a=e.target.closest('[data-act]'); if(!a) return; const act=a.dataset.act;
   if(act.startsWith('kit')&&kitAct(act,a)) return;
   if(a.closest('summary')) e.preventDefault();
@@ -2514,6 +2544,8 @@ document.addEventListener('click',async e=>{
     c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
   else if(act==='buyYes'){ comprar(a.dataset.id); }
   else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
+  else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
+  else if(act==='mochFijarOrden'&&S.cur&&!S.ro){ const ids=[...document.querySelectorAll('tbody[data-scope="moch"] > tr.ditem')].map(x=>num(x.dataset.drag)); const rest=S.cur.mochila.map((_,i)=>i).filter(i=>!ids.includes(i)); S.cur.mochila=[...ids,...rest].map(i=>S.cur.mochila[i]); T.bsort={col:'',dir:0}; commit(true); }
   else if(act==='preLimpiar'){ Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
   else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
