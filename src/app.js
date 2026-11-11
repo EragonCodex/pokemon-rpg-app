@@ -1230,7 +1230,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:null,min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
@@ -1699,8 +1699,9 @@ function repOf(f,mv){ return f.rep&&f.rep.mv===mv?num(f.rep.n):0; }
 function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
   const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
-  const sinRep=hkOf(c.em,/^sinRepeticion$/), menos=hkOf(c.em,/^repMenos$/).reduce((a,h)=>a+(hval(h.v)||1),0); /* Encadenado: no penaliza; Vistalince: cuenta una repetición menos */
-  const pen = rec||sinRep.length?0:Math.max(0,n-menos)*(PEN[mi.m[5]]||0);
+  const sinRep=hkOf(c.em,/^sinRepeticion$/), menos=hkOf(c.em,/^repMenos$/).reduce((a,h)=>a+(hval(h.v)||1),0); /* Encadenado: no penaliza; Vistalince: penaliza como un movimiento de 1 Rango menos (mínimo Starter) */
+  const RK=Object.keys(PEN), nivPen=RK[Math.max(0,RK.indexOf(mi.m[5])-menos)]||mi.m[5];
+  const pen = rec||sinRep.length?0:n*(PEN[nivPen]||0);
   const od=f.orden||null; const prec=clamp(mi.prec-pen+(od&&od.k==='apunta'?num(od.v):0),0,100);
   let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0)+(od&&od.k==='critico'?num(od.v):0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
@@ -2106,8 +2107,8 @@ function doAttack(){
       const dr=rollDamage(ai,t,crit,bonus);
       if(ocx2&&num(dr.val)>0&&!dr.heal){ dr.val*=2; dr.det+=` × 2 (${LUGAR[oc.l].toLowerCase()})`; }
       const ck=dr.crit??crit; let est=''; if(ck&&!dr.heal&&!dr.immune){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
-      const noEv=ai.mi.hm.ignEv||siempre;
-      res.push({key:k,name:charName(t.f),...dr,crit:ck,est,kind:dr.immune||noEv?null:m[3]==='Estado'?'tem':'esq'}); }
+      const ign=ai.mi.hm.ignEv&&!siempre?habOf(x.f):''; /* Ojomental: el Blanco puede evadir, pero sin sus cambios de Evasión */
+      res.push({key:k,name:charName(t.f),...dr,crit:ck,est,ign,kind:dr.immune||siempre?null:m[3]==='Estado'?'tem':'esq'}); }
     /* Reserva (Reserva acumula; Escupir y Tragar gastan los puntos) */
     if(/Acumula un punto de Reserva/.test(tx)){ nf.reserva=Math.min(3,num(nf.reserva)+1); const up=[]; for(const [k,v] of [...tx.matchAll(/\+(\d+) (FUE|VIT|ENE|SAB|DES|CAR) /g)].map(z=>[z[2],Number(z[1])])){ const dd=bumpAttr(nf,k,v); if(dd) up.push(`+${dd} ${k}`); } steps.push({k:'ok',t:`Reserva: ${nf.reserva} punto${nf.reserva>1?'s':''} (máx. 3)${up.length?' · '+up.join(' y '):''}.`}); }
     if(/resetea los [Pp]untos/.test(tx)&&num(nf.reserva)){ steps.push({k:'',t:`Reserva: gasta ${nf.reserva} punto${nf.reserva>1?'s':''}.`}); nf.reserva=0; }
@@ -2257,10 +2258,13 @@ function clChange(el){
 }
 
 function doEvade(ref,f,kind,against){
-  const c=calc(f); const od=f.orden&&f.orden.k==='esquiva'?f.orden:null; const need=Math.min(100,Math.round((kind==='esq'?c.esq:c.tem)*100)+(od?num(od.v):0)); const r=d(100);
+  const c=calc(f); const od=f.orden&&f.orden.k==='esquiva'?f.orden:null; const ign=against&&against.ign;
+  /* con Ojomental del atacante se ignoran el Bono de Evasión y los % de Evasión de Habilidades y estados */
+  const base=ign?clamp(1-0.15*num(kind==='esq'?f.cEsq:f.cTem)+0.15*Math.floor((kind==='esq'?c.A.DES:c.A.CAR)/2),0.2,1):(kind==='esq'?c.esq:c.tem);
+  const need=Math.min(100,Math.round(base*100)+(od?num(od.v):0)); const r=d(100);
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100; const crit=ok&&r===1; /* Esquiva crítica: solo con 01 en el dado */
   const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; if(od) delete nf.orden; if(ref.key) saveAny(ref,nf); else saveFicha(ref,nf);
-  const txt=`${od?`Orden ${od.n}: +${od.v} % a la Evasión. `:''}Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?(crit?'¡Esquiva crítica! Lo evita y puede atacar otra vez':'lo evita'):'no lo evita'}`;
+  const txt=`${od?`Orden ${od.n}: +${od.v} % a la Evasión. `:''}Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}${ign?` (${ign} ignora sus cambios de Evasión)`:''}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?(crit?'¡Esquiva crítica! Lo evita y puede atacar otra vez':'lo evita'):'no lo evita'}`;
   logRoll(charName(f),txt,r);
   return {r,ok,txt,crit};
 }
@@ -2327,7 +2331,7 @@ function cbClick(b){
     const L=CB.last; if(!L) return; const z=L.res.find(q=>q.key===b.dataset.k); const t=combatant(b.dataset.k); if(!z||!t||!canEditRef(t)) return;
     const fk=`${L.ts}|${z.key}`; const fx={...(CB.lastFx[fk]||{})}; if(fx.done) return; const log=[...(fx.log||[])];
     if(act==='col'){ CBU.colFor=CBU.colFor===fk?'':fk; renderSheet(); return; }
-    if(act==='evade'){ const ev=doEvade(t,t.f,z.kind,{d100:L.d100,mv:L.mv,by:L.by}); log.push({k:ev.ok?'ok':'ko',t:ev.txt});
+    if(act==='evade'){ const ev=doEvade(t,t.f,z.kind,{d100:L.d100,mv:L.mv,by:L.by,ign:z.ign||''}); log.push({k:ev.ok?'ok':'ko',t:ev.txt});
       if(ev.crit) log.push({k:'ok',t:esquivaCritica(t.key)});
       if(ev.ok){ fx.ev=true; fx.done=true; }
       else { connectHit(L,z,'no logró evadir').forEach(o=>log.push({k:'',t:o})); fx.done=true; } }
