@@ -555,7 +555,7 @@ function visFor(id,uid){ uid=uid===undefined?S.uid:uid; return !!(S.evento || S.
 function speciesAllowed(id){ return isMaster() || visFor(id); }
 function dexPlayers(){ return Object.keys(S.players).filter(u=>!S.masters.includes(u)&&!(S.owner&&u===S.uid)); }
 function visState(id){ if(S.vis.has(id)) return 'all'; return dexPlayers().some(u=>S.visJ[u]&&S.visJ[u].has(id))?'some':'none'; }
-/* Vista de jugadores en Movimientos, Habilidades y Precios: con el bloqueo activo, los jugadores solo ven lo que el Master desbloquea */
+/* Vista de jugadores en Movimientos, Habilidades y Tienda: con el bloqueo activo, los jugadores solo ven lo que el Master desbloquea */
 const VSET={mov:new Set(),hab:new Set(),pre:new Set()};
 function setVistas(v){ for(const k of ['mov','hab','pre']){ const o=(v||{})[k]||{}; S.vistas[k]={on:!!o.on,ids:[...(o.ids||[])]}; VSET[k]=new Set(S.vistas[k].ids); } }
 const vistaOn=k=>!!(S.vistas[k]&&S.vistas[k].on);
@@ -631,7 +631,7 @@ function eqItemHTML(f){
 }
 /* Carga del Entrenador: 20 kg + 5 kg por punto de FUE (propuesta del 2026-11-09) */
 const CARGA_BASE=20, CARGA_FUE=5;
-/* Objetos de la lista de Precios para la Mochila (sin Servicios; el jugador solo ve los visibles) */
+/* Objetos de la Tienda para la Mochila (sin Servicios; el jugador solo ve los visibles) */
 function preNombres(){ const m=new Map(); (D.pre||[]).forEach(r=>{ const n=String(r[4]||'').trim(); if(n&&r[7]!=='Servicio'&&vistaVe('pre',r[3])&&!m.has(n)) m.set(n,r); }); return m; }
 function preDe(nombre){ const n=String(nombre||'').trim().toLowerCase(); if(!n) return null; for(const [k,r] of preNombres()) if(k.toLowerCase()===n) return r; return null; }
 function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ peso+=num(it.peso)*num(it.cant); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
@@ -639,17 +639,17 @@ function mochilaHTML(f){
   mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
-  const dis=S.ro?'disabled':'';
+  const dis=S.ro?'disabled':'', lk=S.ro||isLocked(f)?'disabled':''; /* ficha fijada: solo usar, equipar o quitar */
   let h=`<div class="card"><h2>Mochila <span class="pill" data-c="mochTot"></span></h2><div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Equipado</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${S.ro?'':'<th></th>'}</tr></thead><tbody>`;
-  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${dis} aria-label="Objeto"></td>
+  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto"></td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
-    <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${dis} aria-label="Peso en kg"></td>
-    <td style="width:110px"><span class="money"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${dis} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
-    <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${dis} aria-label="Efecto"></td>
+    <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${lk} aria-label="Peso en kg"></td>
+    <td style="width:110px"><span class="money"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${lk} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
+    <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${lk} aria-label="Efecto"></td>
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="7" class="note">La mochila está vacía.</td></tr>`;
-  h+=`</tbody></table></div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la lista de Precios, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en Precios). Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div>${S.ro||isLocked(f)?'':'<div class="row" style="margin-top:8px"><button class="btn" data-act="addItem">+ Objeto</button></div>'}<p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${isLocked(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
@@ -784,7 +784,7 @@ function renderList(){
   } else if(S.view==='glos'){
     h+=`<div class="grp"><h3>Glosario</h3><div class="items">${GLOS.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></div>`;
   } else {
-    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['pre','Precios'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas']]:[])];
+    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['pre','Tienda'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas']]:[])];
     h+=`<div class="grp"><h3>Herramientas</h3><div class="items">${tools.map(([k,n])=>`<button class="item" data-tool="${k}" aria-current="${S.tool===k}"><span class="n">${n}</span></button>`).join('')}</div></div>`;
   }
   L.innerHTML=h;
@@ -813,7 +813,7 @@ function renderSheet(){
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
   h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
-    <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar">🔒 Fijada</span>':''}</div><div class="headline">
+    <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar, y la Mochila solo deja usar, equipar o quitar objetos">🔒 Fijada</span>':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
     <div class="grid ${isP?'g3':'g4'}" style="margin-top:12px">`;
@@ -1024,6 +1024,7 @@ function commit(full){
 function onField(e){
   const el=e.target; const p=el.dataset.f; if(!p||!S.cur||S.ro) return;
   if(isLocked(S.cur)&&LOCK_RX.test(p)){ showBanner('Esta ficha está fijada por el Master.'); renderSheet(); return; }
+  if(isLocked(S.cur)&&/^mochila\.\d+\.cant$/.test(p)&&num(el.value)>num(((S.cur.mochila||[])[num(p.split('.')[1])]||{}).cant)){ showBanner('Ficha fijada: la cantidad solo puede bajar. Para tener más, cómpralo en la Tienda.'); renderSheet(); return; }
   if(el.tagName==='SELECT') selColor(el);
   const f=S.cur; let v=el.value; let full=false;
   if(el.type==='number') v=num(v);
@@ -1238,11 +1239,11 @@ function renderTool(){
 const LOCK_SVG=on=>on?'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>'
   :'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/></svg>';
 const isLocked=f=>!!(f&&f.bloq);
-const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.)/;
+const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.|mochila\.\d+\.(obj|peso|precio|efecto)$)/;
 function lockBtn(x){ const on=isLocked(x.f); return `<button class="lockbtn${on?' on':''}" data-lock="${esc(refKey(x))}" aria-pressed="${on}" title="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}" aria-label="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}">${LOCK_SVG(on)}</button>`; }
 function toolBloq(){
   const row=(x,sub)=>`<div class="lkrow${sub?' sub':''}${isLocked(x.f)?' on':''}"><span class="n">${esc(charName(x.f))}</span><span class="note">${x.f.tipo==='E'?'Entrenador':'Pokémon'}${x.f.lugar==='caja'?' · caja':''}</span>${lockBtn(x)}</div>`;
-  let h=`<div class="card"><h2>Bloquear Fichas</h2><p class="note">Una ficha fijada ya no deja cambiar su <b>Habilidad</b>, sus <b>Atributos</b> (el bonus sí), sus <b>Talentos</b> ni sus <b>Méritos y Defectos</b>. Vale para todos, Masters incluidos: para editarla, desbloquéala aquí.</p></div>`;
+  let h=`<div class="card"><h2>Bloquear Fichas</h2><p class="note">Una ficha fijada ya no deja cambiar su <b>Habilidad</b>, sus <b>Atributos</b> (el bonus sí), sus <b>Talentos</b> ni sus <b>Méritos y Defectos</b>, y su <b>Mochila</b> solo deja usar (bajar la cantidad), equipar o quitar objetos: lo nuevo se compra en la Tienda. Vale para todos, Masters incluidos: para editarla, desbloquéala aquí.</p></div>`;
   const uids=Object.keys(S.players).sort((a,b)=>String(S.players[a].alias).localeCompare(String(S.players[b].alias)));
   for(const u of uids){ const pool=poolOf('jug',u); if(!pool.length) continue;
     const tr=pool.filter(x=>x.f.tipo==='E'); const ids=new Set(tr.map(t=>t.id)); const loose=pool.filter(x=>x.f.tipo==='P'&&!ids.has(x.f.entrenador));
@@ -1393,7 +1394,7 @@ function toolHab(){
 // precios: 0 Etapa,1 ID grupo,2 Grupo,3 ID ítem,4 Ítem,5 Precio,6 Rareza,7 Tipo de gasto,8 Acceso por Rango
 const PCOLS=[['Ítem',4],['Precio',5],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
 const RAREZAS=['Común','Poco común','Raro','Muy raro','Único'];
-/* Comprar desde Precios: elige el Entrenador, suma el ítem a su Mochila y descuenta el precio */
+/* Comprar desde la Tienda: elige el Entrenador, suma el ítem a su Mochila y descuenta el precio */
 function compradores(){ const l=[]; const add=(src,uid,lbl)=>poolOf(src,uid).filter(x=>x.f.tipo==='E').forEach(x=>l.push({k:`${src}|${uid||''}|${x.id}`,n:`${charName(x.f)}${lbl}`,f:x.f}));
   if(S.uid) add('jug',S.uid,''); if(isMaster()) add('master',null,' (Master)'); return l; }
 function compraHTML(r,span){ const cs=compradores(); const sel=T.pbuyK&&cs.some(c=>c.k===T.pbuyK)?T.pbuyK:(cs[0]||{}).k; const c=cs.find(x=>x.k===sel); const n=Math.max(1,num(T.pbuyN)||1); const tot=r[5]*n;
@@ -1424,7 +1425,7 @@ function toolPre(){
   const res=sortRows(enE.filter(r=>(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
     &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
   const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
-  let h=`<div class="card"><h2>Precios</h2><div class="grid g4">
+  let h=`<div class="card"><h2>Tienda</h2><div class="grid g4">
     <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
     <label class="f">Grupo<select data-pfl="g">${opts(grupos,F.g,'Todo')}</select></label>
     <label class="f">Precio mínimo (₽)<input type="number" min="0" data-pfl="min" value="${esc(F.min??'')}" placeholder="Sin mínimo"></label>
@@ -1667,6 +1668,8 @@ function toggleGlove(k){
 }
 function gloveBtn(k){ const on=inCombat(k); return `<button class="glove" data-glove="${esc(k)}" aria-pressed="${on}" title="${on?'Quitar del combate':'Agregar al combate'}" aria-label="${on?'Quitar del combate':'Agregar al combate'}">🥊</button>`; }
 function combatants(){ return CB.parts.map(combatant).filter(Boolean); }
+/* Indefenso: mientras quien lo tiene está en combate, todo movimiento golpea y nadie puede esquivar */
+function indefensoEnCombate(){ return combatants().find(t=>habRowsOf(t.f,['Siempre']).some(r=>r[5]==='siempreGolpea'))||null; }
 /* Quién ya usó su Acción en la ronda (se reinicia sola al cambiar de ronda) */
 const actedKeys=()=>CB.acted&&num(CB.acted.r)===num(CB.ronda)?(CB.acted.k||[]):[];
 /* tn: {r, prest:[quien tomó prestada la Acción de la ronda siguiente], extra:[quien puede atacar otra vez], debt:{clave: rondas que empezará sin Acción}} */
@@ -1696,7 +1699,8 @@ function repOf(f,mv){ return f.rep&&f.rep.mv===mv?num(f.rep.n):0; }
 function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
   const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
-  const pen = rec?0:n*(PEN[mi.m[5]]||0);
+  const sinRep=hkOf(c.em,/^sinRepeticion$/), menos=hkOf(c.em,/^repMenos$/).reduce((a,h)=>a+(hval(h.v)||1),0); /* Encadenado: no penaliza; Vistalince: cuenta una repetición menos */
+  const pen = rec||sinRep.length?0:Math.max(0,n-menos)*(PEN[mi.m[5]]||0);
   const od=f.orden||null; const prec=clamp(mi.prec-pen+(od&&od.k==='apunta'?num(od.v):0),0,100);
   let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0)+(od&&od.k==='critico'?num(od.v):0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
@@ -2060,10 +2064,11 @@ function doAttack(){
       const last={ts:Date.now(),by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:0,prec:ai.prec,hit:false,crit:false,re:false,go:false,steps:[{k:'ok',t:txt}],res:[],selfDone:true};
       CBU.picking=false; CBU.targets=[]; cbWrite({last}); markActed(x.key); logRoll(charName(x.f),`${m[1]}: prepara (${LUGAR[pr.l]})`,null); renderSheet(); return; } }
   const r=d(100); const steps=[]; const ts=Date.now();
+  const indf=indefensoEnCombate()||(ai.mi.hm.siempre?x:null), siempre=!!indf; /* Indefenso de cualquiera en combate: todo golpea, nadie esquiva */
   const pT=k=>{ const t=combatant(k); return t&&k!==x.key?clamp(ai.prec+condBlanco(m,x.f,t.f).prec,0,100):ai.prec; };
   const best=tkeys.length?Math.max(ai.prec,...tkeys.map(pT)):ai.prec;
-  const hit=(r<=best||ai.mi.hm.siempre)&&r!==100;
-  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}%${best>ai.prec?` (${best}% contra quien cumple la condición)`:''} → ${hit?'conecta':'falla'}${ai.mi.hm.siempre&&r>ai.prec&&r!==100?` (${habOf(x.f)}: siempre golpea)`:''}`});
+  const hit=(r<=best||siempre)&&r!==100;
+  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}%${best>ai.prec?` (${best}% contra quien cumple la condición)`:''} → ${hit?'conecta':'falla'}${siempre&&r>ai.prec&&r!==100?` (${habOf(indf.f)}${indf===x?'':' de '+charName(indf.f)}: siempre golpea)`:''}`});
   if(r===1) steps.push({k:'ok',t:'01 natural: +1 al Bono de Evasión y algo a decisión del Narrador.'});
   if(r===100) steps.push({k:'ko',t:'100: fallo crítico, −1 al Bono de Evasión y algo a decisión del Narrador.'});
   let go=hit, crit=false, re=false, postCond=null;
@@ -2095,13 +2100,13 @@ function doAttack(){
       if(notes.length) steps.push({k:'ok',t:`Efectos en ${charName(x.f)}: ${notes.join(' · ')}`});
       selfNow=true; }
     else for(const k of tkeys){ const t=combatant(k); if(!t) continue;
-      if(!ai.mi.hm.siempre&&r>pT(k)){ res.push({key:k,name:charName(t.f),val:null,det:`Falla contra este Blanco: d100 [${r}] > ${pT(k)}%`,immune:true}); continue; }
+      if(!siempre&&r>pT(k)){ res.push({key:k,name:charName(t.f),val:null,det:`Falla contra este Blanco: d100 [${r}] > ${pT(k)}%`,immune:true}); continue; }
       const oc=t.f.oculto; let ocx2=false;
       if(oc&&oc.l!=='carga'&&k!==x.key){ if(!(ALCANZA[oc.l]||[]).includes(m[1])){ res.push({key:k,name:charName(t.f),val:null,det:`No lo alcanza: está ${LUGAR[oc.l].toLowerCase()}`,immune:true}); continue; } ocx2=(DOBLE_OC[oc.l]||[]).includes(m[1]); }
       const dr=rollDamage(ai,t,crit,bonus);
       if(ocx2&&num(dr.val)>0&&!dr.heal){ dr.val*=2; dr.det+=` × 2 (${LUGAR[oc.l].toLowerCase()})`; }
       const ck=dr.crit??crit; let est=''; if(ck&&!dr.heal&&!dr.immune){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
-      const noEv=ai.mi.hm.ignEv||ai.mi.hm.siempre;
+      const noEv=ai.mi.hm.ignEv||siempre;
       res.push({key:k,name:charName(t.f),...dr,crit:ck,est,kind:dr.immune||noEv?null:m[3]==='Estado'?'tem':'esq'}); }
     /* Reserva (Reserva acumula; Escupir y Tragar gastan los puntos) */
     if(/Acumula un punto de Reserva/.test(tx)){ nf.reserva=Math.min(3,num(nf.reserva)+1); const up=[]; for(const [k,v] of [...tx.matchAll(/\+(\d+) (FUE|VIT|ENE|SAB|DES|CAR) /g)].map(z=>[z[2],Number(z[1])])){ const dd=bumpAttr(nf,k,v); if(dd) up.push(`+${dd} ${k}`); } steps.push({k:'ok',t:`Reserva: ${nf.reserva} punto${nf.reserva>1?'s':''} (máx. 3)${up.length?' · '+up.join(' y '):''}.`}); }
@@ -2434,7 +2439,7 @@ document.addEventListener('click',async e=>{
   else if(act==='restoreNo'){ const c=$('#restoreConfirm'); if(c) c.innerHTML=''; }
   else if(act==='restoreYes'&&S.cur&&!S.ro){ restoreAll(S.cur); commit(true); logRoll(charName(S.cur),'Restaurar Todo: daño, intentos, IC, bonos, estados y repeticiones a 0',null); }
   else if(act==='evade'&&S.cur&&!S.ro){ const L=CB.last; const ev=doEvade(S.open,S.cur,a.dataset.k,L?{d100:L.d100,mv:L.mv,by:L.by}:null); if(ev.crit){ const k=refKey(S.open); if(inCombat(k)) ev.txt+=' · '+esquivaCritica(k); } renderSheet(); openRP({kind:'res',title:a.dataset.k==='esq'?'Esquiva':'Temple',res:{v:ev.r,cls:ev.ok?'ok':'ko',html:esc(ev.txt)}}); }
-  else if(act==='addItem'&&S.cur&&!S.ro){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
+  else if(act==='addItem'&&S.cur&&!S.ro&&!isLocked(S.cur)){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
   else if(act==='rmItem'&&S.cur&&!S.ro){ S.cur.mochila.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='rmRoll'){ delRoll(a.dataset.u,num(a.dataset.ts)); }
   else if(act==='clearRolls'){ const c=$('#clrConfirm'); if(c) c.innerHTML='<button class="btn sm danger" data-act="clearYes">Sí, vaciar</button> <button class="btn sm" data-act="clearNo">Cancelar</button>'; }
