@@ -1269,7 +1269,7 @@ function toolKits(){
   const K=kitsData(), k=kitSel(K); const ro=!S.canWrite; const dis=ro?'disabled':'';
   mkDL('dl-pre',[...preNombres().keys()]);
   const items=k.items||[]; const val=items.reduce((a,it)=>a+num(it.precio)*num(it.cant),0), kg=Math.round(items.reduce((a,it)=>a+num(it.peso)*num(it.cant),0)*100)/100;
-  let h=`<div class="card"><h2>Kits de Recompensas</h2><p class="note">Arma paquetes de Pokedólares y objetos para regalarlos a los Entrenadores: se suman a su Mochila sin costo, aunque la ficha esté fijada.</p>
+  let h=`<div class="card"><h2>Kits de Recompensas</h2><p class="note">Arma paquetes de Pokedólares y objetos para asignarlos a los Entrenadores: se suman a su Mochila sin costo, aunque la ficha esté fijada.</p>
     <div class="row" style="margin-top:8px">${K.lista.map(x=>`<button class="btn sm ${x.id===k.id?'pri':''}" data-act="kitSel" data-id="${esc(x.id)}" aria-pressed="${x.id===k.id}">${esc(x.nombre||'Kit sin nombre')}</button>`).join('')}${ro?'':'<button class="btn sm" data-act="kitNew">+ Nuevo kit</button>'}</div></div>`;
   h+=`<div class="card"><h2><span>${esc(k.nombre||'Kit sin nombre')}</span><span class="pill">Valor ${val.toLocaleString('es-CL')} ₽ · ${String(kg).replace('.',',')} kg</span></h2>
     <div class="grid g2"><label class="f">Nombre del kit<input data-kit="nombre" value="${esc(k.nombre)}" ${dis}></label>
@@ -1284,8 +1284,8 @@ function toolKits(){
   if(!items.length) h+=`<tr><td colspan="6" class="note">El kit no tiene objetos.</td></tr>`;
   h+=`</tbody></table></div>${ro?'':`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="kitAddItem">+ Objeto</button><span class="note">Al escribir un objeto de la Tienda se llenan solos el peso, el precio y el efecto.</span><span style="margin-left:auto"></span>${T.kitDel?`<span class="note">¿Eliminar «${esc(k.nombre)}»?</span><button class="btn sm danger" data-act="kitDelYes">Sí, eliminar</button><button class="btn sm" data-act="kitDelNo">Cancelar</button>`:`<button class="btn sm danger" data-act="kitDel">Eliminar kit</button>`}</div>`}</div>`;
   const dest=kitDestinos(); const okKeys=new Set(dest.flatMap(g=>g.l.map(x=>refKey(x)))); T.kitTo=new Set([...T.kitTo].filter(x=>okKeys.has(x)));
-  h+=`<div class="card"><h2>Regalar «${esc(k.nombre||'Kit')}»</h2>${dest.length?dest.map(g=>`<div class="lkgrp"><div class="note" style="margin:4px 0">${esc(g.g)}</div>${g.l.map(x=>`<label class="lkrow"><input type="checkbox" data-kitto="${esc(refKey(x))}" ${T.kitTo.has(refKey(x))?'checked':''} ${dis}><span class="n">${esc(charName(x.f))}</span><span class="note">${num(x.f.dinero).toLocaleString('es-CL')} ₽</span></label>`).join('')}</div>`).join(''):'<p class="note">No hay Entrenadores en esta mesa.</p>'}
-    ${ro?'':`<div class="row" style="margin-top:10px"><button class="btn pri" data-act="kitGive" ${T.kitTo.size?'':'disabled'}>Regalar a ${T.kitTo.size} Entrenador${T.kitTo.size===1?'':'es'}</button><span class="note">Los objetos que ya tenga se suman a su cantidad. Queda anotado en el historial de dados.</span></div>`}</div>`;
+  h+=`<div class="card"><h2>Asignar «${esc(k.nombre||'Kit')}»</h2>${dest.length?dest.map(g=>`<div class="lkgrp"><div class="note" style="margin:4px 0">${esc(g.g)}</div>${g.l.map(x=>`<label class="lkrow"><input type="checkbox" data-kitto="${esc(refKey(x))}" ${T.kitTo.has(refKey(x))?'checked':''} ${dis}><span class="n">${esc(charName(x.f))}</span><span class="note">${num(x.f.dinero).toLocaleString('es-CL')} ₽</span></label>`).join('')}</div>`).join(''):'<p class="note">No hay Entrenadores en esta mesa.</p>'}
+    ${ro?'':`<div class="row" style="margin-top:10px"><button class="btn pri" data-act="kitGive" ${T.kitTo.size?'':'disabled'}>Asignar a ${T.kitTo.size} Entrenador${T.kitTo.size===1?'':'es'}</button><span class="note">El saldo de Pokédólares tiene por mínimo 0.</span></div>`}</div>`;
   return h;
 }
 function regalarKit(){ if(!isMaster()||!S.canWrite) return; const k=kitSel(); if(!k) return; const its=(k.items||[]).filter(it=>String(it.obj||'').trim()&&num(it.cant)>0); const din=Math.round(num(k.dinero)); const nombres=[];
@@ -1293,8 +1293,8 @@ function regalarKit(){ if(!isMaster()||!S.canWrite) return; const k=kitSel(); if
     if(din) f.dinero=Math.max(0,num(f.dinero)+din);
     if(its.length){ f.mochila ||= []; for(const it of its){ const o=f.mochila.find(m=>String(m.obj).trim().toLowerCase()===String(it.obj).trim().toLowerCase()); if(o) o.cant=num(o.cant)+num(it.cant); else f.mochila.push({obj:String(it.obj).trim(),eq:'',cant:num(it.cant),peso:num(it.peso),precio:num(it.precio),efecto:it.efecto||''}); } }
     saveFicha({src:x.src,uid:x.uid,id:x.id},f); nombres.push(charName(f));
-    logRoll(charName(f),`Regalo del Master: ${k.nombre||'Kit'}${din?` · ${din>0?'+':'−'}${Math.abs(din).toLocaleString('es-CL')} ₽`:''}${its.length?` · ${its.length} objeto${its.length===1?'':'s'}`:''}`,null); }
-  if(nombres.length) showBanner(`Regalaste «${k.nombre||'Kit'}» a ${nombres.join(', ')}.`); T.kitTo=new Set(); renderSheet(); }
+    logRoll(charName(f),`Kit asignado por el Master: ${k.nombre||'Kit'}${din?` · ${din>0?'+':'−'}${Math.abs(din).toLocaleString('es-CL')} ₽`:''}${its.length?` · ${its.length} objeto${its.length===1?'':'s'}`:''}`,null); }
+  if(nombres.length) showBanner(`Asignaste «${k.nombre||'Kit'}» a ${nombres.join(', ')}.`); T.kitTo=new Set(); renderSheet(); }
 function kitField(el){ if(!isMaster()||!S.canWrite) return; const K=structuredClone(kitsData()); const k=K.lista.find(x=>x.id===kitSel(K).id);
   if(el.dataset.kit==='nombre') k.nombre=el.value.trim()||'Kit sin nombre';
   else if(el.dataset.kit==='dinero') k.dinero=Math.round(num(el.value));
