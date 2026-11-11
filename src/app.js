@@ -784,7 +784,7 @@ function renderList(){
   } else if(S.view==='glos'){
     h+=`<div class="grp"><h3>Glosario</h3><div class="items">${GLOS.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></div>`;
   } else {
-    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['pre','Tienda'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas']]:[])];
+    const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['pre','Tienda'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas'],['kits','Kits de Recompensas']]:[])];
     h+=`<div class="grp"><h3>Herramientas</h3><div class="items">${tools.map(([k,n])=>`<button class="item" data-tool="${k}" aria-current="${S.tool===k}"><span class="n">${n}</span></button>`).join('')}</div></div>`;
   }
   L.innerHTML=h;
@@ -1231,9 +1231,9 @@ function visibleRefs(){
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
 const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
-  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null};
+  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
-  return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex}[S.tool]||toolDex)();
+  return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
 }
 /* Bloquear Fichas (solo Master): una ficha fijada no deja cambiar Habilidad, Atributos (salvo el bonus), Talentos ni Méritos y Defectos */
 const LOCK_SVG=on=>on?'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>'
@@ -1254,6 +1254,64 @@ function toolBloq(){
     h+=`</div>`; }
   return h;
 }
+/* ---------- Kits de Recompensas (solo Master): paquetes de ₽ y objetos que se regalan a las Mochilas sin costo ---------- */
+S.kits=null; /* {lista:[{id,nombre,dinero,items:[{obj,cant,peso,precio,efecto}]}]}; null = aún no se guarda nada */
+function kitItem(nombre,cant){ const r=(D.pre||[]).find(x=>String(x[4]).trim()===nombre); return {obj:nombre,cant,peso:r&&typeof r[10]==='number'?r[10]:0,precio:r&&typeof r[5]==='number'?r[5]:0,efecto:r&&r[9]&&r[9]!=='-'?String(r[9]):''}; }
+const KIT_BASICO=[['Mochila Básica',1],['Saco de dormir',1],['Toldo ligero',1],['Raciones humanas (5 días)',1],['Ración humana compacta (día)',2],['Ración Pokémon común (día)',14],['Golosinas de entrenamiento (10)',1],['Cantimplora',1],['Pastillas potabilizadoras (10)',2],['Linterna',1],
+  ['Jabón corporal 120 g',1],['Cepillo de dientes',1],['Pasta dental 100 ml',1],['Toalla de manos',1],['Papel higiénico (4)',1],['Repelente de insectos',1],['Cepillo de pelaje Pokémon',1],['Jabón Pokémon',1],['Vendas limpias',1],['Desinfectante',1],['Poké Ball',10],['Poción',2]];
+function kitsData(){ return S.kits&&Array.isArray(S.kits.lista)&&S.kits.lista.length?S.kits:{lista:[{id:'kit-basico',nombre:'Kit Básico',dinero:0,items:KIT_BASICO.map(([n,c])=>kitItem(n,c))}]}; }
+function saveKits(k){ S.kits=k; queueSave('config/kits',structuredClone(k),400); }
+function kitSel(k){ k=k||kitsData(); return k.lista.find(x=>x.id===T.kit)||k.lista[0]; }
+function kitDestinos(){ const out=[]; const uids=Object.keys(S.players).sort((a,b)=>String(S.players[a].alias||'').localeCompare(String(S.players[b].alias||''),'es'));
+  for(const u of uids){ const tr=poolOf('jug',u).filter(x=>x.f.tipo==='E'); if(tr.length) out.push({g:S.players[u].alias||'Jugador',l:tr}); }
+  const npc=poolOf('master',null).filter(x=>x.f.tipo==='E'); if(npc.length) out.push({g:'NPC del Master',l:npc}); return out; }
+function toolKits(){
+  const K=kitsData(), k=kitSel(K); const ro=!S.canWrite; const dis=ro?'disabled':'';
+  mkDL('dl-pre',[...preNombres().keys()]);
+  const items=k.items||[]; const val=items.reduce((a,it)=>a+num(it.precio)*num(it.cant),0), kg=Math.round(items.reduce((a,it)=>a+num(it.peso)*num(it.cant),0)*100)/100;
+  let h=`<div class="card"><h2>Kits de Recompensas</h2><p class="note">Arma paquetes de Pokedólares y objetos para regalarlos a los Entrenadores: se suman a su Mochila sin costo, aunque la ficha esté fijada.</p>
+    <div class="row" style="margin-top:8px">${K.lista.map(x=>`<button class="btn sm ${x.id===k.id?'pri':''}" data-act="kitSel" data-id="${esc(x.id)}" aria-pressed="${x.id===k.id}">${esc(x.nombre||'Kit sin nombre')}</button>`).join('')}${ro?'':'<button class="btn sm" data-act="kitNew">+ Nuevo kit</button>'}</div></div>`;
+  h+=`<div class="card"><h2><span>${esc(k.nombre||'Kit sin nombre')}</span><span class="pill">Valor ${val.toLocaleString('es-CL')} ₽ · ${String(kg).replace('.',',')} kg</span></h2>
+    <div class="grid g2"><label class="f">Nombre del kit<input data-kit="nombre" value="${esc(k.nombre)}" ${dis}></label>
+    <label class="f">Pokédólares ₽<span class="money"><input type="number" step="1" data-kit="dinero" value="${num(k.dinero)}" ${dis} title="Positivo: se suma al Entrenador. Negativo: se le resta." aria-label="Pokédólares que entrega el kit"><i aria-hidden="true">₽</i></span></label></div>
+    <p class="note" style="margin:6px 0 10px">Pokédólares: 0 o más se suman al Entrenador; un número negativo se le resta (sin bajar de 0).</p>
+    <div class="tw"><table class="moch"><thead><tr><th>Objeto</th><th>Cant.</th><th>Peso (kg)</th><th>Precio (₽)</th><th>Efecto</th>${ro?'':'<th></th>'}</tr></thead><tbody>`;
+  items.forEach((it,i)=>{ h+=`<tr><td style="min-width:150px"><input data-kiti="${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${dis} aria-label="Objeto"></td>
+    <td style="width:70px"><input type="number" min="1" data-kiti="${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
+    <td style="width:80px"><input type="number" min="0" step="0.1" data-kiti="${i}.peso" value="${num(it.peso)}" ${dis} aria-label="Peso en kg"></td>
+    <td style="width:110px"><span class="money"><input type="number" min="0" data-kiti="${i}.precio" value="${num(it.precio)}" ${dis} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
+    <td style="min-width:200px"><input data-kiti="${i}.efecto" value="${esc(it.efecto)}" ${dis} aria-label="Efecto"></td>${ro?'':`<td><button class="btn sm" data-act="kitRmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
+  if(!items.length) h+=`<tr><td colspan="6" class="note">El kit no tiene objetos.</td></tr>`;
+  h+=`</tbody></table></div>${ro?'':`<div class="row" style="margin-top:8px"><button class="btn sm" data-act="kitAddItem">+ Objeto</button><span class="note">Al escribir un objeto de la Tienda se llenan solos el peso, el precio y el efecto.</span><span style="margin-left:auto"></span>${T.kitDel?`<span class="note">¿Eliminar «${esc(k.nombre)}»?</span><button class="btn sm danger" data-act="kitDelYes">Sí, eliminar</button><button class="btn sm" data-act="kitDelNo">Cancelar</button>`:`<button class="btn sm danger" data-act="kitDel">Eliminar kit</button>`}</div>`}</div>`;
+  const dest=kitDestinos(); const okKeys=new Set(dest.flatMap(g=>g.l.map(x=>refKey(x)))); T.kitTo=new Set([...T.kitTo].filter(x=>okKeys.has(x)));
+  h+=`<div class="card"><h2>Regalar «${esc(k.nombre||'Kit')}»</h2>${dest.length?dest.map(g=>`<div class="lkgrp"><div class="note" style="margin:4px 0">${esc(g.g)}</div>${g.l.map(x=>`<label class="lkrow"><input type="checkbox" data-kitto="${esc(refKey(x))}" ${T.kitTo.has(refKey(x))?'checked':''} ${dis}><span class="n">${esc(charName(x.f))}</span><span class="note">${num(x.f.dinero).toLocaleString('es-CL')} ₽</span></label>`).join('')}</div>`).join(''):'<p class="note">No hay Entrenadores en esta mesa.</p>'}
+    ${ro?'':`<div class="row" style="margin-top:10px"><button class="btn pri" data-act="kitGive" ${T.kitTo.size?'':'disabled'}>Regalar a ${T.kitTo.size} Entrenador${T.kitTo.size===1?'':'es'}</button><span class="note">Los objetos que ya tenga se suman a su cantidad. Queda anotado en el historial de dados.</span></div>`}</div>`;
+  return h;
+}
+function regalarKit(){ if(!isMaster()||!S.canWrite) return; const k=kitSel(); if(!k) return; const its=(k.items||[]).filter(it=>String(it.obj||'').trim()&&num(it.cant)>0); const din=Math.round(num(k.dinero)); const nombres=[];
+  for(const key of T.kitTo){ const x=refByKey(key); if(!x||x.f.tipo!=='E') continue; const f=structuredClone(x.f);
+    if(din) f.dinero=Math.max(0,num(f.dinero)+din);
+    if(its.length){ f.mochila ||= []; for(const it of its){ const o=f.mochila.find(m=>String(m.obj).trim().toLowerCase()===String(it.obj).trim().toLowerCase()); if(o) o.cant=num(o.cant)+num(it.cant); else f.mochila.push({obj:String(it.obj).trim(),eq:'',cant:num(it.cant),peso:num(it.peso),precio:num(it.precio),efecto:it.efecto||''}); } }
+    saveFicha({src:x.src,uid:x.uid,id:x.id},f); nombres.push(charName(f));
+    logRoll(charName(f),`Regalo del Master: ${k.nombre||'Kit'}${din?` · ${din>0?'+':'−'}${Math.abs(din).toLocaleString('es-CL')} ₽`:''}${its.length?` · ${its.length} objeto${its.length===1?'':'s'}`:''}`,null); }
+  if(nombres.length) showBanner(`Regalaste «${k.nombre||'Kit'}» a ${nombres.join(', ')}.`); T.kitTo=new Set(); renderSheet(); }
+function kitField(el){ if(!isMaster()||!S.canWrite) return; const K=structuredClone(kitsData()); const k=K.lista.find(x=>x.id===kitSel(K).id);
+  if(el.dataset.kit==='nombre') k.nombre=el.value.trim()||'Kit sin nombre';
+  else if(el.dataset.kit==='dinero') k.dinero=Math.round(num(el.value));
+  else if(el.dataset.kiti){ const [i,c]=el.dataset.kiti.split('.'); const it=k.items[num(i)]; if(!it) return;
+    if(c==='obj'){ const r=preDe(el.value); it.obj=r?String(r[4]).trim():el.value.trim(); if(r){ it.peso=typeof r[10]==='number'?r[10]:0; it.precio=typeof r[5]==='number'?r[5]:0; it.efecto=r[9]&&r[9]!=='-'?String(r[9]):''; } }
+    else if(c==='efecto') it.efecto=el.value; else it[c]=c==='cant'?Math.max(1,num(el.value)||1):Math.max(0,num(el.value)); }
+  saveKits(K); renderSheet(); }
+function kitAct(act,a){ if(!isMaster()||!S.canWrite) return false; const K=structuredClone(kitsData()); const k=K.lista.find(x=>x.id===kitSel(K).id);
+  if(act==='kitSel'){ T.kit=a.dataset.id; T.kitDel=false; renderSheet(); return true; }
+  if(act==='kitNew'){ const id='kit-'+newId(); K.lista.push({id,nombre:`Kit ${K.lista.length+1}`,dinero:0,items:[]}); T.kit=id; T.kitDel=false; saveKits(K); renderSheet(); return true; }
+  if(act==='kitAddItem'){ (k.items ||= []).push({obj:'',cant:1,peso:0,precio:0,efecto:''}); saveKits(K); renderSheet(); return true; }
+  if(act==='kitRmItem'){ k.items.splice(num(a.dataset.i),1); saveKits(K); renderSheet(); return true; }
+  if(act==='kitDel'){ T.kitDel=true; renderSheet(); return true; }
+  if(act==='kitDelNo'){ T.kitDel=false; renderSheet(); return true; }
+  if(act==='kitDelYes'){ K.lista=K.lista.filter(x=>x.id!==k.id); T.kitDel=false; T.kit=''; if(!K.lista.length) K.lista.push({id:'kit-'+newId(),nombre:'Kit 1',dinero:0,items:[]}); saveKits(K); renderSheet(); return true; }
+  if(act==='kitGive'){ regalarKit(); return true; }
+  return false; }
 function setLock(x,on){ if(!isMaster()||!S.canWrite||!x) return; if(isLocked(x.f)===on) return; const nf=structuredClone(x.f); if(on) nf.bloq=true; else delete nf.bloq; saveFicha(x,nf); }
 function toolDano(){
   const refs=visibleRefs().filter(r=>r.f.tipo==='E'||dexById.get(r.f.especie));
@@ -2369,6 +2427,8 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.condby&&isMaster()){ const cls=e.target.dataset.condby; const c=(CB.cond||{})[cls]; if(c) cbWrite({cond:{[cls]:{...c,by:e.target.value}}}); renderSheet(); return; }
   if(e.target.dataset.clf){ clChange(e.target); return; }
   if(e.target.dataset.cbt){ const k=e.target.dataset.cbt; if(e.target.type==='radio') CBU.targets=[k]; else CBU.targets=e.target.checked?[...new Set([...CBU.targets,k])]:CBU.targets.filter(x=>x!==k); renderSheet(); return; }
+  if(e.target.dataset.kit||e.target.dataset.kiti){ kitField(e.target); return; }
+  if(e.target.dataset.kitto!==undefined){ const k=e.target.dataset.kitto; e.target.checked?T.kitTo.add(k):T.kitTo.delete(k); renderSheet(); return; }
   if(e.target.closest('#sheet') && e.target.dataset.f) onField(e);
   if(e.target.id==='alias'&&S.canWrite){ const a=e.target.value.trim()||'Jugador'; const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),alias:a}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd); renderWho(); }
   if(e.target.id==='colorIn'&&S.canWrite){ guardarPerfil({color:e.target.value}); render(); }
@@ -2416,6 +2476,7 @@ document.addEventListener('click',async e=>{
   const rm2=e.target.closest('[data-rollmv]'); if(rm2){ openRP({kind:'move',i:num(rm2.dataset.rollmv)}); return; }
   const rm=e.target.closest('[data-rmmaster]'); if(rm){ S.masters=S.masters.filter(u=>u!==rm.dataset.rmmaster); saveMasters(); return; }
   const a=e.target.closest('[data-act]'); if(!a) return; const act=a.dataset.act;
+  if(act.startsWith('kit')&&kitAct(act,a)) return;
   if(a.closest('summary')) e.preventDefault();
   const folder=a.dataset.folder||'';
   if(act==='newE') createDoc('jug',newTrainer());
@@ -2556,6 +2617,7 @@ async function boot(){
   S.db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda)||1; /* el combate empieza en la Ronda 1 */ CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null; CB.tn=dd.tn||null;
     if(missingSpecies()) reloadEspecies(); /* las copias de los Pokémon del Master traen especies que aún no se cargaron */
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
+  S.db.doc('config/kits').onSnapshot(s=>{ if(pend['config/kits']||inflight['config/kits']) return; S.kits=s.exists?s.data():null; if(S.view==='tools'&&S.tool==='kits') safeSheet(); },e=>console.warn(e));
   S.db.doc('config/vistas').onSnapshot(s=>{ if(pend['config/vistas']||inflight['config/vistas']) return; setVistas(s.exists?s.data():{}); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   S.db.doc('pokedex/visibles').onSnapshot(s=>{ if(pend['pokedex/visibles']||inflight['pokedex/visibles']) return; const dd=s.exists?s.data():{}; S.vis=new Set(dd.ids||[]); S.visJ={}; for(const [u,l] of Object.entries(dd.jug||{})) S.visJ[u]=new Set(l); S.evento=!!dd.evento; reloadEspecies(); buildDexList(); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
   S.db.collection('tiradas').onSnapshot(snap=>{ const m=sinMesas(snapMap(snap)); if(S.uid&&(pend[`tiradas/${S.uid}`]||inflight[`tiradas/${S.uid}`])) m[S.uid]=S.tir[S.uid]; if(S.tir.__local) m.__local=S.tir.__local; S.tir=m;
