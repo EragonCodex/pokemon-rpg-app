@@ -729,15 +729,15 @@ const bitVisible=f=>bitVis(f)!=='yo'||!f.autor||f.autor===S.uid;
 function notasDe(u){ return Object.entries(S.notas[u]||{}).filter(([,f])=>notaVisible(u,f)).map(([id,f])=>({src:'nota',uid:u,id,f})).sort((a,b)=>(b.f.creado||'').localeCompare(a.f.creado||'')); }
 const NOTES_OPEN=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('pkrpg.notas')||'[]')||[]; }catch(_){ return []; } })());
 function toggleNotes(u){ NOTES_OPEN.has(u)?NOTES_OPEN.delete(u):NOTES_OPEN.add(u); try{ localStorage.setItem('pkrpg.notas',JSON.stringify([...NOTES_OPEN])); }catch(_){} renderList(); }
-function notesBlock(u,notas,empty){ if(!notas.length) return empty?`<p class="note">${empty}</p>`:''; const open=NOTES_OPEN.has(u);
-  return `<div class="nblk"><button class="item ntog" data-notes="${esc(u)}" aria-expanded="${open}"><span class="n">${open?'▾':'▸'} Notas</span><span class="pill">${notas.length}</span></button>${open?`<div class="team">${notesInner(u,notas)}</div>`:''}</div>`; }
+function notesBlock(u,notas,empty,carpetas=false){ if(!notas.length) return empty?`<p class="note">${empty}</p>`:''; const open=NOTES_OPEN.has(u);
+  return `<div class="nblk"><button class="item ntog" data-notes="${esc(u)}" aria-expanded="${open}"><span class="n">${open?'▾':'▸'} Notas</span><span class="pill">${notas.length}</span></button>${open?`<div class="team">${notesInner(u,notas,carpetas)}</div>`:''}</div>`; }
 /* Notas: orden por fecha o manual (arrastrando) y carpetas; el orden y el modo quedan en este navegador */
 const nordKey=u=>'pkrpg.nord.'+(S.uid||'')+'.'+u;
 function nordOf(u){ try{ return localStorage.getItem(nordKey(u))==='manual'?'manual':'fecha'; }catch(_){ return 'fecha'; } }
 function setNord(u,m){ try{ localStorage.setItem(nordKey(u),m); }catch(_){} renderList(); }
 const porFecha=(a,b)=>(b.f.fecha||'').localeCompare(a.f.fecha||'')||(b.f.creado||'').localeCompare(a.f.creado||'');
-function notesInner(u,notas){
-  const mode=nordOf(u); const groups={}; notas.forEach(x=>{ (groups[(x.f.carpeta||'').trim()] ||= []).push(x); });
+function notesInner(u,notas,carpetas){ /* las carpetas solo se muestran en Mesa */
+  const mode=nordOf(u); const groups={}; notas.forEach(x=>{ (groups[carpetas?(x.f.carpeta||'').trim():''] ||= []).push(x); });
   const names=Object.keys(groups).sort((a,b)=>(a!=='')-(b!=='')||a.localeCompare(b));
   const bar=`<div class="nbar" role="group" aria-label="Orden de las notas"><span class="note">Orden</span><button class="btn sm" data-nord="${esc(u)}|fecha" aria-pressed="${mode==='fecha'}">Fecha</button><button class="btn sm" data-nord="${esc(u)}|manual" aria-pressed="${mode==='manual'}" title="Arrastra el asa ⋮⋮ para ordenar">Manual</button></div>`;
   return bar+names.map(n=>{ const sc='nota.'+u+'.'+n; let l=groups[n].slice().sort(porFecha); if(mode==='manual') l=sortByOrder(l,sc,x=>x.id);
@@ -810,7 +810,7 @@ function renderList(){
     h+=`</div></details>`;
     const conNotas=uids.map(u=>[u,notasDe(u)]).filter(([,n])=>n.length);
     h+=`<details class="fold cat" data-fold="cat|notas" ${catOpen('notas')?'open':''}><summary><span>Notas <span class="pill">${conNotas.reduce((a,[,n])=>a+n.length,0)}</span></span></summary>`;
-    h+=conNotas.length?conNotas.map(([u,n])=>`<div class="grp"><h3><span class="row" style="gap:6px;flex-wrap:nowrap">${puntoDe(u)}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}</span></h3><div class="items">${notesBlock(u,n)}</div></div>`).join(''):'<p class="note">Nadie ha compartido notas todavía.</p>';
+    h+=conNotas.length?conNotas.map(([u,n])=>`<div class="grp"><h3><span class="row" style="gap:6px;flex-wrap:nowrap">${puntoDe(u)}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}</span></h3><div class="items">${notesBlock(u,n,'',true)}</div></div>`).join(''):'<p class="note">Nadie ha compartido notas todavía.</p>';
     h+=`</details>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
@@ -1005,7 +1005,7 @@ function noteHTML(f){
   const isBit=S.open.src==='bit'; mkDL('dl-nfold',carpetasNotas(isBit?'__bit':S.open.uid));
   return `<div class="card"><div class="kind">${isBit?'Bitácora del Master':'Nota de '+esc(S.players[S.open.uid]?.alias||'jugador')}${S.ro?' · solo lectura':''}</div>
     <div class="headline"><input class="name" data-f="titulo" value="${esc(f.titulo||'')}" placeholder="Título" aria-label="Título" ${S.ro?'disabled':''}></div>
-    <div class="grid g3" style="margin-top:12px">${field('Fecha','fecha',f.fecha||'','date')}${isBit?field('Tipo','clase',opts(['Sesión','Nota','Trama','Lugar','Personaje'],f.clase||'Sesión'),'sel'):''}<label class="f">Carpeta<input data-f="carpeta" list="dl-nfold" value="${esc(f.carpeta||'')}" placeholder="Sin carpeta" ${S.ro?'disabled':''} title="Escribe el nombre de una carpeta para agrupar la nota; vacío la deja suelta"></label></div>
+    <div class="grid g3" style="margin-top:12px">${field('Fecha','fecha',f.fecha||'','date')}${isBit?field('Tipo','clase',opts(['Sesión','Nota','Trama','Lugar','Personaje'],f.clase||'Sesión'),'sel'):`<label class="f">Carpeta<input data-f="carpeta" list="dl-nfold" value="${esc(f.carpeta||'')}" placeholder="Sin carpeta" ${S.ro?'disabled':''} title="Agrupa la nota en esa carpeta dentro de Mesa; vacío la deja suelta"></label>`}</div>
     <div style="margin-top:10px">${field('Texto','texto',f.texto||'','area',16)}</div>
     ${visHTML(f,isBit)}</div>
     ${S.ro?'':`<div class="row"><button class="btn danger" data-act="del">Borrar</button><span id="delConfirm"></span></div>`}`;
@@ -1019,7 +1019,7 @@ function fillComputed(){
   const set=(k,v)=>document.querySelectorAll(`[data-c="${k}"]`).forEach(e=>e.innerHTML=v);
   set('tipos',c.tipos.map(chip).join(' '));
   set('sub', isP? (dx?'':'Elige una especie para calcular la ficha.') : `${rankChip(f.rango)} · bonus de rango +${rb(f.rango)}`);
-  if(isP){ set('psub', dx?`<div><span>Etapa</span> ${esc(dx[5])}</div><div><span>Especie</span> ${rankChip(dx[6])}</div><div><span>Región</span> ${esc(dx[18])}</div>`:''); set('tmov', dx?`<b>Movimiento:</b> ${esc(dx[7])} (${dx[8]} ft)`:''); }
+  if(isP){ set('psub', dx?`<div><span>Etapa</span> ${esc(dx[5])}</div><div><span>Nivel</span> ${rankChip(dx[6])}</div><div><span>Región</span> ${esc(dx[18])}</div>`:''); set('tmov', dx?`<b>Movimiento:</b> ${esc(dx[7])} (${dx[8]} ft)`:''); }
   set('ps',`${c.act}<span class="note"> / ${c.ps}</span>`);
   const r=c.ps?clamp(c.act/c.ps,0,1):0; const pb=document.querySelector('[data-c="psbar"]'); if(pb){pb.style.width=(r*100)+'%';pb.style.background=r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)';}
   set('ini',(Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1))+(c.talB?` <span class="note">(+${c.talB})</span>`:''));
@@ -1308,7 +1308,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, pq:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
@@ -1561,10 +1561,12 @@ function toolPre(){
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b)); });
   const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
   const mn=F.min===''||F.min==null?null:num(F.min), mx=F.max===''||F.max==null?null:num(F.max);
-  const res=sortRows(enE.filter(r=>(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
+  const pq=deacc(String(T.pq||'').trim().toLowerCase()); /* buscador: nombre o efecto */
+  const res=sortRows(enE.filter(r=>(!pq||deacc(`${r[4]} ${r[9]}`.toLowerCase()).includes(pq))&&(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
     &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
   const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
   let h=`<div class="card"><h2>Tienda</h2><div class="grid g4">
+    <label class="f" style="grid-column:1/-1">Buscar<input id="pq" type="search" value="${esc(T.pq||'')}" placeholder="Nombre o efecto, p. ej. Vidrio" aria-label="Buscar ítems por nombre o efecto"></label>
     <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
     <label class="f">Grupo<select data-pfl="g">${opts(grupos,F.g,'Todo')}</select></label>
     <label class="f">Precio mínimo (₽)<input type="number" min="0" data-pfl="min" value="${esc(F.min??'')}" placeholder="Sin mínimo"></label>
@@ -1572,7 +1574,7 @@ function toolPre(){
     <label class="f">Rareza<select data-pfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
     <label class="f">Tipo de gasto<select data-pfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
     <label class="f">Rango<select data-pfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
-    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span>${F.min||F.max||F.rar||F.gas||F.ran?' <button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
+    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span>${T.pq||F.min||F.max||F.rar||F.gas||F.ran?' <button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
   const tit=F.g!==''?`${esc(F.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span>`:F.e!==''?`${esc(F.e)} · todos los grupos`:'Todos los ítems';
   h+=`<div class="card"><h2>${tit}</h2>${res.length?`<div class="tw"><table class="mtable"><thead><tr>${sortHead(cols,T.psort,'psort')}${S.canWrite?'<th><span class="sr">Comprar</span></th>':''}</tr></thead><tbody>`:'<p class="note">Ningún ítem cumple los filtros.</p>'}`;
@@ -1737,7 +1739,8 @@ function bindTool(){
   document.querySelectorAll('[data-g]').forEach(el=>el.addEventListener('change',e=>{T.g[e.target.dataset.g]=e.target.value; renderSheet();}));
   on('g-go','click',()=>{generate();renderSheet();}); on('g-go2','click',()=>{generate();renderSheet();});
   on('mq','change',e=>{T.q=e.target.value;renderSheet();});
-  on('hq','change',e=>{T.hq=e.target.value;renderSheet();}); on('rq','change',e=>{T.rq=e.target.value;renderSheet();});
+  on('hq','change',e=>{T.hq=e.target.value;renderSheet();});
+  on('pq','change',e=>{ T.pq=e.target.value; if(T.pq.trim()){ T.pfl.e=''; T.pfl.g=''; } renderSheet(); const i=$('#pq'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }); /* al buscar, Etapa y Grupo pasan a «Todo» */ on('rq','change',e=>{T.rq=e.target.value;renderSheet();});
   document.querySelectorAll('[data-pfl]').forEach(el=>el.addEventListener('change',e=>{ const k=e.target.dataset.pfl; T.pfl[k]=e.target.value; if(k==='e') T.pfl.g=''; renderSheet(); }));
   document.querySelectorAll('[data-hfl]').forEach(el=>el.addEventListener('change',e=>{T.hfl[e.target.dataset.hfl]=e.target.value; renderSheet();}));
   document.querySelectorAll('[data-rfl]').forEach(el=>el.addEventListener('change',e=>{T.rfl[e.target.dataset.rfl]=e.target.value; renderSheet();}));
@@ -2602,7 +2605,7 @@ document.addEventListener('click',async e=>{
   else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
   else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',rar:'',gas:''}); renderSheet(); }
   else if(act==='mochFijarOrden'&&S.cur&&!S.ro){ const ids=[...document.querySelectorAll('tbody[data-scope="moch"] > tr.ditem')].map(x=>num(x.dataset.drag)); const rest=S.cur.mochila.map((_,i)=>i).filter(i=>!ids.includes(i)); S.cur.mochila=[...ids,...rest].map(i=>S.cur.mochila[i]); T.bsort={col:'',dir:0}; commit(true); }
-  else if(act==='preLimpiar'){ Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
+  else if(act==='preLimpiar'){ T.pq=''; Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
   else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
   else if(act==='salir'){ if(window.__salir) window.__salir(); }
