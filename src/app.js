@@ -730,7 +730,21 @@ function notasDe(u){ return Object.entries(S.notas[u]||{}).filter(([,f])=>notaVi
 const NOTES_OPEN=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('pkrpg.notas')||'[]')||[]; }catch(_){ return []; } })());
 function toggleNotes(u){ NOTES_OPEN.has(u)?NOTES_OPEN.delete(u):NOTES_OPEN.add(u); try{ localStorage.setItem('pkrpg.notas',JSON.stringify([...NOTES_OPEN])); }catch(_){} renderList(); }
 function notesBlock(u,notas,empty){ if(!notas.length) return empty?`<p class="note">${empty}</p>`:''; const open=NOTES_OPEN.has(u);
-  return `<div class="nblk"><button class="item ntog" data-notes="${esc(u)}" aria-expanded="${open}"><span class="n">${open?'▾':'▸'} Notas</span><span class="pill">${notas.length}</span></button>${open?`<div class="team">${notas.map(noteItem).join('')}</div>`:''}</div>`; }
+  return `<div class="nblk"><button class="item ntog" data-notes="${esc(u)}" aria-expanded="${open}"><span class="n">${open?'▾':'▸'} Notas</span><span class="pill">${notas.length}</span></button>${open?`<div class="team">${notesInner(u,notas)}</div>`:''}</div>`; }
+/* Notas: orden por fecha o manual (arrastrando) y carpetas; el orden y el modo quedan en este navegador */
+const nordKey=u=>'pkrpg.nord.'+(S.uid||'')+'.'+u;
+function nordOf(u){ try{ return localStorage.getItem(nordKey(u))==='manual'?'manual':'fecha'; }catch(_){ return 'fecha'; } }
+function setNord(u,m){ try{ localStorage.setItem(nordKey(u),m); }catch(_){} renderList(); }
+const porFecha=(a,b)=>(b.f.fecha||'').localeCompare(a.f.fecha||'')||(b.f.creado||'').localeCompare(a.f.creado||'');
+function notesInner(u,notas){
+  const mode=nordOf(u); const groups={}; notas.forEach(x=>{ (groups[(x.f.carpeta||'').trim()] ||= []).push(x); });
+  const names=Object.keys(groups).sort((a,b)=>(a!=='')-(b!=='')||a.localeCompare(b));
+  const bar=`<div class="nbar" role="group" aria-label="Orden de las notas"><span class="note">Orden</span><button class="btn sm" data-nord="${esc(u)}|fecha" aria-pressed="${mode==='fecha'}">Fecha</button><button class="btn sm" data-nord="${esc(u)}|manual" aria-pressed="${mode==='manual'}" title="Arrastra el asa ⋮⋮ para ordenar">Manual</button></div>`;
+  return bar+names.map(n=>{ const sc='nota.'+u+'.'+n; let l=groups[n].slice().sort(porFecha); if(mode==='manual') l=sortByOrder(l,sc,x=>x.id);
+    const items=mode==='manual'?`<div class="dlist nitems" data-scope="${esc(sc)}">${l.map(x=>`<div class="ditem nrow" data-drag="${esc(x.id)}"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(x.f.titulo||'la nota')}">⋮⋮</span>${noteItem(x)}</div>`).join('')}</div>`:`<div class="nitems">${l.map(noteItem).join('')}</div>`;
+    if(!n) return items; const key='nf|'+u+'|'+n; const open=S.folders[key]!==false;
+    return `<details class="fold nfold" data-fold="${esc(key)}" ${open?'open':''}><summary><span>${esc(n)} <span class="pill">${l.length}</span></span></summary>${items}</details>`; }).join(''); }
+function carpetasNotas(u){ const src=u==='__bit'?Object.values(S.bit):Object.values(S.notas[u]||{}); return [...new Set(src.map(f=>(f.carpeta||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
 function noteItem(x){ const cur=S.open&&S.open.id===x.id; const vis=x.src==='bit'?(bitVis(x.f)==='yo'?'Solo yo':''):NOTA_VIS[notaVis(x.f)]; return `<button class="item note-i" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${vis&&vis!=='Pública'?'🔒 ':''}${esc(x.f.titulo||'Sin título')}</span><span class="pill">${esc(x.f.fecha||'')}</span><span class="s">${esc((x.f.texto||'').slice(0,80))}</span></button>`; }
 /* orden propio de cada jugador (en este navegador) y equipos desplegables */
 const ordKey=scope=>'pkrpg.ord.'+(S.uid||'')+'.'+scope;
@@ -789,10 +803,15 @@ function renderList(){
   } else if(S.view==='mesa'){
     h+=`<div class="grp"><h3>Mesa</h3><div class="items"><button class="item" data-hist="1" aria-current="${S.open?.src==='hist'}"><span class="n">Historial de dados</span><span class="pill">${allRolls().length}</span></button></div></div>`;
     const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
-    h+=`<div class="dlist" data-scope="mesa">`;
-    for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u); const notas=notasDe(u);
-      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${puntoDe(u)}${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(notesBlock(u,notas)+g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
-    h+=`</div>`;
+    const catOpen=k=>S.folders['cat|'+k]!==false;
+    h+=`<details class="fold cat" data-fold="cat|fichas" ${catOpen('fichas')?'open':''}><summary><span>Fichas</span></summary><div class="dlist" data-scope="mesa">`;
+    for(const u of uids){ const g=groupHTML(poolOf('jug',u),'mesa.'+u);
+      h+=`<div class="grp ditem" data-drag="${esc(u)}"><h3><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar a ${esc(S.players[u].alias||'Jugador')}">⋮⋮</span>${puntoDe(u)}${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(g.h+g.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+    h+=`</div></details>`;
+    const conNotas=uids.map(u=>[u,notasDe(u)]).filter(([,n])=>n.length);
+    h+=`<details class="fold cat" data-fold="cat|notas" ${catOpen('notas')?'open':''}><summary><span>Notas <span class="pill">${conNotas.reduce((a,[,n])=>a+n.length,0)}</span></span></summary>`;
+    h+=conNotas.length?conNotas.map(([u,n])=>`<div class="grp"><h3><span class="row" style="gap:6px;flex-wrap:nowrap">${puntoDe(u)}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.players[u].alias||'Jugador')}</span>${u===S.uid?' (tú)':''}</span></h3><div class="items">${notesBlock(u,n)}</div></div>`).join(''):'<p class="note">Nadie ha compartido notas todavía.</p>';
+    h+=`</details>`;
   } else if(S.view==='master'){
     const pool=Object.entries(S.master).map(([id,f])=>({src:'master',uid:null,id,f}));
     const npcs=pool.filter(x=>x.f.cat!=='salvaje'); const wild=pool.filter(x=>x.f.cat==='salvaje');
@@ -841,7 +860,7 @@ function renderSheet(){
   let h='';
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
-  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
+  h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'<div class="psub" data-c="psub"></div>':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
     <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar, y para los jugadores la Experiencia no cambia y la Mochila solo deja usar, equipar o quitar objetos">🔒 Fijada</span>':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
@@ -860,7 +879,7 @@ function renderSheet(){
     h+=field('Entrenador','entrenador',trOpts,'sel');
     if(f.entrenador) h+=field('Lugar','lugar',`<option value="">Equipo</option><option value="caja"${f.lugar==='caja'?' selected':''}>Caja</option>`,'sel');
     if(S.open.src==='master'){ h+=field('Categoría','cat',`<option value="npc">De NPC</option><option value="salvaje"${f.cat==='salvaje'?' selected':''}>Salvaje</option>`,'sel'); if(!f.entrenador) h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`; }
-    h+= f.entrenador? `<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>` : field('Objeto','objeto',f.objeto||'','txt');
+    h+=`<div class="fstack">${f.entrenador? `<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>` : field('Objeto','objeto',f.objeto||'','txt')}<div class="note tmov" data-c="tmov"></div></div>`;
     { const vd=S.ro||lockJug(f)?'disabled':''; const vn=clamp(num(f.vinculo),-10,10), vt=vinTramo(vn);
       h+=`<label class="f">Vínculo<span class="vinrow"><input type="number" min="-10" max="10" step="1" data-f="vinculo" value="${vn}" ${vd} aria-label="Vínculo con su Entrenador, de −10 a 10" title="${esc(VIN_FRASE[vn+10])}"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${vt.t}</span></span></label>`;
       h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${vd} title="Bolsa propia del Pokémon. Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia del Pokémon (admite +15 o −5)"></label>`; }
@@ -983,10 +1002,10 @@ function visHTML(f,isBit){
   return `<div class="grid g2" style="margin-top:10px"><label class="f">Visibilidad<select data-f="vis" ${dis}>${o.map(([v,t])=>`<option value="${v}"${v===cur?' selected':''}>${t}</option>`).join('')}</select></label></div>
     <p class="note">${isBit?(cur==='yo'?'Solo tú ves esta entrada.':'Solo los Masters ven la bitácora.'):cur==='pub'?'Toda la mesa puede leer esta nota.':cur==='yo'?'Solo tú ves esta nota.':'Solo tú y los Masters ven esta nota.'}${mine?'':' Solo su autor cambia la visibilidad.'}</p>`; }
 function noteHTML(f){
-  const isBit=S.open.src==='bit';
+  const isBit=S.open.src==='bit'; mkDL('dl-nfold',carpetasNotas(isBit?'__bit':S.open.uid));
   return `<div class="card"><div class="kind">${isBit?'Bitácora del Master':'Nota de '+esc(S.players[S.open.uid]?.alias||'jugador')}${S.ro?' · solo lectura':''}</div>
     <div class="headline"><input class="name" data-f="titulo" value="${esc(f.titulo||'')}" placeholder="Título" aria-label="Título" ${S.ro?'disabled':''}></div>
-    <div class="grid g3" style="margin-top:12px">${field('Fecha','fecha',f.fecha||'','date')}${isBit?field('Tipo','clase',opts(['Sesión','Nota','Trama','Lugar','Personaje'],f.clase||'Sesión'),'sel'):''}</div>
+    <div class="grid g3" style="margin-top:12px">${field('Fecha','fecha',f.fecha||'','date')}${isBit?field('Tipo','clase',opts(['Sesión','Nota','Trama','Lugar','Personaje'],f.clase||'Sesión'),'sel'):''}<label class="f">Carpeta<input data-f="carpeta" list="dl-nfold" value="${esc(f.carpeta||'')}" placeholder="Sin carpeta" ${S.ro?'disabled':''} title="Escribe el nombre de una carpeta para agrupar la nota; vacío la deja suelta"></label></div>
     <div style="margin-top:10px">${field('Texto','texto',f.texto||'','area',16)}</div>
     ${visHTML(f,isBit)}</div>
     ${S.ro?'':`<div class="row"><button class="btn danger" data-act="del">Borrar</button><span id="delConfirm"></span></div>`}`;
@@ -999,7 +1018,8 @@ function fillComputed(){
   const f=S.cur; if(!f||f.tipo===undefined) return; const c=calc(f); const isP=f.tipo==='P'; const dx=isP?dexById.get(f.especie):null;
   const set=(k,v)=>document.querySelectorAll(`[data-c="${k}"]`).forEach(e=>e.innerHTML=v);
   set('tipos',c.tipos.map(chip).join(' '));
-  set('sub', isP? (dx?`${esc(dx[5])} · ${rankChip(dx[6])} en la Pokédex · ${esc(dx[18])} · Movimiento: ${esc(dx[7])} (${dx[8]} ft)`:'Elige una especie para calcular la ficha.') : `${rankChip(f.rango)} · bonus de rango +${rb(f.rango)}`);
+  set('sub', isP? (dx?'':'Elige una especie para calcular la ficha.') : `${rankChip(f.rango)} · bonus de rango +${rb(f.rango)}`);
+  if(isP){ set('psub', dx?`<div><span>Etapa</span> ${esc(dx[5])}</div><div><span>Especie</span> ${rankChip(dx[6])}</div><div><span>Región</span> ${esc(dx[18])}</div>`:''); set('tmov', dx?`<b>Movimiento:</b> ${esc(dx[7])} (${dx[8]} ft)`:''); }
   set('ps',`${c.act}<span class="note"> / ${c.ps}</span>`);
   const r=c.ps?clamp(c.act/c.ps,0,1):0; const pb=document.querySelector('[data-c="psbar"]'); if(pb){pb.style.width=(r*100)+'%';pb.style.background=r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)';}
   set('ini',(Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1))+(c.talB?` <span class="note">(+${c.talB})</span>`:''));
@@ -2523,6 +2543,7 @@ document.addEventListener('click',async e=>{
   const lk=e.target.closest('[data-lock]'); if(lk){ const x=refByKey(lk.dataset.lock); if(x) setLock(x,!isLocked(x.f)); renderSheet(); return; }
   const la=e.target.closest('[data-lockall]'); if(la){ const on=la.dataset.v==='1'; poolOf('jug',la.dataset.lockall).forEach(x=>setLock(x,on)); renderSheet(); return; }
   const nt=e.target.closest('[data-notes]'); if(nt){ toggleNotes(nt.dataset.notes); return; }
+  const no=e.target.closest('[data-nord]'); if(no){ const i=no.dataset.nord.lastIndexOf('|'); setNord(no.dataset.nord.slice(0,i),no.dataset.nord.slice(i+1)); return; }
   const tg=e.target.closest('[data-team]'); if(tg){ toggleTeam(tg.dataset.team); return; }
   const cb=e.target.closest('[data-cb]'); if(cb){ cbClick(cb); return; }
   const dpp=e.target.closest('[data-dexpop]'); if(dpp){ e.stopPropagation(); T.dpop=T.dpop===dpp.dataset.dexpop?'':dpp.dataset.dexpop; renderSheet(); return; }
