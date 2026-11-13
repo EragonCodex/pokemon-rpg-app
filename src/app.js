@@ -639,7 +639,7 @@ function mochilaHTML(f){
   mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
   const holders=[['E',(f.nombre||'Entrenador')+' (Entrenador)'],...team.map(p=>[p.id,charName(p.f)])];
-  const dis=S.ro?'disabled':'', lk=S.ro||isLocked(f)?'disabled':''; /* ficha fijada: solo usar, equipar o quitar */
+  const dis=S.ro?'disabled':'', lk=S.ro||lockJug(f)?'disabled':''; /* ficha fijada (jugadores): solo usar, equipar o quitar */
   /* filtros de la Tienda (según el ítem de la Tienda con el mismo nombre) y orden por columna o arrastrando */
   const F=T.bfl, info=items.map(it=>preDe(it.obj));
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b),'es'); });
@@ -671,7 +671,7 @@ function mochilaHTML(f){
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
   const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
-  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||isLocked(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${isLocked(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 /* nuevo orden de los objetos visibles (índices originales): ocupan, en ese orden, los mismos lugares que tenían */
@@ -680,8 +680,12 @@ function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=moch
 
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
+/* Vínculo del Pokémon con su Entrenador (−10 a 10): frase de la escala y tramo con efecto */
+const VIN_FRASE=['Te odio. Si puedo, te mato.','Te odio. Te dañaré y escaparé.','Te odio. Escaparé y, si puedo, te daño.','Te odio. Mi prioridad es escapar.','Te detesto. Cuando pueda, te daño.','Te detesto. Te obedezco, pero dañaré a tus Pokémon y a ti, y escaparé cuando pueda.','Te detesto. Te obedezco, pero escaparé cuando pueda.','Me caes muy mal. Me alejo de ti.','Me caes mal. Te doy la espalda.','Ojalá estuviera otro en tu lugar.','Neutral.','Pareces simpático.','Me agradas.','Me caes bien.','Somos conocidos.','Somos amigos.','Somos buenos amigos.','Somos amigos cercanos.','Eres mi mejor amigo.','Te protegeré para que no te hieran, incluso si me hieren.','Moriré por ti si es necesario.'];
+const VIN_TRAMOS=[[-10,-6,'Hostil','dn','No obedece. El Master lo maneja según la escala (escapar o dañar).'],[-5,-4,'Rebelde','dn','Obedece. Si queda suelto o sin vigilancia, escapa. −4 a las tiradas de Comandar.'],[-3,-1,'Distante','wa','Obedece. −2 a las tiradas de Comandar.'],[0,4,'Neutral','','Sin cambios.'],[5,8,'Amistad','up','+2 a las tiradas de Comandar.'],[9,10,'Lealtad','up','+4 a Comandar. 9: una vez por combate, usa su Reacción para recibir un ataque dirigido al Entrenador. 10: además, una vez por combate resiste con 1 PS un golpe que lo debilitaría.']];
+function vinTramo(v){ const t=VIN_TRAMOS.find(t=>v>=t[0]&&v<=t[1])||VIN_TRAMOS[3]; return {t:t[2],c:t[3],fx:t[4]}; }
 function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,defectos:['','',''],meritos:['','','','','',''],dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
-function newPokemon(extra={}){ return Object.assign({tipo:'P',genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
+function newPokemon(extra={}){ return Object.assign({tipo:'P',vinculo:0,exp:0,genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
   if(!S.canWrite) return;
@@ -838,7 +842,7 @@ function renderSheet(){
   const kind = isP?(S.open.src==='master'?(f.cat==='salvaje'?'Pokémon salvaje':'Pokémon de NPC'):'Pokémon'):(S.open.src==='master'?'Entrenador NPC':'Entrenador');
   const img = f.img?`<img src="${esc(f.img)}" alt="Imagen de ${esc(f.nombre||'la ficha')}">`:`<span>${S.ro?'Sin imagen':'Agrega una imagen'}</span>`;
   h+=`<div class="card"><div class="head"><div><div class="portrait">${img}${S.ro?'':`<label for="imgIn">${f.img?'Cambiar':'Subir'} imagen</label><input type="file" id="imgIn" accept="image/*">`}</div>${S.ro?'':'<button class="btn sm restore" data-act="restore" title="Daño 0, intentos 0, IC, bonos y estados a 0, repeticiones reiniciadas">Restaurar Todo</button><span id="restoreConfirm"></span>'}${isP?'':`<div class="pdest">P. Destino<b data-c="pdv">${num(f.pd)}/3</b>Quedan <input type="number" min="0" max="6" data-f="pd" value="${num(f.pd)}" ${S.ro?'disabled':''} aria-label="Puntos de Destino"></div>`}</div><div style="min-width:0">
-    <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar, y la Mochila solo deja usar, equipar o quitar objetos">🔒 Fijada</span>':''}</div><div class="headline">
+    <div class="kind">${kind}${S.ro?' · solo lectura':''}${isLocked(f)?' · <span class="lockpill" title="El Master fijó esta ficha: Habilidad, Atributos (salvo el bonus), Talentos y Méritos y Defectos no se pueden cambiar, y para los jugadores la Experiencia no cambia y la Mochila solo deja usar, equipar o quitar objetos">🔒 Fijada</span>':''}</div><div class="headline">
     <span class="namewrap">${genderBtn(f)}<input class="name" data-f="nombre" value="${esc(f.nombre)}" placeholder="${isP?(dx?esc(dx[1]):'Apodo'):'Nombre'}" aria-label="Nombre" ${S.ro?'disabled':''}></span>
     <span data-c="tipos"></span>${f.img&&!S.ro?'<button class="btn sm" data-act="rmImg">Quitar imagen</button>':''}</div>
     <div class="grid ${isP?'g3':'g4'}" style="margin-top:12px">`;
@@ -857,6 +861,9 @@ function renderSheet(){
     if(f.entrenador) h+=field('Lugar','lugar',`<option value="">Equipo</option><option value="caja"${f.lugar==='caja'?' selected':''}>Caja</option>`,'sel');
     if(S.open.src==='master'){ h+=field('Categoría','cat',`<option value="npc">De NPC</option><option value="salvaje"${f.cat==='salvaje'?' selected':''}>Salvaje</option>`,'sel'); if(!f.entrenador) h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`; }
     h+= f.entrenador? `<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>` : field('Objeto','objeto',f.objeto||'','txt');
+    { const vd=S.ro||lockJug(f)?'disabled':''; const vn=clamp(num(f.vinculo),-10,10), vt=vinTramo(vn);
+      h+=`<label class="f">Vínculo<span class="vinrow"><input type="number" min="-10" max="10" step="1" data-f="vinculo" value="${vn}" ${vd} aria-label="Vínculo con su Entrenador, de −10 a 10" title="${esc(VIN_FRASE[vn+10])}"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${vt.t}</span></span></label>`;
+      h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${vd} title="Bolsa propia del Pokémon. Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia del Pokémon (admite +15 o −5)"></label>`; }
   } else {
     h+=field('Rango','rango',opts(RANGOS,f.rango),'sel');
     h+=field('Tipo primario','tipos.0',opts(D.types,f.tipos?.[0],'—'),'sel');
@@ -865,7 +872,7 @@ function renderSheet(){
     h+=field('Profesión','profesion',f.profesion||'','txt');
     h+=field('Edad','edad',f.edad||'','txt');
     h+=`<label class="f">Dinero (₽)<span class="money"><input type="text" inputmode="text" data-f="dinero" value="${num(f.dinero)}" ${S.ro?'disabled':''} title="Escribe un número, o +500 / −200 para sumar o restar" aria-label="Dinero en Pokepesos (admite +500 o −200)"><i aria-hidden="true">₽</i></span></label>`;
-    h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
+    h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro||lockJug(f)?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
     if(S.open.src==='master') h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`;
   }
   h+=`</div><div class="note" data-c="sub" style="margin-top:8px"></div></div></div></div>`;
@@ -1048,8 +1055,8 @@ function commit(full){
 }
 function onField(e){
   const el=e.target; const p=el.dataset.f; if(!p||!S.cur||S.ro) return;
-  if(isLocked(S.cur)&&LOCK_RX.test(p)){ showBanner('Esta ficha está fijada por el Master.'); renderSheet(); return; }
-  if(isLocked(S.cur)&&/^mochila\.\d+\.cant$/.test(p)&&num(el.value)>num(((S.cur.mochila||[])[num(p.split('.')[1])]||{}).cant)){ showBanner('Ficha fijada: la cantidad solo puede bajar. Para tener más, cómpralo en la Tienda.'); renderSheet(); return; }
+  if(isLocked(S.cur)&&(LOCK_RX.test(p)||(!isMaster()&&LOCK_JUG_RX.test(p)))){ showBanner('Esta ficha está fijada por el Master.'); renderSheet(); return; }
+  if(lockJug(S.cur)&&/^mochila\.\d+\.cant$/.test(p)&&num(el.value)>num(((S.cur.mochila||[])[num(p.split('.')[1])]||{}).cant)){ showBanner('Ficha fijada: la cantidad solo puede bajar. Para tener más, cómpralo en la Tienda.'); renderSheet(); return; }
   if(el.tagName==='SELECT') selColor(el);
   const f=S.cur; let v=el.value; let full=false;
   if(el.type==='number') v=num(v);
@@ -1070,6 +1077,7 @@ function onField(e){
     if(v&&(!r||r[1]!==want)){ el.setCustomValidity(r?(want==='D'?'Ese es un Mérito: va en Méritos':'Ese es un Defecto: va en Defectos'):'No está en la lista de '+(want==='D'?'Defectos':'Méritos')); el.reportValidity(); return; }
     el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; if(f.rasgoOp&&f.rasgoOp[k]) f.rasgoOp[k][num(p.split('.')[1])]=''; full=true; }
   else if(p.startsWith('rasgoOp.')){ setPath(f,p,v.trim()); full=true; }
+  else if(p==='vinculo'){ f.vinculo=clamp(Math.round(num(v)),-10,10); full=true; }
   else if(p==='vis'){ if(S.open.src==='bit'){ if(f.autor&&f.autor!==S.uid) return; if(!f.autor) f.autor=S.uid; } else if(S.open.uid!==S.uid) return; f.vis=v; full=true; }
   else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); if(v==='Aturdido'){ const m=aturdir(refKey(S.open),f); if(m) showBanner(`${charName(f)}: ${m}.`); } full=true; }
   else setPath(f,p,v);
@@ -1241,6 +1249,31 @@ GLOS.push({id:'rasgos',t:'Rasgos',h:()=>`<p>Los <b>Méritos</b> y <b>Defectos</b
 <li><b>Narrativos:</b> los demás los maneja el Narrador en la historia (Favor, Enemigo, Aristócrata, Pobre…).</li></ul>
 ${ej(`Un Entrenador toma Cojera (−3) y Timidez (−2): suma ${PTS_LIBRES} + 5 = ${PTS_LIBRES+5} puntos. Compra Rastreador (+1), Suerte (+3) y Resistencia al Calor (+2), y le sobran 4. Su Velocidad baja 10 ft y su Atletismo y Acrobacias −2 (rojo), sus Talentos sociales −1 (rojo), su máximo de Puntos de Destino sube a 4 (verde) y, al tirar Supervivencia, el panel pregunta si aplica Rastreador (+2).`)}
 <p>Las listas completas, con filtros, están en <b>Herramientas › Méritos y Defectos</b>.</p>`});
+/* Experiencia y Vínculo: reglas manuales (la app solo guarda los valores) */
+const RG6=['Starter','Beginner','Amateur','Elite','Master','Legend'];
+const DIF6=['Fácil (9)','Sencilla (13)','Media (17)','Desafiante (21)','Difícil (27)','Imposible (33)'];
+GLOS.push({id:'experiencia',t:'Experiencia',h:()=>`<p>La <b>Experiencia</b> se gana con logros y combates y se gasta en <b>intentos</b> de mejorar. Todo se lleva <b>a mano</b>: el casillero Experiencia de la ficha admite +15 o −5.</p>
+<ul><li><b>Bolsas separadas:</b> el Entrenador y cada Pokémon tienen la suya. Al <b>Enseñar</b>, el Entrenador puede pagar con su Experiencia los puntos que le falten a un Pokémon de su equipo.</li>
+<li><b>Intento:</b> si tiene éxito, se gastan los puntos y se logra el efecto; si falla, se recupera el <b>50 %</b> y no hay efecto. No hay límite de intentos por sesión.</li>
+<li><b>Siempre se entrena</b> (Atributos, Talentos, Movimientos y Rango), salvo al crear el personaje.</li>
+<li><b>Rango del Entrenador:</b> sube con <b>Hitos</b> de la historia, no con Experiencia.</li>
+<li><b>Pokémon:</b> puede ser capturado con más Rango que su Entrenador, pero no se entrena más allá del Rango del Entrenador.</li>
+<li>Los Puntos de Destino también se pueden ganar por decisión del Master.</li></ul>
+${tbl(['Ganancia','Bolsa',...RG6],[['Combate ganado','Quien participó','2','4','8','16','32','64'],['Combate perdido o empatado','Quien participó','1','2','4','6','8','12'],['Jugar la sesión / MVP','Entrenador','1','2','4','6','8','12'],['Gimnasio (gana / pierde)','Quien participó','8/4','16/8','32/16','64/32','128/64','256/128'],['Concurso (1.º / 2.º / 3.º y 4.º)','Quien participó','8/6/4','16/12/8','32/24/16','64/48/32','128/96/64','256/192/128'],['Encargo','Quien participó','6','12','24','48','96','192'],['Narrador','Entrenador','Libre','Libre','Libre','Libre','Libre','Libre']])}
+<p><b>Combate ganado:</b> se usa la columna del propio Rango. Si el derrotado es de <b>menor</b> Rango, se divide por 2 por cada Rango de diferencia; si es de <b>mayor</b> Rango, se multiplica por 2 por cada Rango de diferencia.</p>
+<p><b>Jugar la sesión / MVP:</b> cada uno da su valor, así que el MVP gana el doble esa sesión. Es un ingreso constante, pensado para recuperar Puntos de Destino cada algunas sesiones.</p>
+${tbl(['Costo','Bolsa',...RG6],[['Atributo +1','Ambos','4','8','16','32','64','128'],['Talento +1','Entrenador','1','2','4','8','16','32'],['Movimiento (dentro de su Rango)','Ambos','2','4','8','16','32','64'],['Movimiento O.R.','Ambos','—','8','16','32','64','128'],['Subir de Rango','Pokémon','—','8','16','32','64','128'],['Asegurar encuentro con Pokémon salvaje','Entrenador','2','4','8','16','32','64'],['Recuperar Punto de Destino','Entrenador','3','6','12','16','24','36'],['Fomentar Vínculo','Ambos','ver Vínculo','','','','','']])}
+<p><b>Atributo +1 y Talento +1</b> cuestan según el Rango al que se lleva: un Entrenador Amateur que entrena un Talento a Starter paga 1.</p>
+<p><b>Tiradas sugeridas</b> (la narrativa puede cambiarlas): Movimiento, SAB + Comprensión · Enseñar, CAR + Teoría · Atributo, el mismo Atributo + Aplicación · Talento, Atributo + el mismo Talento · Vínculo, CAR + Perspicacia · Encuentro, SAB + Supervivencia. Siempre que el Entrenador y el Pokémon tiren juntos, el Pokémon suma la <b>mitad de su Vínculo</b> (positivo o negativo).</p>
+${tbl(['Dificultad sugerida',...RG6],[['Según el Rango de lo que se entrena o se busca',...DIF6]])}
+${ej('Un Entrenador Beginner gana un combate contra un Pokémon Amateur: 4 × 2 = 8 de Experiencia, y el Pokémon que combatió también gana 8. Luego intenta enseñarle a ese Pokémon un movimiento Beginner (4): tira CAR + Teoría contra Sencilla (13). Si falla, recupera 2 y puede volver a intentarlo.')}`});
+GLOS.push({id:'vinculo',t:'Vínculo',h:()=>`<p>El <b>Vínculo</b> mide la relación entre un Pokémon y su Entrenador, de <b>−10 a 10</b>. Está en la ficha del Pokémon: al crearse es 0 y se cambia <b>a mano</b>. Obedece desde −5; por debajo pasa de rebelde a agresivo contra su Entrenador.</p>
+${tbl(['Tramo','Valores','Efecto'],VIN_TRAMOS.map(t=>[t[2],t[0]===t[1]?String(t[0]):`${t[0]<0?'−'+(-t[0]):t[0]} a ${t[1]<0?'−'+(-t[1]):t[1]}`,t[4]]))}
+<p><b>Vínculo inicial:</b> un Pokémon capturado suele empezar en 0, y la interacción lo mueve: −1 si fue capturado tras debilitarlo; +1 o +2 si se ganó con golosinas o sin combate; −1 si llegó por intercambio. El <b>Pokémon inicial</b> empieza con +5 (decisión del Master), y el Mérito <b>Vínculo Pokémon</b> da +1 más a ese Pokémon.</p>
+<p><b>Fomentar Vínculo</b> se paga con Experiencia (del Entrenador o del Pokémon). Cuesta según el valor al que llega. Tirada sugerida: CAR + Perspicacia del Entrenador, y el Pokémon suma la mitad de su Vínculo.</p>
+${tbl(['Llega a','−2 a +2','±3 y ±4','±5 y ±6','±7 y ±8','±9','±10'],[['Costo','2','4','8','16','32','64'],['Dificultad sugerida',...DIF6]])}
+<p><b>Frustración</b> suma +1 a la CD por cada punto de Vínculo bajo 0 (máximo +5) y <b>Retribución</b> +1 por cada 2 puntos sobre 0 (máximo +5). La app lo suma sola al atacar.</p>
+${tbl(['Vínculo','Lo que siente'],VIN_FRASE.map((t,i)=>[String(i-10).replace('-','−'),t]))}`});
 /* el índice del Glosario va en orden alfabético */
 GLOS.sort((a,b)=>a.t.localeCompare(b.t,'es'));
 let GLOS_OPEN='';
@@ -1264,7 +1297,10 @@ function renderTool(){
 const LOCK_SVG=on=>on?'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>'
   :'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/></svg>';
 const isLocked=f=>!!(f&&f.bloq);
-const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.|mochila\.\d+\.(obj|peso|precio|efecto)$)/;
+const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.)/;
+/* Mochila, Vínculo y Experiencia: con la ficha fijada se bloquean solo para jugadores, nunca para los Masters */
+const LOCK_JUG_RX=/^(vinculo|exp|mochila\.\d+\.(obj|peso|precio|efecto))$/;
+const lockJug=f=>isLocked(f)&&!isMaster();
 function lockBtn(x){ const on=isLocked(x.f); return `<button class="lockbtn${on?' on':''}" data-lock="${esc(refKey(x))}" aria-pressed="${on}" title="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}" aria-label="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}">${LOCK_SVG(on)}</button>`; }
 function toolBloq(){
   const row=(x,sub)=>`<div class="lkrow${sub?' sub':''}${isLocked(x.f)?' on':''}"><span class="n">${esc(charName(x.f))}</span><span class="note">${x.f.tipo==='E'?'Entrenador':'Pokémon'}${x.f.lugar==='caja'?' · caja':''}</span>${lockBtn(x)}</div>`;
@@ -1836,6 +1872,7 @@ function baseDe(m,A,Tf){ const t=String(m[11]||''); let r;
   if((r=/su Base es (\d+) veces los puntos de Reserva/.exec(t))) return clamp(Number(r[1])*num(A&&A.reserva),0,24);
   if((r=/su Base es (\d+) veces la FUE actualizada del Blanco/.exec(t))&&Tf) return clamp(Number(r[1])*num(calc(Tf).A.FUE),0,24);
   return m[7]; }
+const cdVinculo=(m,f)=>{ const t=String(m[11]||''), v=num(f&&f.vinculo); if(/por cada punto de Vínculo negativo/.test(t)) return Math.min(5,Math.max(0,-v)); if(/por cada 2 puntos de Vínculo positivo/.test(t)) return Math.min(5,Math.floor(Math.max(0,v)/2)); return 0; };
 const cdReserva=(m,A)=>{ const r=/Clase de Dado \(CD\) en (\d+) por cada punto Reserva/.exec(String(m[11]||'')); return r?Number(r[1])*num(A&&A.reserva):0; };
 function parseFx(m){
   if(FX_CACHE.has(m[0])) return FX_CACHE.get(m[0]);
@@ -2126,7 +2163,8 @@ function rollDamage(ai,target,crit,bonus){
     if(ok){ hcd+=hval(h.v); hx.push(`${h.nm} ${sg(hval(h.v))} CD`); } }
   const cm=ai.mi.cm;
   const rsv=cdReserva(m,ai.f); if(rsv) hx.push(`Reserva +${rsv} CD`);
-  const idx=clamp(B0+ai.mi.stab+e.steps+num(bonus)+own+recv+cm.cd+hcd+rsv,1,24); const dd=dice(idx); const rl=rollDice(dd);
+  const vcd=cdVinculo(m,ai.f); if(vcd) hx.push(`Vínculo ${num(ai.f.vinculo)>0?'+':''}${num(ai.f.vinculo)}: +${vcd} CD`);
+  const idx=clamp(B0+ai.mi.stab+e.steps+num(bonus)+own+recv+cm.cd+hcd+rsv+vcd,1,24); const dd=dice(idx); const rl=rollDice(dd);
   const def=m[3]==='Fisico'?tc.A.VIT:m[3]==='Especial'?tc.A.SAB:0;
   let v=Math.max(0,rl.t+ai.mi.atr-def); if(crit) v*=2; if(cm.x2) v*=2;
   const cbx=self?null:condBlanco(m,ai.f,target.f); if(cbx&&cbx.x2){ v*=2; hx.push(...cbx.notes); }
@@ -2531,7 +2569,7 @@ document.addEventListener('click',async e=>{
   else if(act==='restoreNo'){ const c=$('#restoreConfirm'); if(c) c.innerHTML=''; }
   else if(act==='restoreYes'&&S.cur&&!S.ro){ restoreAll(S.cur); commit(true); logRoll(charName(S.cur),'Restaurar Todo: daño, intentos, IC, bonos, estados y repeticiones a 0',null); }
   else if(act==='evade'&&S.cur&&!S.ro){ const L=CB.last; const ev=doEvade(S.open,S.cur,a.dataset.k,L?{d100:L.d100,mv:L.mv,by:L.by}:null); if(ev.crit){ const k=refKey(S.open); if(inCombat(k)) ev.txt+=' · '+esquivaCritica(k); } renderSheet(); openRP({kind:'res',title:a.dataset.k==='esq'?'Esquiva':'Temple',res:{v:ev.r,cls:ev.ok?'ok':'ko',html:esc(ev.txt)}}); }
-  else if(act==='addItem'&&S.cur&&!S.ro&&!isLocked(S.cur)){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
+  else if(act==='addItem'&&S.cur&&!S.ro&&!lockJug(S.cur)){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
   else if(act==='rmItem'&&S.cur&&!S.ro){ S.cur.mochila.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='rmRoll'){ delRoll(a.dataset.u,num(a.dataset.ts)); }
   else if(act==='clearRolls'){ const c=$('#clrConfirm'); if(c) c.innerHTML='<button class="btn sm danger" data-act="clearYes">Sí, vaciar</button> <button class="btn sm" data-act="clearNo">Cancelar</button>'; }
