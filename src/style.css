@@ -387,3 +387,23 @@ body.cb-rainbow{background:linear-gradient(135deg,rgb(255 90 90/.10),rgb(255 190
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .moch .mfl,.card>.mfl{margin-bottom:10px}
 table.moch td .grip{height:28px}
+/* Vínculo del Pokémon: número y tramo */
+.vinrow{display:flex;gap:6px;align-items:center}
+label.f .vinrow input{width:72px;flex:none}
+.vinrow .pill{font-size:11px}
+.pill.vin.up{color:var(--good)} .pill.vin.dn{color:var(--bad)} .pill.vin.wa{color:var(--warn)}
+/* Ficha de Pokémon: datos de la especie bajo la foto y desplazamiento bajo el Objeto */
+.psub{width:132px;max-width:100%;margin-top:8px;font-size:12px;line-height:1.5;display:grid;gap:2px}
+.psub span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
+.fstack{display:grid;gap:4px;align-content:start;min-width:0}
+.tmov{font-size:12px;margin:0}
+/* Notas: barra de orden, carpetas y filas arrastrables */
+.nbar{display:flex;align-items:center;gap:6px;margin:4px 0 6px;flex-wrap:wrap}
+.nbar .btn[aria-pressed="true"]{border-color:var(--teal);color:var(--teal);font-weight:600}
+.nrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px}
+.nrow .grip{cursor:grab;color:var(--muted);letter-spacing:-1px;padding:0 2px;user-select:none;touch-action:none}
+details.nfold{margin:4px 0}
+details.nfold>summary{font-size:12px}
+/* Mesa: Fichas y Notas como categorías plegables */
+details.cat{margin:6px 0 10px}
+details.cat>summary{font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);justify-content:flex-start}
