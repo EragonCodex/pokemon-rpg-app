@@ -22,7 +22,7 @@ let especiesTimer=null;
 function reloadEspecies(){ clearTimeout(especiesTimer); especiesTimer=setTimeout(loadEspecies,300); }
 async function loadEspecies(){
   const sb=window.__sb; if(!sb) return;
-  const { data, error } = await window.__selectAll('especies', 'id,data', ['id']);
+  const { data, error } = window.__selectEspecies ? await window.__selectEspecies() : await window.__selectAll('especies', 'id,data', ['id']);
   if(error){ console.warn(error); return; }
   for(const row of data){ const t=dexById.get(row.id); if(t&&Array.isArray(row.data)) row.data.forEach((v,i)=>{ t[i]=v; }); }
   dexByLabel.clear(); D.dex.forEach(r=>{ if(r[1]) dexByLabel.set(dexLabel(r),r[0]); });
@@ -515,11 +515,11 @@ function aplicarMiembros(){ S.players=Object.fromEntries(Object.entries(S.allPla
 function cambiarMesa(id){ try{ localStorage.setItem('pkrpg.mesa',String(id)); }catch(_){} location.reload(); }
 async function saveMesas(){ try{ await S.raw.doc('config/mesas').set(S.mesasDoc); setStatus('Guardado'); }catch(e){ onWriteError(e); } renderWho(); render(); }
 const colorDe=u=>((S.allPlayers||{})[u]||{}).color||'';
-const enLinea=u=>{ const v=((S.allPlayers||{})[u]||{}).visto; return !!v&&Date.now()-Date.parse(v)<150000; };
+const enLinea=u=>{ const v=((S.allPlayers||{})[u]||{}).visto; return !!v&&Date.now()-Date.parse(v)<400000; };
 const puntoDe=u=>`<span class="status" data-st="${u===S.uid||enLinea(u)?'ok':'off'}" title="${u===S.uid||enLinea(u)?'Conectado':'Desconectado'}" aria-label="${u===S.uid||enLinea(u)?'Conectado':'Desconectado'}"></span>`;
 function aplicarTema(){ const t=((S.allPlayers||{})[S.uid]||{}).tema||(()=>{ try{ return localStorage.getItem('pkrpg.tema')||''; }catch(_){ return ''; } })(); if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme; }
 function guardarPerfil(campos){ if(!S.uid) return; const dd={...(S.allPlayers[S.uid]||{creado:new Date().toISOString()}),...campos}; S.allPlayers[S.uid]=dd; aplicarMiembros(); queueSave(`jug/${S.uid}`,dd,200); }
-/* latido: cada minuto el perfil marca la hora, así la Mesa muestra quién está conectado */
+/* latido: cada 3 minutos el perfil marca la hora, así la Mesa muestra quién está conectado */
 function latido(){ if(!S.uid||!S.canWrite||document.hidden||!S.allPlayers[S.uid]) return; const dd={...S.allPlayers[S.uid],visto:new Date().toISOString()}; S.allPlayers[S.uid]=dd; if(!pend[`jug/${S.uid}`]) S.raw.doc(`jug/${S.uid}`).set(dd).catch(()=>{}); }
 function fotoDe(u){ const p=(S.allPlayers||{})[u]||{}; return p.foto||(u===S.uid&&S.me&&S.me.avatarUrl)||''; }
 function renderWho(){ const b=$('#whoName'); if(!b) return; const me=(S.allPlayers||{})[S.uid]||{}; b.textContent=me.alias||S.me?.name||'';
@@ -2694,6 +2694,6 @@ async function boot(){
     S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); renderWho(); aplicarTema(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
   if(S.uid) subPlayer(S.uid);
   if(S.owner) subMaster();
-  aplicarTema(); setTimeout(latido,4000); setInterval(latido,60000);
+  aplicarTema(); setTimeout(latido,4000); setInterval(latido,180000); /* cada 3 min: cada latido avisa a todos los conectados */
 }
 boot().then(loadEspecies);

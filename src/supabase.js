@@ -1,6 +1,7 @@
 // Conexión con Supabase y adaptador que imita la base de datos que usaba la app en Claude
 // (doc/collection/onSnapshot/set/update/delete), para no reescribir la lógica de la app.
 import { createClient } from '@supabase/supabase-js';
+import { cget, cset } from './cache.js';
 
 export const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
@@ -68,6 +69,49 @@ function parse1(path) {
   throw new Error('Ruta no soportada: ' + path);
 }
 
+/* ---------- lecturas con caché (ahorro de egress) ----------
+   Las fichas, notas y bitácora se guardan en el navegador. En cada lectura se pide solo id + fecha de
+   actualización (pocos bytes) y se descargan completas únicamente las filas nuevas o cambiadas. */
+let curUid = 'anon';
+const mem = {};
+async function deltaRows(table, where, key) {
+  key = curUid + ':' + key;
+  const old = mem[key] || (mem[key] = (await cget(key)) || {});
+  const { data: idx, error } = await where(sb.from(table).select('id,actualizado')); fail(error);
+  const need = idx.filter(x => !old[x.id] || old[x.id].a !== x.actualizado).map(x => x.id);
+  const got = {};
+  for (let i = 0; i < need.length; i += 100) {
+    const { data, error: e } = await where(sb.from(table).select('id,data,actualizado').in('id', need.slice(i, i + 100))); fail(e);
+    for (const x of data) got[x.id] = { a: x.actualizado, d: x.data };
+  }
+  const next = {};
+  for (const x of idx) { const v = got[x.id] || old[x.id]; if (v) next[x.id] = v; }
+  mem[key] = next; if (need.length || Object.keys(old).length !== idx.length) cset(key, next);
+  return Object.entries(next).map(([id, v]) => docSnap(id, v.d));
+}
+
+/* Especies: el catálogo casi no cambia. Se guarda en el navegador y solo se descargan las especies que faltan.
+   Si cambia config.especies_version (lo sube un trigger al editar la tabla), se descarta la caché. */
+export async function selectEspecies() {
+  const key = curUid + ':especies';
+  const [{ data: ver }, { data: ids, error }] = await Promise.all([
+    sb.from('config').select('valor').eq('clave', 'especies_version').maybeSingle(),
+    selectAll('especies', 'id', ['id'])]);
+  if (error) return { data: null, error };
+  const v = ver ? JSON.stringify(ver.valor) : null;
+  let c = await cget(key);
+  if (!c || !v || c.v !== v) c = { v, rows: {} };
+  const need = ids.map(x => x.id).filter(id => !(id in c.rows));
+  for (let i = 0; i < need.length; i += 200) {
+    const { data, error: e } = await sb.from('especies').select('id,data').in('id', need.slice(i, i + 200));
+    if (e) return { data: null, error: e };
+    for (const x of data) c.rows[x.id] = x.data;
+  }
+  const rows = {}; for (const x of ids) rows[x.id] = c.rows[x.id];
+  if (v) cset(key, { v, rows });
+  return { data: ids.map(x => ({ id: x.id, data: rows[x.id] })), error: null };
+}
+
 /* ---------- lecturas ---------- */
 const tiradasCache = {}; // uid -> Map(ts -> id)
 async function readCollection(r) {
@@ -76,20 +120,16 @@ async function readCollection(r) {
     return data.map(x => docSnap(x.id, { alias: x.alias, creado: x.creado, ...(x.foto ? { foto: x.foto } : {}), ...(x.color ? { color: x.color } : {}), ...(x.tema ? { tema: x.tema } : {}), ...(x.visto ? { visto: x.visto } : {}) }));
   }
   if (r.kind === 'fichas') {
-    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'jug').eq('owner', r.uid).eq('mesa_id', r.mesa); fail(error);
-    return data.map(x => docSnap(x.id, x.data));
+    return deltaRows('fichas', q => q.eq('ambito', 'jug').eq('owner', r.uid).eq('mesa_id', r.mesa), `fichas:${r.uid}:${r.mesa}`);
   }
   if (r.kind === 'notas') {
-    const { data, error } = await sb.from('notas').select('id,data').eq('owner', r.uid).eq('mesa_id', r.mesa); fail(error);
-    return data.map(x => docSnap(x.id, x.data));
+    return deltaRows('notas', q => q.eq('owner', r.uid).eq('mesa_id', r.mesa), `notas:${r.uid}:${r.mesa}`);
   }
   if (r.kind === 'master') {
-    const { data, error } = await sb.from('fichas').select('id,data').eq('ambito', 'master').eq('mesa_id', r.mesa); fail(error);
-    return data.map(x => docSnap(x.id, x.data));
+    return deltaRows('fichas', q => q.eq('ambito', 'master').eq('mesa_id', r.mesa), `master:${r.mesa}`);
   }
   if (r.kind === 'bitacora') {
-    const { data, error } = await sb.from('bitacora').select('id,data').eq('mesa_id', r.mesa); fail(error);
-    return data.map(x => docSnap(x.id, x.data));
+    return deltaRows('bitacora', q => q.eq('mesa_id', r.mesa), `bitacora:${r.mesa}`);
   }
   if (r.kind === 'tiradas') {
     const { data, error } = await sb.from('tiradas').select('id,user_id,quien,txt,val,ts').eq('mesa_id', r.mesa).order('ts', { ascending: false }).limit(400); fail(error);
@@ -251,7 +291,7 @@ function collectionRef(path) {
 export const db = { doc: docRef, collection: collectionRef };
 
 export function makeUser(session) {
-  const u = session.user; const md = u.user_metadata || {};
+  const u = session.user; const md = u.user_metadata || {}; curUid = u.id;
   let master = null;
   const isMaster = async () => { if (master === null) { const { data } = await sb.rpc('es_dueno'); master = !!data; } return master; }; /* el dueño es Master en todas las mesas */
   return {
