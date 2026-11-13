@@ -671,7 +671,7 @@ function mochilaHTML(f){
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
   const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
-  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda).${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 /* nuevo orden de los objetos visibles (índices originales): ocupan, en ese orden, los mismos lugares que tenían */
@@ -1087,7 +1087,7 @@ function onField(e){
   else if(p==='entrenador'){ if(v){ const team=teamOf({...S.open,id:v}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); f.lugar= team.length>=6?'caja':''; } else f.lugar=''; f.entrenador=v; full=true; }
   else if(p==='lugar'){ if(!v){ const team=teamOf({...S.open,id:f.entrenador}).filter(x=>x.id!==S.open.id&&x.f.lugar!=='caja'); if(team.length>=6){ showBanner('El equipo ya tiene 6 Pokémon. Pasa uno a la caja primero.'); el.value='caja'; return;} } f.lugar=v; }
   else if(/^mochila\.\d+\.obj$/.test(p)){ const it=f.mochila[num(p.split('.')[1])]; const antes=preDe(it.obj), r=preDe(v); it.obj=r?String(r[4]).trim():v;
-    if(r){ it.peso=typeof r[10]==='number'?r[10]:0; it.precio=typeof r[5]==='number'?r[5]:0; it.efecto=r[9]&&r[9]!=='-'?r[9]:''; }
+    if(r){ const u=desempacar({obj:it.obj,cant:num(it.cant)||1,peso:typeof r[10]==='number'?r[10]:0,precio:typeof r[5]==='number'?r[5]:0,efecto:r[9]&&r[9]!=='-'?r[9]:''}); Object.assign(it,{obj:u.obj,cant:u.cant,peso:u.peso,precio:u.precio,efecto:u.efecto}); }
     else if(antes){ it.peso=0; it.precio=0; it.efecto=''; }
     full=!!(r||antes); }
   else if(/^mochila\.\d+\.eq$/.test(p)){ if(v) (f.mochila||[]).forEach(it=>{ if(it.eq===v) it.eq=''; }); setPath(f,p,v); full=true; }
@@ -1372,7 +1372,7 @@ function toolKits(){
 function regalarKit(){ if(!isMaster()||!S.canWrite) return; const k=kitSel(); if(!k) return; const its=(k.items||[]).filter(it=>String(it.obj||'').trim()&&num(it.cant)>0); const din=Math.round(num(k.dinero)); const nombres=[];
   for(const key of T.kitTo){ const x=refByKey(key); if(!x||x.f.tipo!=='E') continue; const f=structuredClone(x.f);
     if(din) f.dinero=Math.max(0,num(f.dinero)+din);
-    if(its.length){ f.mochila ||= []; for(const it of its){ const o=f.mochila.find(m=>String(m.obj).trim().toLowerCase()===String(it.obj).trim().toLowerCase()); if(o) o.cant=num(o.cant)+num(it.cant); else f.mochila.push({obj:String(it.obj).trim(),eq:'',cant:num(it.cant),peso:num(it.peso),precio:num(it.precio),efecto:it.efecto||''}); } }
+    if(its.length) for(const it of its) guardarEnMochila(f,{obj:String(it.obj).trim(),cant:num(it.cant),peso:num(it.peso),precio:num(it.precio),efecto:it.efecto||''});
     saveFicha({src:x.src,uid:x.uid,id:x.id},f); nombres.push(charName(f));
     logRoll(charName(f),`Kit asignado por el Master: ${k.nombre||'Kit'}${din?` · ${din>0?'+':'−'}${Math.abs(din).toLocaleString('es-CL')} ₽`:''}${its.length?` · ${its.length} objeto${its.length===1?'':'s'}`:''}`,null); }
   if(nombres.length) showBanner(`Asignaste «${k.nombre||'Kit'}» a ${nombres.join(', ')}.`); T.kitTo=new Set(); renderSheet(); }
@@ -1544,13 +1544,21 @@ function compraHTML(r,span){ const cs=compradores(); const sel=T.pbuyK&&cs.some(
     <span class="pill">Total ${tot.toLocaleString('es-CL')}\u00a0₽${r[7]==='Servicio'?' · servicio, no va a la Mochila':''}</span>
     <button class="btn pri" data-act="buyYes" data-id="${esc(r[3])}"${falta?' disabled':''}>Confirmar</button><button class="btn" data-act="buyNo">Cancelar</button>
     ${falta?`<span class="note ko">No le alcanza: tiene ${din.toLocaleString('es-CL')} ₽.</span>`:''}</div></td></tr>`; }
+/* Packs de la Tienda: en la Mochila se guardan como unidades (D.packs: ID del pack → [unidades, nombre de la unidad]).
+   P. ej. «Raciones humanas (5 días)» → «Ración humana (día)» × 5, con precio y peso por unidad. */
+function preNombre(n){ const k=String(n||'').trim().toLowerCase(); return k?(D.pre||[]).find(r=>String(r[4]).trim().toLowerCase()===k)||null:null; }
+function desempacar(o){ const r=preNombre(o.obj); const pk=r&&(D.packs||{})[r[3]]; if(!pk) return o;
+  const [u,uni]=pk, ur=preNombre(uni), ef=ur&&ur[9]&&ur[9]!=='-'?ur[9]:o.efecto||'';
+  return {...o, obj:uni, cant:num(o.cant)*u, peso:ur&&typeof ur[10]==='number'?ur[10]:Math.max(0.01,Math.round(num(o.peso)/u*100)/100), precio:ur&&typeof ur[5]==='number'?ur[5]:Math.round(num(o.precio)/u), efecto:ef}; }
+function guardarEnMochila(f,o){ o=desempacar(o); f.mochila ||= []; const k=String(o.obj).trim().toLowerCase(); const it=f.mochila.find(m=>String(m.obj).trim().toLowerCase()===k);
+  if(it) it.cant=num(it.cant)+num(o.cant); else f.mochila.push({obj:String(o.obj).trim(),eq:'',cant:num(o.cant),peso:num(o.peso),precio:num(o.precio),efecto:o.efecto||''}); return o; }
 function comprar(id){ const r=(D.pre||[]).find(x=>x[3]===id); const cs=compradores(); const k=T.pbuyK&&cs.some(c=>c.k===T.pbuyK)?T.pbuyK:(cs[0]||{}).k; if(!r||!k) return; const [src,uid,fid]=k.split('|');
   const x=poolOf(src,uid||null).find(y=>y.id===fid); if(!x) return; const n=Math.max(1,num(T.pbuyN)||1), tot=r[5]*n; const f=structuredClone(x.f);
   if(num(f.dinero)<tot){ showBanner(`No le alcanza: ${charName(f)} tiene ${num(f.dinero).toLocaleString('es-CL')} ₽.`); return; }
   f.dinero=num(f.dinero)-tot;
-  if(r[7]!=='Servicio'){ f.mochila ||= []; const it=f.mochila.find(o=>o.obj===r[4]); if(it) it.cant=num(it.cant)+n; else f.mochila.push({obj:r[4],eq:'',cant:n,peso:typeof r[10]==='number'?r[10]:0,precio:r[5],efecto:r[9]&&r[9]!=='-'?r[9]:''}); }
+  let g=null; if(r[7]!=='Servicio') g=guardarEnMochila(f,{obj:r[4],cant:n,peso:typeof r[10]==='number'?r[10]:0,precio:r[5],efecto:r[9]&&r[9]!=='-'?r[9]:''});
   saveFicha({src,uid:uid||null,id:fid},f); logRoll(charName(f),`Compra: ${n} × ${r[4]} por ${tot.toLocaleString('es-CL')} ₽`,null);
-  const t=mochilaTotals(f); showBanner(`${charName(f)} compró ${n} × ${r[4]} por ${tot.toLocaleString('es-CL')} ₽. Le quedan ${num(f.dinero).toLocaleString('es-CL')} ₽.${t.peso>t.cap?` Ojo: su Mochila pesa ${t.peso} kg y carga ${t.cap} kg.`:''}`);
+  const t=mochilaTotals(f); showBanner(`${charName(f)} compró ${n} × ${r[4]} por ${tot.toLocaleString('es-CL')} ₽${g&&g.obj!==r[4]?` (${g.cant} × ${g.obj} en la Mochila)`:''}. Le quedan ${num(f.dinero).toLocaleString('es-CL')} ₽.${t.peso>t.cap?` Ojo: su Mochila pesa ${t.peso} kg y carga ${t.cap} kg.`:''}`);
   T.pbuy=''; T.pbuyN=1; renderSheet(); }
 function toolPre(){
   const F=T.pfl; const all=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
