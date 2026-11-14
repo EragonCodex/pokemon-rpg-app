@@ -634,7 +634,8 @@ const CARGA_BASE=20, CARGA_FUE=5;
 /* Objetos de la Tienda para la Mochila (sin Servicios; el jugador solo ve los visibles) */
 function preNombres(){ const m=new Map(); (D.pre||[]).forEach(r=>{ const n=String(r[4]||'').trim(); if(n&&r[7]!=='Servicio'&&vistaVe('pre',r[3])&&!m.has(n)) m.set(n,r); }); return m; }
 function preDe(nombre){ const n=String(nombre||'').trim().toLowerCase(); if(!n) return null; for(const [k,r] of preNombres()) if(k.toLowerCase()===n) return r; return null; }
-function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ peso+=num(it.peso)*num(it.cant); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
+/* el objeto que lleva equipado un Pokémon (1 unidad) no pesa en la Mochila */
+function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ const enPoke=it.eq&&it.eq!=='E'?1:0; peso+=num(it.peso)*Math.max(0,num(it.cant)-enPoke); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
 function mochilaHTML(f){
   mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
@@ -671,7 +672,7 @@ function mochilaHTML(f){
     ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
   if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
   const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
-  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. El objeto que lleva equipado un Pokémon no cuenta en el peso. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 /* nuevo orden de los objetos visibles (índices originales): ocupan, en ese orden, los mismos lugares que tenían */
