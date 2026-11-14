@@ -407,3 +407,6 @@ details.nfold>summary{font-size:12px}
 /* Mesa: Fichas y Notas como categorías plegables */
 details.cat{margin:6px 0 10px}
 details.cat>summary{font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);justify-content:flex-start}
+/* Mochila: objeto equipado y etiquetas de uso en la Tienda */
+.eqpill{display:inline-block;margin-top:3px;font-size:10.5px;color:var(--teal);border-color:var(--teal)}
+td.usos .pill{font-size:10.5px;margin:1px 0}

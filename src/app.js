@@ -163,10 +163,88 @@ function estEffects(f,key){ const o={attr:{},prec:0,esq:0,tem:0,cdOwn:{},cdRecv:
 
 /* ---------- Habilidades en combate (Habilidades 1.3, hoja «Efectos en combate») ---------- */
 /* fila: [habilidad, n, activación, condición, alcance, clave, valor, prob, automatización, nota] */
+/* ---------- Objetos: grupos extra, etiquetas de uso, efectos al equipar y al usar ---------- */
+/* pre: [Etapa, IDgrupo, Grupo, IDitem, Item, Precio, Rareza, Tipo, Acceso, Efecto, Peso, Otros grupos (IDs con coma), Uso (etiquetas con «·»)] */
+const GRUPOS=new Map(); (D.pre||[]).forEach(r=>{ if(!GRUPOS.has(r[1])) GRUPOS.set(r[1],[r[0],r[2]]); });
+const otrosGr=r=>String(r[11]||'').split(',').map(s=>s.trim()).filter(id=>GRUPOS.has(id)&&id!==r[1]);
+const etapasDe=r=>[r[0],...otrosGr(r).map(id=>GRUPOS.get(id)[0])];
+const gruposDe=(r,e)=>[[r[0],r[2]],...otrosGr(r).map(id=>GRUPOS.get(id))].filter(([et])=>!e||et===e).map(([,g])=>g);
+const usoTags=r=>String((r&&r[12])||'').split('·').map(s=>s.trim()).filter(Boolean);
+/* Efectos al equipar: filas con el formato de las Habilidades (el motor de combate ya las aplica) */
+const OBJ_EQ=new Map();
+{ const eq=(n,...rows)=>OBJ_EQ.set(n.toLowerCase(),rows.map((r,i)=>[n,i+1,r[0],r[1]||'','Propio',r[2],String(r[3]),'','Sí','']));
+  const TIPO={'Agua Mística':'Agua','Antiderretir':'Hielo','Arena Fina':'Tierra','Carbón':'Fuego','Cinturón Negro':'Lucha','Colmillo Dragón':'Dragon','Cuchara Torcida':'Psiquico','Flecha Venenosa':'Veneno','Gafas de Sol':'Siniestro','Hechizo':'Fantasma','Imán':'Electrico','Pañuelo Seda':'Normal','Pico Afilado':'Volador','Piedra Dura':'Roca','Polvo Plata':'Bicho','Semilla Milagro':'Planta','Revestimiento Metálico':'Acero','Incienso Marino':'Agua','Incienso Acua':'Agua','Incienso Floral':'Planta','Incienso Roca':'Roca','Incienso Raro':'Psiquico'};
+  for(const [n,t] of Object.entries(TIPO)) eq(n,['Siempre','','cdOwn:'+t,1]);
+  eq('Cinta Elección',['Siempre','','cdOwn:clase:Fisico',2]); eq('Gafas Elección',['Siempre','','cdOwn:clase:Especial',2]); eq('Pañuelo Elección',['Siempre','','vel',10]);
+  eq('Vidasfera',['Siempre','','cdOwn:todos',1]); eq('Chaleco Asalto',['Siempre','','attr:SAB',2]);
+  eq('Restos',['Fin de ronda','','curaPS','1/16']); eq('Casco Dentado',['Al recibir un ataque','recibe:contacto','dañoAtacante','1/6']);
+  eq('Periscopio',['Siempre','','ic',1]); eq('Lupa',['Siempre','','prec',5]); eq('Piedra Pómez',['Siempre','','vel',5]); eq('Incienso Suave',['Siempre','','evasion',10]);
+  eq('Banda Focus',['Mientras se cumpla','psMax','sobrevive1PS','—']); eq('Gafas Protectoras',['Siempre','','inmuneCat:Polvo','—']); }
+/* objeto que lleva equipado un Pokémon (en la Mochila de su Entrenador) */
+function objEquipado(f){ if(!f||f.tipo!=='P'||!f.entrenador) return null; const K=condKeyOf(f); const id=K?K.split('|')[2]:''; if(!id) return null;
+  const tr=entrenadorDe(f,K||undefined); return tr?(tr.mochila||[]).find(it=>it.eq===id&&it.obj)||null:null; }
+const objRows=f=>{ const it=objEquipado(f); return it?(OBJ_EQ.get(String(it.obj).trim().toLowerCase())||[]):[]; };
+/* Efectos al usar: para = P (Pokémon), E (Entrenador) o * · combate = se puede usar con Comandar › Usar Objeto */
+const OBJ_USO=new Map();
+{ const u=(n,para,combate,fx)=>OBJ_USO.set(n.toLowerCase(),{n,para,combate,fx});
+  for(const [n,v] of [['Poción',20],['Superpoción',60],['Hiperpoción',120],['Agua Fresca',30],['Refresco',50],['Limonada',70],['Leche Mu-Mu',100],['Baya Aranja',10]]) u(n,'P',true,{ps:v});
+  u('Poción Máxima','P',true,{ps:'max'}); u('Restaurar Todo','P',true,{ps:'max',cura:'todos'}); u('Baya Zidra','P',true,{ps:'1/4'});
+  for(const n of ['Higog','Wiki','Ango','Guaya','Pabaya']) u('Baya '+n,'P',true,{ps:'1/3'});
+  u('Revivir','P',true,{revive:'1/2'}); u('Revivir Máximo','P',true,{revive:'max'});
+  for(const [n,e] of [['Antídoto','Envenenado'],['Antiparalizador','Paralizado'],['Antihielo','Congelado'],['Antiquemar','Quemado'],['Despertar','Adormilado'],['Baya Zreza','Paralizado'],['Baya Atania','Adormilado'],['Baya Meloc','Envenenado'],['Baya Safre','Quemado'],['Baya Perasi','Congelado'],['Baya Caquic','Infestado']]) u(n,'P',true,{cura:e});
+  u('Cura Total','P',true,{cura:'todos'}); u('Baya Ziuela','P',true,{cura:'todos'});
+  u('Polvo Energía','P',true,{ps:60,vinc:-1}); u('Raíz Energía','P',true,{ps:120,vinc:-1}); u('Polvo Curación','P',true,{cura:'todos',vinc:-1}); u('Hierba Revivir','P',true,{revive:'max',vinc:-1});
+  u('Éter','P',true,{rep0:1}); u('Baya Zanama','P',true,{rep0:1}); u('Éter Máximo','P',true,{rep0:1,repLibre:1}); u('Elixir','P',true,{sinRep:3}); u('Elixir Máximo','P',true,{sinRep:'combate'});
+  u('PP Más','P',false,{movRep:'menos'}); u('PP Máximos','P',false,{movRep:'sin'});
+  for(const [n,a] of [['Ataque X','FUE'],['Defensa X','VIT'],['Especial X','ENE'],['Protección Especial','SAB'],['Velocidad X','DES']]) u(n,'P',true,{attr:{[a]:2}});
+  u('Precisión X','P',true,{prec:2}); u('Directo','P',true,{ic:2});
+  for(const [n,a] of [['Calcio','ENE'],['Carburante','DES'],['Hierro','VIT'],['Más PS','CAR'],['Proteínas','FUE'],['Zinc','SAB']]) u(n,'P',false,{attr:{[a]:1}});
+  for(const [n,a] of [['Grana','CAR'],['Algama','FUE'],['Ispero','VIT'],['Meluce','ENE'],['Uvav','SAB'],['Tamate','DES']]) u('Baya '+n,'P',false,{vinc:1,attr:{[a]:-1}});
+  u('Vendas limpias','E',true,{ps:4}); u('Apósito adhesivo','E',true,{ps:1}); u('Desinfectante','E',true,{cura:'todos'});
+  for(const n of ['Cápsula habilidad','Chapa plateada','Golosina entrenamiento (unidad)']) u(n,'P',false,{manual:1});
+  for(const n of ['Repelente','Superrepelente','Repelente Máximo','Cuerda Huida']) u(n,'*',false,{manual:1});
+  u('Poké Muñeco','*',true,{manual:1}); }
+const usoDe=nombre=>OBJ_USO.get(String(nombre||'').trim().toLowerCase())||null;
+/* Aplica el efecto de un objeto a una ficha (la modifica) y devuelve el texto del resultado */
+function aplicarObjeto(spec,f,mv){ const fx=spec.fx, out=[], c=calc(f), ps=c.ps, act=c.act, nm=charName(f);
+  if(fx.revive){ if(act>0) return `${nm} no está debilitado: ${spec.n} no tiene efecto.`; const v=fx.revive==='max'?ps:Math.floor(ps/2); f.dano=ps-v; out.push(`se reanima con ${v} PS`); }
+  else if(fx.ps){ if(act<=0) return `${nm} está debilitado: ${spec.n} no tiene efecto (necesita Revivir).`;
+    if(num(f.dano)<=0&&!fx.cura) return `${nm} tiene los PS completos: ${spec.n} no tiene efecto.`;
+    const v=fx.ps==='max'?num(f.dano):fx.ps==='1/4'?Math.floor(ps/4):fx.ps==='1/3'?Math.floor(ps/3):num(fx.ps); const real=Math.min(num(f.dano),Math.max(0,v)); f.dano=num(f.dano)-real; out.push(`recupera ${real} PS`); }
+  if(fx.cura){ const l=[f.estF,f.estM].filter(Boolean); const q=fx.cura==='todos'?l:l.filter(e=>e===fx.cura);
+    if(q.length){ q.forEach(e=>{ if(f.estF===e){ f.estF=''; if(f.estFx) delete f.estFx.F; } if(f.estM===e){ f.estM=''; if(f.estFx) delete f.estFx.M; } }); out.push(`se cura de ${q.join(' y ')}`); }
+    else out.push(fx.cura==='todos'?'no tenía estados alterados':`no estaba ${fx.cura}`); }
+  if(fx.rep0){ f.rep={}; out.push('su contador de repeticiones vuelve a 0'); }
+  if(fx.repLibre){ f.repLibre=1; out.push('su siguiente repetición no penaliza'); }
+  if(fx.sinRep){ f.sinRepHasta=fx.sinRep==='combate'?9999:num(CB.ronda)+fx.sinRep-1; out.push(fx.sinRep==='combate'?'no sufre penalización por repetir en el resto del combate':`no sufre penalización por repetir durante ${fx.sinRep} rondas`); }
+  if(fx.movRep){ const m=atkById.get(mv); if(!m) return `Elige un movimiento para ${spec.n}.`; f.movRep={...(f.movRep||{}),[mv]:fx.movRep}; out.push(fx.movRep==='sin'?`${m[1]} ya no sufre penalización por repetición`:`${m[1]} penaliza la repetición como un movimiento de 1 Rango menos`); }
+  if(fx.attr) for(const [k,v] of Object.entries(fx.attr)){ const d=bumpAttr(f,k,v); out.push(`${d?sg(d):'±0'} ${k}`); }
+  if(fx.prec){ const p0=num(f.prec), p1=clamp(p0+fx.prec,-6,6); f.prec=p1; out.push(`Precisión ${sg((p1-p0)*5)} %`); }
+  if(fx.ic){ f.ic=clamp(num(f.ic)+fx.ic,0,5); out.push(`+${fx.ic} al Índice de Crítico`); }
+  if(fx.vinc){ f.vinculo=clamp(num(f.vinculo)+fx.vinc,-10,10); out.push(`Vínculo ${sg(fx.vinc)} (queda en ${f.vinculo})`); }
+  if(fx.manual) out.push('aplica el efecto a mano');
+  return `${nm}: ${out.join(', ')}.`; }
+/* objetivos posibles de un objeto: el Entrenador y su equipo (no los de la caja) */
+function usoObjetivos(spec,ref,tf){ const l=[]; if(spec.para!=='P') l.push({id:'E',f:tf,ref}); if(spec.para!=='E') teamOf(ref).filter(p=>p.f.lugar!=='caja').forEach(p=>l.push({id:p.id,f:p.f,ref:{src:ref.src,uid:ref.uid,id:p.id}})); return l; }
+/* Usar un objeto de la Mochila del Entrenador abierto; gasta 1 unidad */
+function usarObjeto(i,tid,mv){ const ref=S.open, f=structuredClone(S.cur); const it=(f.mochila||[])[i]; if(!it||num(it.cant)<1) return; const spec=usoDe(it.obj); if(!spec) return;
+  const obj=usoObjetivos(spec,ref,f).find(o=>o.id===tid); if(!obj) return;
+  let txt=''; if(obj.id==='E') txt=aplicarObjeto(spec,f,mv);
+  else { const k=refKey(obj.ref); if(inCombat(k)) txt=mutate(k,pf=>aplicarObjeto(spec,pf,mv)); else { const pf=structuredClone(obj.f); txt=aplicarObjeto(spec,pf,mv); saveFicha(obj.ref,pf); } }
+  if(/no tiene efecto|Elige un movimiento/.test(txt)){ showBanner(txt); return; }
+  it.cant=num(it.cant)-1; if(it.cant<=0){ f.mochila.splice(i,1); }
+  saveFicha(ref,f); logRoll(charName(f),`Usa ${spec.n}: ${txt}`,null); showBanner(`${spec.n}: ${txt}`); T.useI=null; renderSheet(); }
+function usoHTML(i,it,span){ const spec=usoDe(it.obj); const objs=usoObjetivos(spec,S.open,S.cur); if(!objs.some(o=>o.id===T.useT)) T.useT=(objs[0]||{}).id||'';
+  const sel=objs.find(o=>o.id===T.useT); const mvs=spec.fx.movRep&&sel?(sel.f.moves||[]).map(id=>atkById.get(id)).filter(Boolean):[];
+  return `<tr class="fx"><td colspan="${span}"><div class="row" style="gap:8px;align-items:end;flex-wrap:wrap">
+    <label class="f" style="min-width:200px">Usar ${esc(it.obj)} en<select id="useT">${objs.map(o=>`<option value="${esc(o.id)}"${o.id===T.useT?' selected':''}>${esc(charName(o.f))}</option>`).join('')}</select></label>
+    ${spec.fx.movRep?`<label class="f" style="min-width:200px">Movimiento<select id="useM">${mvs.map(m=>`<option value="${m[0]}"${m[0]===T.useM?' selected':''}>${esc(m[1])}</option>`).join('')}</select></label>`:''}
+    <button class="btn pri" data-act="useYes" data-i="${i}" ${objs.length?'':'disabled'}>Usar</button><button class="btn" data-act="useNo">Cancelar</button>
+    <span class="note">${esc(it.efecto||'')}</span></div></td></tr>`; }
 const HFX=new Map(); for(const r of (D.habFx||[])) if(r[8]==='Sí'||r[8]==='Botón'){ if(!HFX.has(r[0])) HFX.set(r[0],[]); HFX.get(r[0]).push(r); }
 const hval=v=>{ const n=Number(String(v??'').replace(/−/g,'-').replace(',','.').replace(/^×/,'').replace(/\s*%$/,'')); return Number.isFinite(n)?n:0; };
 const habOf=f=>f&&f.tipo==='P'?(f.estM==='Mareado'?'Tumbos':(f.habilidad||'')):''; /* Mareado reemplaza la Habilidad por Tumbos mientras dure */
-const habRowsOf=(f,acts)=>(HFX.get(habOf(f))||[]).filter(r=>!acts||acts.includes(r[2]));
+const habRowsOf=(f,acts)=>[...(HFX.get(habOf(f))||[]),...objRows(f)].filter(r=>!acts||acts.includes(r[2])); /* + el objeto equipado (OBJ_EQ) */
 const PASIVA=['Siempre','Mientras se cumpla'];
 function habCondOk(c,f,key,x){ return !c||String(c).split('+').every(p=>habCond1(p,f,key,x||{})); }
 function habCond1(c,f,key,x){ let m;
@@ -644,12 +722,12 @@ function mochilaHTML(f){
   /* filtros de la Tienda (según el ítem de la Tienda con el mismo nombre) y orden por columna o arrastrando */
   const F=T.bfl, info=items.map(it=>preDe(it.obj));
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b),'es'); });
-  const conInfo=info.filter(Boolean); const etapas=ord(conInfo.map(r=>r[0]),[]);
-  if(F.e&&!etapas.includes(F.e)) F.e=''; const grupos=ord(conInfo.filter(r=>!F.e||r[0]===F.e).map(r=>r[2]),[]); if(F.g&&!grupos.includes(F.g)) F.g='';
+  const conInfo=info.filter(Boolean); const etapas=ord(conInfo.flatMap(etapasDe),[]);
+  if(F.e&&!etapas.includes(F.e)) F.e=''; const grupos=ord(conInfo.filter(r=>!F.e||etapasDe(r).includes(F.e)).flatMap(r=>gruposDe(r,F.e)),[]); if(F.g&&!grupos.includes(F.g)) F.g='';
   const rarezas=ord(conInfo.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(conInfo.map(r=>r[7]).filter(v=>v&&v!=='-'),[]);
   const catF=F.e||F.g||F.rar||F.gas; const hayF=catF;
   let vis=items.map((it,i)=>i).filter(i=>{ const r=info[i], it=items[i]; if(catF&&!r) return false;
-    if(r&&((F.e&&r[0]!==F.e)||(F.g&&r[2]!==F.g)||(F.rar&&r[6]!==F.rar)||(F.gas&&r[7]!==F.gas))) return false;
+    if(r&&((F.e&&!etapasDe(r).includes(F.e))||(F.g&&!gruposDe(r).includes(F.g))||(F.rar&&r[6]!==F.rar)||(F.gas&&r[7]!==F.gas))) return false;
     return true; });
   const st=T.bsort, sorted=st.col!==''&&st.dir;
   if(sorted){ const k=st.col; const val=i=>k==='eq'?((holders.find(x=>x[0]===items[i].eq)||[,''])[1]):items[i][k];
@@ -663,13 +741,13 @@ function mochilaHTML(f){
     <label class="f">Tipo de gasto<select data-bfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
 </div>`:''}
     <div class="tw"><table class="moch"><thead><tr>${S.ro?'':'<th><span class="sr">Ordenar</span></th>'}${sortHead(BCOLS,st,'bsort')}${S.ro?'':'<th></th>'}</tr></thead><tbody class="dlist" data-scope="moch">`;
-  vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto"></td>
+  vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto">${it.eq?`<span class="pill eqpill" title="Lo lleva ${esc((holders.find(x=>x[0]===it.eq)||[,''])[1])}">Equipado${OBJ_EQ.has(String(it.obj).trim().toLowerCase())?' · automático':''}</span>`:''}</td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${lk} aria-label="Peso en kg"></td>
     <td style="width:110px"><span class="money"><input type="number" min="0" data-f="mochila.${i}.precio" value="${num(it.precio)}" ${lk} aria-label="Precio unitario en Pokepesos"><i aria-hidden="true">₽</i></span></td>
     <td style="min-width:200px"><input data-f="mochila.${i}.efecto" value="${esc(it.efecto)}" ${lk} aria-label="Efecto"></td>
-    ${S.ro?'':`<td><button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>`; });
+    ${S.ro?'':`<td style="white-space:nowrap">${usoDe(it.obj)&&num(it.cant)>0?`<button class="btn sm" data-act="useOpen" data-i="${i}" aria-expanded="${T.useI===i}">Usar</button> `:''}<button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>${T.useI===i&&usoDe(it.obj)?usoHTML(i,it,8):''}`; });
   if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
   const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
   h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. El objeto que lleva equipado un Pokémon no cuenta en el peso. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
@@ -1309,7 +1387,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, pq:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, pq:'', useI:null, useT:'', useM:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
@@ -1534,6 +1612,7 @@ function toolHab(){
 // precios: 0 Etapa,1 ID grupo,2 Grupo,3 ID ítem,4 Ítem,5 Precio,6 Rareza,7 Tipo de gasto,8 Acceso por Rango
 const PCOLS=[['Ítem',4],['Precio',5],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
 const RAREZAS=['Común','Poco común','Raro','Muy raro','Único'];
+
 /* Comprar desde la Tienda: elige el Entrenador, suma el ítem a su Mochila y descuenta el precio */
 function compradores(){ const l=[]; const add=(src,uid,lbl)=>poolOf(src,uid).filter(x=>x.f.tipo==='E').forEach(x=>l.push({k:`${src}|${uid||''}|${x.id}`,n:`${charName(x.f)}${lbl}`,f:x.f}));
   if(S.uid) add('jug',S.uid,''); if(isMaster()) add('master',null,' (Master)'); return l; }
@@ -1565,15 +1644,15 @@ function toolPre(){
   const F=T.pfl; const all=(D.pre||[]).filter(r=>vistaVe('pre',r[3]));
   const etapas=[...new Set(all.map(r=>r[0]))];
   if(F.e==null||(F.e!==''&&!etapas.includes(F.e))) F.e=etapas[0]||'';   /* '' = Todo */
-  const enE=all.filter(r=>F.e===''||r[0]===F.e); const grupos=[...new Set(enE.map(r=>r[2]))];
+  const enE=all.filter(r=>F.e===''||etapasDe(r).includes(F.e)); const grupos=[...new Set(enE.flatMap(r=>gruposDe(r,F.e)))]; /* un ítem puede estar en más de un grupo */
   if(F.g==null||(F.g!==''&&!grupos.includes(F.g))) F.g=grupos[0]||'';
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b)); });
   const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
   const mn=F.min===''||F.min==null?null:num(F.min), mx=F.max===''||F.max==null?null:num(F.max);
   const pq=deacc(String(T.pq||'').trim().toLowerCase()); /* buscador: nombre o efecto */
-  const res=sortRows(enE.filter(r=>(!pq||deacc(`${r[4]} ${r[9]}`.toLowerCase()).includes(pq))&&(F.g===''||r[2]===F.g)&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
+  const res=sortRows(enE.filter(r=>(!pq||deacc(`${r[4]} ${r[9]}`.toLowerCase()).includes(pq))&&(F.g===''||gruposDe(r).includes(F.g))&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
     &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
-  const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8]];
+  const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8],['Uso',12]];
   let h=`<div class="card"><h2>Tienda</h2><div class="grid g4">
     <label class="f" style="grid-column:1/-1">Buscar<input id="pq" type="search" value="${esc(T.pq||'')}" placeholder="Nombre o efecto, p. ej. Vidrio" aria-label="Buscar ítems por nombre o efecto"></label>
     <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
@@ -1587,7 +1666,7 @@ function toolPre(){
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
   const tit=F.g!==''?`${esc(F.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span>`:F.e!==''?`${esc(F.e)} · todos los grupos`:'Todos los ítems';
   h+=`<div class="card"><h2>${tit}</h2>${res.length?`<div class="tw"><table class="mtable"><thead><tr>${sortHead(cols,T.psort,'psort')}${S.canWrite?'<th><span class="sr">Comprar</span></th>':''}</tr></thead><tbody>`:'<p class="note">Ningún ítem cumple los filtros.</p>'}`;
-  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td>${F.g===''?`<td>${esc(r[2])}</td>`:''}${F.e===''?`<td>${esc(r[0])}</td>`:''}<td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+' ₽':esc(r[5]??'—')}</td><td class="num">${typeof r[10]==='number'?String(r[10]).replace('.',',')+' kg':'—'}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td>${S.canWrite?`<td>${typeof r[5]==='number'&&r[7]!=='No venta'?`<button class="btn sm" data-prebuy="${esc(r[3])}" aria-expanded="${T.pbuy===r[3]}">Comprar</button>`:''}</td>`:''}</tr>${T.pbuy===r[3]?compraHTML(r,cols.length+(S.canWrite?1:0)):''}${T.popen===r[3]?`<tr class="fx"><td colspan="${cols.length+(S.canWrite?1:0)}">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}</td></tr>`:''}`;
+  for(const r of res) h+=`<tr class="main"><td>${vistaBtn('pre',r[3])}<button class="linkbtn" data-preopen="${esc(r[3])}" aria-expanded="${T.popen===r[3]}"><b>${esc(r[4])}</b></button></td>${F.g===''?`<td>${esc(r[2])}</td>`:''}${F.e===''?`<td>${esc(r[0])}</td>`:''}<td class="num">${typeof r[5]==='number'?r[5].toLocaleString('es-CL')+' ₽':esc(r[5]??'—')}</td><td class="num">${typeof r[10]==='number'?String(r[10]).replace('.',',')+' kg':'—'}</td><td>${esc(r[6]||'—')}</td><td>${esc(r[7]||'—')}</td><td>${r[8]&&r[8]!=='—'?rankChip(r[8]):'—'}</td><td class="usos">${usoTags(r).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')||'—'}</td>${S.canWrite?`<td>${typeof r[5]==='number'&&r[7]!=='No venta'?`<button class="btn sm" data-prebuy="${esc(r[3])}" aria-expanded="${T.pbuy===r[3]}">Comprar</button>`:''}</td>`:''}</tr>${T.pbuy===r[3]?compraHTML(r,cols.length+(S.canWrite?1:0)):''}${T.popen===r[3]?`<tr class="fx"><td colspan="${cols.length+(S.canWrite?1:0)}">${r[9]&&r[9]!=='-'?esc(r[9]):'<span class="note">Efecto por definir.</span>'}${otrosGr(r).length?`<div class="note">También en: ${otrosGr(r).map(id=>esc(GRUPOS.get(id)[1])).join(', ')}</div>`:''}</td></tr>`:''}`;
   return h+(res.length?`</tbody></table></div>`:'')+`</div>`;
 }
 // rasgos: 0 nombre,1 M/D,2 categoría,3 valor,4 aplicación,5 efecto,6 incompatible
@@ -1749,6 +1828,8 @@ function bindTool(){
   on('g-go','click',()=>{generate();renderSheet();}); on('g-go2','click',()=>{generate();renderSheet();});
   on('mq','change',e=>{T.q=e.target.value;renderSheet();});
   on('hq','change',e=>{T.hq=e.target.value;renderSheet();});
+  on('useT','change',e=>{ T.useT=e.target.value; T.useM=''; renderSheet(); });
+  on('useM','change',e=>{ T.useM=e.target.value; });
   on('pq','change',e=>{ T.pq=e.target.value; if(T.pq.trim()){ T.pfl.e=''; T.pfl.g=''; } renderSheet(); const i=$('#pq'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }); /* al buscar, Etapa y Grupo pasan a «Todo» */ on('rq','change',e=>{T.rq=e.target.value;renderSheet();});
   document.querySelectorAll('[data-pfl]').forEach(el=>el.addEventListener('change',e=>{ const k=e.target.dataset.pfl; T.pfl[k]=e.target.value; if(k==='e') T.pfl.g=''; renderSheet(); }));
   document.querySelectorAll('[data-hfl]').forEach(el=>el.addEventListener('change',e=>{T.hfl[e.target.dataset.hfl]=e.target.value; renderSheet();}));
@@ -1851,8 +1932,9 @@ function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
   const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
   const sinRep=hkOf(c.em,/^sinRepeticion$/), menos=hkOf(c.em,/^repMenos$/).reduce((a,h)=>a+(hval(h.v)||1),0); /* Encadenado: no penaliza; Vistalince: penaliza como un movimiento de 1 Rango menos (mínimo Starter) */
-  const RK=Object.keys(PEN), nivPen=RK[Math.max(0,RK.indexOf(mi.m[5])-menos)]||mi.m[5];
-  const pen = rec||sinRep.length?0:n*(PEN[nivPen]||0);
+  const mr=(f.movRep||{})[mv], libre=(f.repLibre&&n>0)||(f.sinRepHasta!=null&&num(f.sinRepHasta)>=num(CB.ronda)); /* Éter Máximo, Elixir y PP Más/Máximos */
+  const RK=Object.keys(PEN), nivPen=RK[Math.max(0,RK.indexOf(mi.m[5])-menos-(mr==='menos'?1:0))]||mi.m[5];
+  const pen = rec||sinRep.length||libre||mr==='sin'?0:n*(PEN[nivPen]||0);
   const od=f.orden||null; const prec=clamp(mi.prec-pen+(od&&od.k==='apunta'?num(od.v):0),0,100);
   let ic=clamp(num(f.ic)+num(c.em.ic)+(hasCat(mi.m,'Preciso')?1:0)+(od&&od.k==='critico'?num(od.v):0),0,5);
   let critR=D.crit[ic]; let reR=typeof mi.m[12]==='number'?mi.m[12]:null;
@@ -1994,6 +2076,7 @@ function habFinRonda(f,key,name,lines){ let ch=false;
   for(const r of habRowsOf(f,['Fin de ronda'])){ if(!habCondOk(r[3],f,key,{})) continue; const k=r[5]; let mm;
     if(r[7]&&!/^attr/.test(k)&&d(100)>hval(r[7])){ continue; }
     if((mm=/^attr:(\w+)$/.exec(k))){ const n=habAttr(f,mm[1],hval(r[6]),r[0]); lines.push({k:'',t:n}); ch=true; }
+    else if(k==='curaPS'&&/^1\/\d+$/.test(String(r[6]))){ const c0=calc(f), v=Math.max(1,Math.floor(c0.ps/Number(String(r[6]).split('/')[1]))), real=Math.min(v,num(f.dano)); if(real>0&&c0.act>0){ f.dano=num(f.dano)-real; lines.push({k:'ok',t:`${name}: ${r[0]}, recupera ${real} PS.`}); ch=true; } }
     else if(k==='liberaEst'&&(f.estF||f.estM)){ lines.push({k:'ok',t:`${name}: ${r[0]}, se libera de ${[f.estF,f.estM].filter(Boolean).join(' y ')}.`}); f.estF=''; f.estM=''; f.estFx={}; ch=true; } }
   if(f.estM==='Adormilado') for(const y of combatants()){ if(y.key===key||aliados(y.key,key)) continue;
     for(const r of habRowsOf(y.f,['Fin de ronda'])) if(r[5]==='pierdePS'&&r[4]==='Rivales'){ const rr=rollResid(y.f.rango); f.dano=num(f.dano)+rr.t; ch=true; lines.push({k:'ko',t:`${name}: ${r[0]} de ${charName(y.f)}, ${rr.txt} = ${rr.t} de daño.`}); } }
@@ -2136,6 +2219,13 @@ function cmdDif(x){ const riv=combatants().filter(y=>!aliados(y.key,x.key)&&!(y.
   const rk=best&&DIF_RANGO[best.f.rango]?best.f.rango:'Starter'; const [n,v]=DIF_RANGO[rk]; return {n,v,rk,by:best?charName(best.f):''}; }
 const ORDEN_TXT=o=>o.k==='apunta'?`−${o.v} a su tirada de Precisión`:o.k==='esquiva'?`−${o.v} a su tirada de Esquiva o Temple`:o.k==='critico'?`+${o.v} al Índice de Crítico`:`+1 etapa de Velocidad (+${o.v} ft)`;
 const misPokemon=x=>combatants().filter(y=>y.f.tipo==='P'&&y.src===x.src&&y.uid===x.uid&&(!y.f.entrenador||y.f.entrenador===x.id));
+/* Comandar › Usar Objeto: objetos de su Mochila con efecto usable en combate, y a quién se los da (él o sus Pokémon en combate) */
+function cmdObjetos(x){ return (x.f.mochila||[]).map((it,i)=>({it,i,spec:usoDe(it.obj)})).filter(o=>o.spec&&o.spec.combate&&num(o.it.cant)>0); }
+function cmdObjDest(x,spec){ const l=[]; if(spec.para!=='P') l.push(x); if(spec.para!=='E') l.push(...misPokemon(x)); return l; }
+function cmdObjHTML(x){ const os=cmdObjetos(x); if(!os.length) return '<div class="note">No tiene objetos usables en combate en su Mochila.</div>';
+  if(!os.some(o=>o.i===CBU.objI)) CBU.objI=os[0].i; const sel=os.find(o=>o.i===CBU.objI); const ds=cmdObjDest(x,sel.spec); if(!ds.some(y=>y.key===CBU.objT)) CBU.objT=(ds[0]||{}).key||'';
+  return `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px"><label class="mini">Objeto <select data-cmdobj>${os.map(o=>`<option value="${o.i}"${o.i===CBU.objI?' selected':''}>${esc(o.it.obj)} (${num(o.it.cant)})</option>`).join('')}</select></label>
+    <label class="mini">Para <select data-cmdobjt>${ds.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.objT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label><span class="note">${esc(sel.it.efecto||'')}</span></div>`; }
 function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||= {};
   if(!pk.some(y=>y.key===CBU.cmdT)) CBU.cmdT=pk[0]?pk[0].key:'';
   const dif=cmdDif(x);
@@ -2145,7 +2235,7 @@ function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||
     return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${need&&!pk.length?'disabled':''}>${esc(o[0])}</button>
       ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
       <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b>${ex.why.length?` <span class="note">(${esc(ex.why.join(', '))})</span>`:''}</span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
-      <div class="mvfx">${esc(o[3])}</div></div>`; }).join('')+`</div></div>`;
+      <div class="mvfx">${esc(o[3])}</div>${o[4]==='obj'?cmdObjHTML(x):''}</div>`; }).join('')+`</div></div>`;
   return h; }
 function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; if(!o) return;
   const orden=!!ORDEN_FIJA[o[4]], need=orden||!o[4]; const y=combatant(CBU.cmdT); if(need&&!y) return;
@@ -2154,7 +2244,14 @@ function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.t
     const roll=`1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''} = ${tot}`;
     if(o[4]==='obj'){ const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v);
       steps.push({k:ok?'ok':'ko',t:`${roll} contra ${dif.n} (${dif.v}) → ${ok?'éxito':'falla'}${r===20?' (20 natural)':r===1?' (1 natural)':''}`});
-      steps.push({k:ok?'ok':'ko',t:ok?'El Entrenador usa un objeto de su mochila.':'El rival se antepone al Entrenador sin dar tiempo de usarlo.'});
+      const os=cmdObjetos(x), ob=os.find(q=>q.i===CBU.objI), dest=ob&&cmdObjDest(x,ob.spec).find(y=>y.key===CBU.objT);
+      if(ok&&ob&&dest){ let txt=''; const gasta=tf=>{ const it=(tf.mochila||[])[ob.i]; if(it){ it.cant=num(it.cant)-1; if(it.cant<=0) tf.mochila.splice(ob.i,1); } };
+        const nada=t=>/no tiene efecto/.test(t);
+        if(dest.key===x.key) mutate(x.key,tf=>{ txt=aplicarObjeto(ob.spec,tf,''); if(!nada(txt)) gasta(tf); });
+        else { txt=mutate(dest.key,pf=>aplicarObjeto(ob.spec,pf,'')); if(!nada(txt)) mutate(x.key,gasta); }
+        if(nada(txt)) txt+=' No se gasta.';
+        steps.push({k:'ok',t:`Usa ${ob.it.obj}. ${txt}`}); }
+      else steps.push({k:ok?'ok':'ko',t:ok?'El Entrenador usa un objeto de su mochila (elige el objeto en Comandar para aplicarlo solo).':'El rival se antepone al Entrenador sin dar tiempo de usarlo; no gasta el objeto.'});
       short=`${o[0]}: ${roll} vs ${dif.v} · ${ok?'éxito':'falla'}`; }
     else if(orden){ const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v); const k=o[4], v=ORDEN_FIJA[k];
       steps.push({k:ok?'ok':'ko',t:`${roll} contra ${dif.n} (${dif.v}) → ${ok?'éxito':'falla'}${r===20?' (20 natural)':r===1?' (1 natural)':''}`});
@@ -2235,7 +2332,7 @@ function doAttack(){
         if(cn.kind==='causante') steps.push({k:'wa',t:`${cn.est}: la tirada (${r}) supera ${cn.thr}, no puede atacar a quien se lo causó.`}); }
       else steps.push({k:'',t:`${cn.est}: la tirada (${r}) no supera ${cn.thr}, actúa con normalidad.`}); } }
   const res=[];
-  const nf=structuredClone(x.f); CKEY.set(nf,x.key); nf.rep={mv:mvId,n:ai.n+1}; if(nf.oculto) delete nf.oculto; /* al actuar sale de bajo tierra, del agua o del aire */
+  const nf=structuredClone(x.f); CKEY.set(nf,x.key); nf.rep={mv:mvId,n:ai.n+1}; if(nf.repLibre&&ai.n>0) delete nf.repLibre; if(nf.oculto) delete nf.oculto; /* al actuar sale de bajo tierra, del agua o del aire */
   const tx=String(m[11]||''); let recarga=false;
   if(nf.orden&&nf.orden.k!=='esquiva'){ steps.splice(1,0,{k:'ok',t:`Orden ${nf.orden.n} de ${nf.orden.by}: ${ORDEN_TXT(nf.orden)} (se usa en este movimiento).`}); delete nf.orden; }
   let selfNow=false;
@@ -2287,7 +2384,7 @@ function habAlGolpear(L,z,t,A,m,act0,act1,ps){ const out=[]; const dmg=num(z.val
     if(r[7]&&d(100)>hval(r[7])) continue;
     if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)&&z.key); }); if(n) out.push(n); }
     else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${charName(A.f)} ${n}`); }
-    else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
+    else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):v==='1/6'?Math.floor(pa/6):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
   if(dmg&&m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
     if(d(100)>hval(r[7]||100)) continue; const e=pick(mm[1].split('/')); let n=''; mutate(z.key,f=>{ n=giveEstado(f,e,{rank:A.f.rango||'Starter',by:L.byKey},false); }); if(n) out.push(`${r[0]}: ${n}`); }
   if(x.ko) for(const r of habRowsOf(A.f,['Al debilitar'])){ const mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(r[5]); if(!mm) continue; let n=''; mutate(L.byKey,f=>{ n=habAttr(f,mm[1],hval(r[6]),r[0]); }); if(n) out.push(n); }
@@ -2514,6 +2611,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='dexFor'){ T.dfor=e.target.value; return; }
   if(e.target.dataset.cbf){ cbChange(e.target); return; }
   if('cmdt' in e.target.dataset){ CBU.cmdT=e.target.value; return; }
+  if('cmdobj' in e.target.dataset){ CBU.objI=num(e.target.value); renderSheet(); return; }
+  if('cmdobjt' in e.target.dataset){ CBU.objT=e.target.value; return; }
   if(e.target.dataset.cmda){ (CBU.cmdA ||= {})[e.target.dataset.cmda]=e.target.value; renderSheet(); return; }
   if(e.target.dataset.rs&&CBU.rs){ CBU.rs[e.target.dataset.rs]=e.target.value; CBU.rs.msg=''; return; }
   if(e.target.dataset.cbeq){ const k=e.target.dataset.cbeq; const c=combatant(k); if(c&&canGlove(c)){ const n=num(e.target.value); cbWrite({eq:{[k]:n||null}}); } renderSheet(); return; }
@@ -2611,6 +2710,9 @@ document.addEventListener('click',async e=>{
   else if(act==='copyOpen'){ const c=$('#copyConfirm'); if(!c) return; const ms=misMesas().filter(x=>num(x.id)===MESA||S.open.src!=='master'||S.owner);
     c.innerHTML=`<select id="copyMesaSel" class="btn" aria-label="Mesa de destino">${ms.map(x=>`<option value="${num(x.id)}"${num(x.id)===MESA?' selected':''}>${esc(x.nombre)}${num(x.id)===MESA?' (esta mesa)':''}</option>`).join('')}</select><button class="btn pri" data-act="copyYes">Confirmar</button><button class="btn" data-act="copyNo">Cancelar</button>`; }
   else if(act==='buyYes'){ comprar(a.dataset.id); }
+  else if(act==='useOpen'){ const i=num(a.dataset.i); T.useI=T.useI===i?null:i; T.useM=''; renderSheet(); }
+  else if(act==='useNo'){ T.useI=null; renderSheet(); }
+  else if(act==='useYes'){ const mvSel=$('#useM'); usarObjeto(num(a.dataset.i),T.useT,mvSel?mvSel.value:''); }
   else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
   else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',rar:'',gas:''}); renderSheet(); }
   else if(act==='mochFijarOrden'&&S.cur&&!S.ro){ const ids=[...document.querySelectorAll('tbody[data-scope="moch"] > tr.ditem')].map(x=>num(x.dataset.drag)); const rest=S.cur.mochila.map((_,i)=>i).filter(i=>!ids.includes(i)); S.cur.mochila=[...ids,...rest].map(i=>S.cur.mochila[i]); T.bsort={col:'',dir:0}; commit(true); }
