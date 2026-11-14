@@ -410,3 +410,6 @@ details.cat>summary{font-size:13px;padding:6px 0;border-bottom:1px solid var(--l
 /* Mochila: objeto equipado y etiquetas de uso en la Tienda */
 .eqpill{display:inline-block;margin-top:3px;font-size:10.5px;color:var(--teal);border-color:var(--teal)}
 td.usos .pill{font-size:10.5px;margin:1px 0}
+
+.cardhead{justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.cardhead h2{margin:0}

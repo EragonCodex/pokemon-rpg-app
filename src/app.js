@@ -169,6 +169,7 @@ const GRUPOS=new Map(); (D.pre||[]).forEach(r=>{ if(!GRUPOS.has(r[1])) GRUPOS.se
 const otrosGr=r=>String(r[11]||'').split(',').map(s=>s.trim()).filter(id=>GRUPOS.has(id)&&id!==r[1]);
 const etapasDe=r=>[r[0],...otrosGr(r).map(id=>GRUPOS.get(id)[0])];
 const gruposDe=(r,e)=>[[r[0],r[2]],...otrosGr(r).map(id=>GRUPOS.get(id))].filter(([et])=>!e||et===e).map(([,g])=>g);
+const USO_ORD=['Equipable','Usable','En combate','Permanente','Automático','Captura','Evolutivo','Material','Decoración','Comida','Herramienta','Vestimenta','Montura','Servicio','Objeto clave','Exploración','General'];
 const usoTags=r=>String((r&&r[12])||'').split('·').map(s=>s.trim()).filter(Boolean);
 /* Efectos al equipar: filas con el formato de las Habilidades (el motor de combate ya las aplica) */
 const OBJ_EQ=new Map();
@@ -1387,7 +1388,7 @@ function visibleRefs(){
   return out;
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
-const T = {vopen:{}, pq:'', useI:null, useT:'', useM:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
+const T = {vopen:{}, pq:'', useI:null, useT:'', useM:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:'',uso:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
   dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
@@ -1647,13 +1648,14 @@ function toolPre(){
   const enE=all.filter(r=>F.e===''||etapasDe(r).includes(F.e)); const grupos=[...new Set(enE.flatMap(r=>gruposDe(r,F.e)))]; /* un ítem puede estar en más de un grupo */
   if(F.g==null||(F.g!==''&&!grupos.includes(F.g))) F.g=grupos[0]||'';
   const ord=(arr,ref)=>[...new Set(arr)].sort((a,b)=>{ const x=ref.indexOf(a), y=ref.indexOf(b); return (x<0?99:x)-(y<0?99:y)||String(a).localeCompare(String(b)); });
-  const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']);
+  const rarezas=ord(all.map(r=>r[6]).filter(v=>v&&v!=='-'),RAREZAS), gastos=ord(all.map(r=>r[7]).filter(v=>v&&v!=='-'),[]), rangos=ord(all.map(r=>r[8]).filter(v=>v&&v!=='-'),[...RANGOS,'—']), usos=ord(all.flatMap(usoTags),USO_ORD);
   const mn=F.min===''||F.min==null?null:num(F.min), mx=F.max===''||F.max==null?null:num(F.max);
   const pq=deacc(String(T.pq||'').trim().toLowerCase()); /* buscador: nombre o efecto */
-  const res=sortRows(enE.filter(r=>(!pq||deacc(`${r[4]} ${r[9]}`.toLowerCase()).includes(pq))&&(F.g===''||gruposDe(r).includes(F.g))&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)
+  const res=sortRows(enE.filter(r=>(!pq||deacc(`${r[4]} ${r[9]}`.toLowerCase()).includes(pq))&&(F.g===''||gruposDe(r).includes(F.g))&&(!F.rar||r[6]===F.rar)&&(!F.gas||r[7]===F.gas)&&(!F.ran||r[8]===F.ran)&&(!F.uso||usoTags(r).includes(F.uso))
     &&(mn==null||(typeof r[5]==='number'&&r[5]>=mn))&&(mx==null||(typeof r[5]==='number'&&r[5]<=mx))),T.psort,4);
   const cols=[['Ítem',4],...(F.g===''?[['Grupo',2]]:[]),...(F.e===''?[['Etapa',0]]:[]),['Precio',5],['Peso',10],['Rareza',6],['Tipo de gasto',7],['Acceso por Rango',8],['Uso',12]];
-  let h=`<div class="card"><h2>Tienda</h2><div class="grid g4">
+  const filtros=T.pq||F.min||F.max||F.rar||F.gas||F.ran||F.uso;
+  let h=`<div class="card"><div class="row cardhead"><h2>Tienda</h2><div class="row" style="gap:6px;align-items:center"><span class="pill">${res.length} ítems</span>${filtros?'<button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div><div class="grid g4">
     <label class="f" style="grid-column:1/-1">Buscar<input id="pq" type="search" value="${esc(T.pq||'')}" placeholder="Nombre o efecto, p. ej. Vidrio" aria-label="Buscar ítems por nombre o efecto"></label>
     <label class="f">Etapa<select data-pfl="e">${opts(etapas,F.e,'Todo')}</select></label>
     <label class="f">Grupo<select data-pfl="g">${opts(grupos,F.g,'Todo')}</select></label>
@@ -1662,7 +1664,7 @@ function toolPre(){
     <label class="f">Rareza<select data-pfl="rar">${opts(rarezas,F.rar,'Todas')}</select></label>
     <label class="f">Tipo de gasto<select data-pfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
     <label class="f">Rango<select data-pfl="ran">${opts(rangos,F.ran,'Todos')}</select></label>
-    <div class="f" style="justify-content:end"><span class="pill">${res.length} ítems</span>${T.pq||F.min||F.max||F.rar||F.gas||F.ran?' <button class="btn sm" data-act="preLimpiar">Quitar filtros</button>':''}</div></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
+    <label class="f">Uso<select data-pfl="uso">${opts(usos,F.uso,'Todos')}</select></label></div>${(VLAST.pre=res.map(r=>r[3]),vistaBar('pre',VLAST.pre,'los ítems'))}</div>`;
   if(!etapas.length) return h+'<div class="card"><p class="note">El Master todavía no desbloquea precios.</p></div>';
   const tit=F.g!==''?`${esc(F.g)} <span class="note">${esc(res[0]?res[0][1]:'')}</span>`:F.e!==''?`${esc(F.e)} · todos los grupos`:'Todos los ítems';
   h+=`<div class="card"><h2>${tit}</h2>${res.length?`<div class="tw"><table class="mtable"><thead><tr>${sortHead(cols,T.psort,'psort')}${S.canWrite?'<th><span class="sr">Comprar</span></th>':''}</tr></thead><tbody>`:'<p class="note">Ningún ítem cumple los filtros.</p>'}`;
@@ -2716,7 +2718,7 @@ document.addEventListener('click',async e=>{
   else if(act==='buyNo'){ T.pbuy=''; renderSheet(); }
   else if(act==='mochLimpiar'){ Object.assign(T.bfl,{e:'',g:'',rar:'',gas:''}); renderSheet(); }
   else if(act==='mochFijarOrden'&&S.cur&&!S.ro){ const ids=[...document.querySelectorAll('tbody[data-scope="moch"] > tr.ditem')].map(x=>num(x.dataset.drag)); const rest=S.cur.mochila.map((_,i)=>i).filter(i=>!ids.includes(i)); S.cur.mochila=[...ids,...rest].map(i=>S.cur.mochila[i]); T.bsort={col:'',dir:0}; commit(true); }
-  else if(act==='preLimpiar'){ T.pq=''; Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:''}); renderSheet(); }
+  else if(act==='preLimpiar'){ T.pq=''; Object.assign(T.pfl,{min:'',max:'',rar:'',gas:'',ran:'',uso:''}); renderSheet(); }
   else if(act==='copyNo'){ const c=$('#copyConfirm'); if(c) c.innerHTML=''; }
   else if(act==='copyYes'){ const v=num(($('#copyMesaSel')||{}).value); const c=$('#copyConfirm'); if(c) c.innerHTML=''; if(v) copiarAMesa(v); }
   else if(act==='salir'){ if(window.__salir) window.__salir(); }
