@@ -427,3 +427,4 @@ td.usos .pill{font-size:10.5px;margin:1px 0}
 .cnfx{margin-top:5px;padding-top:5px;border-top:1px dashed var(--line)}
 .items.team2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 @media (max-width:640px){.items.team2{grid-template-columns:1fr}}
+details.glosf>summary{justify-content:flex-start}details.glosf>summary>span{flex:1}

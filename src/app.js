@@ -912,7 +912,7 @@ function renderList(){
   } else if(S.view==='concurso'){
     h+=`<div class="grp"><h3>Participantes</h3><div class="items">${cnParts().map(p=>p.src==='master'&&!isMaster()?`<div class="item"><span class="n">🎀 ${esc(charName(p.f))}</span><span class="s">Master</span></div>`:itemHTML(p)).join('')||'<p class="note">Sin participantes.</p>'}</div></div>`;
   } else if(S.view==='glos'){
-    h+=`<div class="grp"><h3>Glosario</h3><div class="items">${GLOS.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></div>`;
+    h+=`<div class="grp"><h3>Glosario</h3>${glosIndiceHTML()}</div>`;
   } else {
     const tools=[['dex','Pokédex'],['gen','Generador de Pokémon'],['mov','Movimientos'],['hab','Habilidades'],['ras','Méritos y Defectos'],['pre','Tienda'],['dados','Dados'],...(isMaster()?[['bloq','Bloquear Fichas'],['kits','Kits de Recompensas']]:[])];
     h+=`<div class="grp"><h3>Herramientas</h3><div class="items">${tools.map(([k,n])=>`<button class="item" data-tool="${k}" aria-current="${S.tool===k}"><span class="n">${n}</span></button>`).join('')}</div></div>`;
@@ -1379,10 +1379,15 @@ ${tbl(['Llega a','−2 a +2','±3 y ±4','±5 y ±6','±7 y ±8','±9','±10'],[
 ${tbl(['Vínculo','Lo que siente'],VIN_FRASE.map((t,i)=>[String(i-10).replace('-','−'),t]))}`});
 /* el índice del Glosario va en orden alfabético */
 GLOS.push(...cnGlos());
-GLOS.sort((a,b)=>a.t.localeCompare(b.t,'es'));
+/* Índice en carpetas, en el orden del Reglamento (Parte II, Combate, Captura…); lo que no esté en la lista cae en «Otros» */
+const GLOS_ORD=[['El Entrenador y los Pokémon',['naturalezas','vinculo','rasgos','experiencia']],['Combate',['atacar','evasion','colision','comandar','estados','campo','movesp']],['Captura',['captura']],['Concursos',['concurso-pres','concurso-enf']],['Viajes',['monturas']],['Apéndices',['tipos']]];
+{ const pos=new Map(GLOS_ORD.flatMap(([,ids])=>ids).map((id,i)=>[id,i])); GLOS.sort((a,b)=>(pos.has(a.id)?pos.get(a.id):99)-(pos.has(b.id)?pos.get(b.id):99)||a.t.localeCompare(b.t,'es')); }
+function glosIndiceHTML(){ const usados=new Set(GLOS_ORD.flatMap(([,ids])=>ids)); const otros=GLOS.filter(g=>!usados.has(g.id)).map(g=>g.id);
+  return [...GLOS_ORD,...(otros.length?[['Otros',otros]]:[])].map(([n,ids])=>{ const gs=ids.map(id=>GLOS.find(g=>g.id===id)).filter(Boolean); if(!gs.length) return '';
+    return `<details class="fold glosf" open><summary><span>📁 ${esc(n)} <span class="pill">${gs.length}</span></span></summary><div class="items">${gs.map(g=>`<button class="item" data-glos="${g.id}" aria-current="${GLOS_OPEN===g.id}"><span class="n">${g.t}</span></button>`).join('')}</div></details>`; }).join(''); }
 let GLOS_OPEN='';
 const TYPE_ABBR=t=>({Electrico:'ELÉ',Psiquico:'PSÍ',Dragon:'DRA',Siniestro:'SIN',Fantasma:'FAN'}[t]||deacc(t).slice(0,3).toUpperCase());
-function glosHTML(){ return `<p class="note">Elige un tema en el índice para desplegarlo.</p>`+GLOS.map(g=>`<details class="card glos" id="g-${g.id}" ${GLOS_OPEN===g.id?'open':''}><summary>${g.t}</summary>${GLOS_OPEN===g.id?g.h():''}</details>`).join(''); }
+function glosHTML(){ const g=GLOS.find(x=>x.id===GLOS_OPEN); return g?`<div class="card glos"><h2>${g.t}</h2>${g.h()}</div>`:`<div class="card"><h2>Glosario</h2><p class="note">Elige un tema en el índice de la izquierda: aparece aquí.</p></div>`; }
 
 /* ---------- herramientas ---------- */
 function visibleRefs(){
@@ -1588,7 +1593,7 @@ function toolMov(){
       if(A===null||B===null){ if(A===null&&B===null) return x[1].localeCompare(y[1],'es'); return A===null?1:-1; }
       const an=typeof A==='number', bn=typeof B==='number'; let r;
       if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
-  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${vistaBtn('mov',a[0])}<button class="linkbtn" data-movopen="${esc(a[0])}" aria-expanded="${T.mopen===a[0]}"><b>${esc(a[1])}</b></button></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td>${socialChip(a[14])}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr>${T.mopen===a[0]?`<tr class="fx"><td colspan="11"><b>Combate:</b> ${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}${cnFxHTML(a[0]).replace('<div class="cnfx">','<div class="cnfx"><b>Concurso:</b> ')}</td></tr>`:''}`;
+  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${vistaBtn('mov',a[0])}<button class="linkbtn" data-movopen="${esc(a[0])}" aria-expanded="${T.mopen===a[0]}"><b>${esc(a[1])}</b></button></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td>${socialChip(a[14])}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr>${T.mopen===a[0]?`<tr class="fx"><td colspan="11"><b>Combate:</b> ${attrChip(short(a[4]))} ${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}${cnFxHTML(a[0]).replace('<div class="cnfx">','<div class="cnfx"><b>Concurso:</b> ')}</td></tr>`:''}`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
   return h;
 }
@@ -2632,7 +2637,8 @@ function cnSend(up,full){
 }
 function cnWrite(fields,full){ for(const [k,v] of Object.entries(fields)) CN[k]=v; cnSend({...fields},full); }
 function cnWriteU(k,patch){ const f=cnUk(k); CN.u[f]=cnMerge(CN.u[f]||{},patch); cnSend({[f]:CN.u[f]}); }
-function cnRemote(dd){ Object.assign(CN,CN0()); CN.u={}; for(const [k,v] of Object.entries(dd||{})){ if(k.startsWith('u_')) CN.u[k]=v; else if(k in CN) CN[k]=v; } }
+function cnRemote(dd){ Object.assign(CN,CN0()); CN.u={}; for(const [k,v] of Object.entries(dd||{})){ if(k.startsWith('u_')) CN.u[k]=v; else if(k in CN) CN[k]=v; }
+  if(CN.fase===4&&CN.f4&&!CN.f4.armado) setTimeout(cnArmarDuelo,0); }
 const cnIn=k=>CN.parts.includes(k);
 function cnPart(k){ const [src,uid,id]=String(k).split('|'); const ref={src,uid:uid||null,id,key:k};
   const sn=CN.snaps[k]||{}; const mine=src!=='master'||isMaster();
@@ -2695,7 +2701,7 @@ function cnAvanzar(){ if(!isMaster()) return; const f=CN.fase;
     if(f===1) cnWrite({fase:2,out},true);
     else if(f===2){ const base={}, cl={}; CN.parts.forEach(k=>{ base[k]=cnJuegos(k); }); pasan.forEach(k=>{ cl[k]=50; });
       const F={n:CN_R3[cnRi()],ronda:1,base,cl,br:{},fu:0,fl:{},prev:{},next:null,q:null,fin:false,ini:[]}; CN.out=out; F.ini=cnOrden3(F); cnWrite({fase:3,out,f3:F},true); }
-    else { const cl={}; pasan.forEach(k=>{ cl[k]=50; }); cnWrite({fase:4,out,f4:{fin:pasan,n:CN_R4[cnRi()],cl,fu:0,st:{},log:[],undo:null,res:null}},true); } }
+    else { const cl={}; pasan.forEach(k=>{ cl[k]=50; const f=cnUk(k); if(CN.u[f]) CN.u[f]={...CN.u[f],f4:null}; }); cnWrite({fase:4,out,f4:{fin:pasan,n:CN_R4[cnRi()],cl,fu:0,st:{},log:[],undo:null,res:null,armado:false}},true); } }
   CNU.conf=''; render(); }
 
 /* ---- Fase 3 · Enfrentamiento ---- */
@@ -2719,13 +2725,12 @@ function cnResolver3(){ if(!isMaster()||!CN.f3||CN.f3.q||CN.f3.fin) return; cons
     const nm=charName(y.f);
     if(st.nerv[k]&&!eraConc){ H.push({k:'ko',t:`${nm} está Nervioso y pierde su exhibición.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
     const ef0=cefDe(sel.mv); let ef=ef0; if(ef0[0]==='Bis'){ ef=cefN(fl.lastEf&&fl.lastEf!=='Bis'?fl.lastEf:'Gran Exhibición'); }
-    const efN=ef[0], cat=m[14], mi=moveInfo(y.f,sel.mv,calc(y.f)), prec=mi?mi.prec:75, r=d(100), hit=r<=prec, br=num(F.br[k]);
+    const efN=ef[0], cat=m[14], r=d(100), hit=true, br=num(F.br[k]); /* en la Fase 3 el movimiento siempre se realiza: solo cuenta la afinidad */
     const soc=Math.min(100,num(((D.natSoc||{})[y.f.nat]||[])[CN_SOC.indexOf(cat)]||20)+10*br), crit=hit&&r<=10;
     H.push({k:'',t:`${nm} usa ${m[1]} · ${cat}`});
-    La.push(!hit?{k:'ko',t:`d100 [${r}]: falla la Precisión (${prec}%). La exhibición no cuenta.`}
-      :crit?{k:'ok',t:`d100 [${r}]: conecta (Precisión ${prec}%) con crítico de Clamor (10 o menos): el doble.`}
-      :r>soc?{k:'wa',t:`d100 [${r}]: conecta (Precisión ${prec}%), pero supera su afinidad con ${cat} (${soc}%): la mitad del Clamor.`}
-      :{k:'ok',t:`d100 [${r}]: conecta (Precisión ${prec}%) dentro de su afinidad con ${cat} (${soc}%): Clamor completo.`});
+    La.push(crit?{k:'ok',t:`d100 [${r}]: crítico de Clamor (10 o menos), el doble.`}
+      :r>soc?{k:'wa',t:`d100 [${r}]: supera su afinidad con ${cat} (${soc}%), la mitad del Clamor.`}
+      :{k:'ok',t:`d100 [${r}]: dentro de su afinidad con ${cat} (${soc}%), Clamor completo.`});
     let rep=0; if(fl.lastMv===sel.mv&&ef0[0]!=='Bis'&&ef0[0]!=='Incansable'){ fl.rep=num(fl.rep)+1; rep=3+2*(fl.rep-1); } else fl.rep=0;
     const prevK=st.acted[st.acted.length-1]; let gain=0;
     const jam=(t,n)=>{ if(t===k||C[t]===undefined) return; const ft=cnFl(F,t), tn=cnNombre(t);
@@ -2865,6 +2870,14 @@ function cnDuelCol(L,A,t,winKey){ const D4=cnDuelo(A); if(!D4||cnDuenoDe(t)!==D4
   const f0=num(F.fu); F.fu=f0+1; out.push({k:'',t:`Furor ${f0} → ${Math.min(5,F.fu)}.`});
   if(F.fu>=5){ F.fu=0; if(w){ const l=w===k?rv:k; F.cl[l]=Math.max(0,num(F.cl[l])-5); out.push({k:'ok',t:`¡Furor al máximo! ${cnNombre(l)} pierde 5 de Clamor → ${F.cl[l]}.`}); } else out.push({k:'',t:'El Furor llega al máximo en un empate: vuelve a 0 sin efecto.'}); }
   cnGuardar4(F,out.map(l=>l.t),'Colisión'); return out; }
+/* Cuando los dos finalistas eligieron su Pokémon, el Master (su app) arma un combate nuevo desde 0 con ellos */
+const cnSel4=k=>{ const s=cnU(k).f4||{}; return {pk:s.pk||'',ok:!!s.ok}; };
+function cnArmarDuelo(){ const F=CN.f4; if(!isMaster()||!S.canWrite||CN.fase!==4||!F||F.armado||F.res||F.fin.length<2) return;
+  const keys=F.fin.map(k=>{ const s=cnSel4(k), [src,uid]=k.split('|'); return s.ok&&s.pk?`${src}|${uid||''}|${s.pk}`:''; }); if(keys.some(k=>!k||!combatantOrFicha(k))) return;
+  const snaps={}; keys.forEach(k=>{ const x=combatantOrFicha(k); if(x.src==='master') snaps[k]=snapOf(x.f); });
+  cbWrite({parts:keys,snaps,ties:{},last:null,lastFx:{},ronda:1,rondaLog:null,cond:{},voto:null,eq:{},acted:null,tn:null},true);
+  const G=structuredClone(F); G.armado=true; cnWrite({f4:G}); logRoll('Concurso',`Duelo de Gala: ${keys.map(k=>charName(combatantOrFicha(k).f)).join(' contra ')}. Empieza el combate.`,null); render(); }
+const combatantOrFicha=k=>refByKey(k);
 function cnLado(k){ const xs=combatants().filter(c=>cnDuenoDe(c)===k); const cs=xs.map(x=>calc(x.f)); const ps=cs.reduce((a,c)=>a+c.ps,0), act=cs.reduce((a,c)=>a+Math.max(0,c.act),0);
   return {n:xs.length,frac:ps?act/ps:1,ko:xs.length>0&&cs.every(c=>c.act<=0),sinDano:xs.length>0&&xs.every(x=>num(x.f.dano)===0)}; }
 const CN_RES={ko:'Debilitó al rival (Vida)',clamor:'Dejó al rival en 0 de Clamor',vida:'Fin de las rondas: más Vida',empate:'Empate'};
@@ -2877,7 +2890,6 @@ function cnAuto4(){ const F=CN.f4; const [a,b]=F.fin; const la=cnLado(a), lb=cnL
 /* Al pulsar «Terminar combate» en Combate, el Duelo se cierra solo con el estado de Rondas, Vida y Clamor */
 function cnFinCombate(){ if(isMaster()&&CN.fase===4&&CN.f4&&!CN.f4.res&&CN.f4.fin.length===2){ CNU.res=''; cnCerrar4(); } }
 function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const F=structuredClone(CN.f4); const [a,b]=F.fin; const au=cnAuto4(); let tipo=au.tipo, w=au.w;
-  if(CNU.res){ const [t,i]=CNU.res.split(':'); tipo=t; w=t==='empate'?null:F.fin[num(i)]; }
   const bon={[a]:0,[b]:0}, lines=[]; const ron=num(CB.ronda), lim=Math.max(1,Math.floor(num(F.n)*0.2));
   if(tipo==='empate'){ if(num(F.cl[a])!==num(F.cl[b])){ const l=num(F.cl[a])<num(F.cl[b])?a:b; bon[l]+=3; lines.push(`Empate: +3 a ${cnNombre(l)}, que tiene menos Clamor.`); } else lines.push('Empate con el mismo Clamor: sin bono.'); }
   else { if(tipo==='vida'){ bon[w]+=3; lines.push(`${cnNombre(w)} termina las rondas con más Vida: +3.`); }
@@ -2887,8 +2899,12 @@ function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const 
     if(tipo!=='vida'&&ron<=lim){ const c=((F.st[w]||{}).usoCat)?3:0; bon[w]+=c-8; lines.push(`Gana en la ronda ${ron} (antes del 20 % de las ${F.n} rondas): −8${c?', +3 por usar un movimiento de '+CN.cat:''}.`); } }
   { const fa=num((F.fuAdd||{})[a]), fb=num((F.fuAdd||{})[b]); if(fa!==fb){ const l=fa>fb?a:b; bon[l]+=5; lines.push(`${cnNombre(l)} fue quien más Furor sumó (${Math.max(fa,fb)} contra ${Math.min(fa,fb)}): +5.`); } }
   const tot={[a]:num(F.cl[a])+bon[a],[b]:num(F.cl[b])+bon[b]}; const la=cnLado(a), lb=cnLado(b);
-  const gan=tot[a]!==tot[b]?(tot[a]>tot[b]?a:b):(w||(la.frac>=lb.frac?a:b));
-  F.res={tipo,w:w||null,bon,tot,lines,gan,ronda:ron}; cnWrite({f4:F}); logRoll('Concurso',`Duelo de Gala: ${cnNombre(a)} ${tot[a]} · ${cnNombre(b)} ${tot[b]} → gana ${cnNombre(gan)}`,null); renderSheet(); }
+  /* Empate en el total: desempatan, en orden, el Clamor de la Fase 3, de la Fase 2 y de la Fase 1 */
+  let gan=tot[a]!==tot[b]?(tot[a]>tot[b]?a:b):'';
+  if(!gan){ const cr=[['Fase 3',k=>num(((CN.f3||{}).cl||{})[k])],['Fase 2',k=>num(((cnU(k).f2||{}).r||{}).cl)],['Fase 1',k=>num(((cnU(k).f1||{}).r||{}).cl)]];
+    for(const [n,fn] of cr){ if(fn(a)!==fn(b)){ gan=fn(a)>fn(b)?a:b; lines.push(`Empate en ${tot[a]}: desempata el Clamor de la ${n} (${cnNombre(a)} ${fn(a)} · ${cnNombre(b)} ${fn(b)}).`); break; } }
+    if(!gan) lines.push(`Empate en ${tot[a]} y también en las fases anteriores: lo decide el Master.`); }
+  F.res={tipo,w:w||null,bon,tot,lines,gan,ronda:ron}; cnWrite({f4:F}); logRoll('Concurso',`Duelo de Gala: ${cnNombre(a)} ${tot[a]} · ${cnNombre(b)} ${tot[b]} → ${gan?'gana '+cnNombre(gan):'empate total'}`,null); renderSheet(); }
 
 /* Glosario de Concursos: Presentación (Fases 1 y 2) y Enfrentamiento (Fases 3 y 4) */
 function cnGlos(){ const R6=['Starter','Beginner','Amateur','Elite','Master','Legend'];
@@ -2904,15 +2920,15 @@ ${tbl(['Exigencia',...R6],[['Fase 1 (2 × bonus)','2','4','6','8','10','12'],['F
 ${tbl(['Categoría','Artes'],CN_SOC.map(c=>[socialChip(c),JUECES.filter(j=>juezCat(j)===c).map(j=>esc(j[0])).join(', ')]))}`},
   {id:'concurso-enf',t:'Concursos: Enfrentamiento (Fases 3 y 4)',h:()=>`<p>En estas fases cada movimiento tiene un <b>Efecto Concurso</b> y una <b>categoría</b>, y todos parten con <b>50 de Clamor</b>.</p>
 ${tbl(['Término','Qué es'],[['Afinidad','Lo que le gusta cada categoría al Pokémon, según su naturaleza: 80 % en su categoría y 20 % a 60 % en las demás. Cada Brillo suma 10.'],['Furor','Contador de 0 a 5 que comparten todos. Sube 1 con un movimiento de la categoría del Concurso (2 si es crítico de Clamor) y baja 1 con una categoría que le desagrada al público. Al llegar a 5 da <b>+5 de Clamor</b> a quien lo llenó y vuelve a 0. No cambia el orden de los turnos.'],['Tropiezo','Clamor que un efecto le quita a un rival.'],['Nervioso','Pierde su exhibición de la ronda. Se resiste con 1d100 ≤ 50 + 10 por Brillo.'],['Brillo','Hasta 3. Cada uno da +1 de Clamor en cada exhibición, +10 a la afinidad y ayuda contra los Nervios.'],['Guardia','Anula el próximo Tropiezo de la ronda. <b>Guardia Total</b> anula todos los de la ronda y <b>Concentración</b> protege de Tropiezos y Nervios hasta su próxima exhibición.']])}
-<p><b>Tirada:</b> la misma tirada de Precisión (1d100) decide todo. Si <b>falla</b> la Precisión, la exhibición no da Clamor ni aplica su efecto. Si conecta pero <b>supera la afinidad</b> del Pokémon con la categoría del movimiento, gana la <b>mitad</b> del Clamor (hacia abajo). Con <b>10 o menos</b> es crítico de Clamor: el doble.</p>
+<p><b>Tirada de afinidad (1d100):</b> si el resultado <b>supera la afinidad</b> del Pokémon con la categoría del movimiento, gana la <b>mitad</b> del Clamor (hacia abajo); si queda dentro, el Clamor completo. Con <b>10 o menos</b> es crítico de Clamor: el doble. En la <b>Fase 3</b> el movimiento siempre se realiza y solo se tira esto. En la <b>Fase 4</b> se usa la misma tirada del ataque en combate: si el ataque falla, no hay Efecto Concurso.</p>
 ${tbl(['Categoría del Concurso','Le desagradan (Furor −1)'],CN_SOC.map(c=>[socialChip(c),SOC_NEG[c].map(socialChip).join(' ')]))}
 <p><b>Repetición:</b> repetir el movimiento de la ronda anterior resta 3 de Clamor, y 2 más por cada ronda seguida extra (−3, −5, −7…). Incansable y Bis no penalizan.</p>
 <p><b>Fase 3 · Enfrentamiento.</b> Cada Entrenador presenta <b>1 Pokémon</b>, que elige en la Ronda 1 y vale para toda la fase. En cada ronda todos eligen su movimiento en secreto y luego las acciones se revelan una a una. <b>Iniciativa:</b> en la Ronda 1, por el Clamor de las Fases 1 y 2; después, por el Clamor ganado en la ronda anterior (los empates, con el criterio de la Ronda 1). Los efectos de orden (Adelantarse, Retrasarse) se aplican después de calcularla, y Desorden la baraja.</p>
 ${tbl(['Rondas',...R6],[['Fase 3',...CN_R3.map(String)],['Fase 4 (máximo)',...CN_R4.map(String)],['Fase 4: «ganar rápido» hasta la ronda',...CN_R4.map(n=>String(Math.max(1,Math.floor(n*0.2))))]])}
-<p><b>Fase 4 · Duelo de Gala.</b> Es un combate normal entre los 2 finalistas, y además cada movimiento que conecta <b>baja el Clamor del rival</b> en lo que marca su Efecto Concurso (su Clamor más su Tropiezo). La Guardia solo anula la parte de Tropiezo. Los efectos que dependen del orden de la ronda (Apertura, Cierre, Crescendo, Adelantarse, Retrasarse, Desorden) usan su valor base. Si el Furor se llena, el rival pierde 5 más. Un KO o llegar a <b>0 de Clamor</b> termina el Duelo al instante.</p>
+<p><b>Fase 4 · Duelo de Gala.</b> Cada finalista elige 1 Pokémon y empieza solo un combate nuevo entre los dos. Es un combate normal, y además cada movimiento que conecta <b>baja el Clamor del rival</b> en lo que marca su Efecto Concurso (su Clamor más su Tropiezo). La Guardia solo anula la parte de Tropiezo. Los efectos que dependen del orden de la ronda (Apertura, Cierre, Crescendo, Adelantarse, Retrasarse, Desorden) usan su valor base. Si el Furor se llena, el rival pierde 5 más. Un KO o llegar a <b>0 de Clamor</b> termina el Duelo al instante.</p>
 <p><b>Colisión:</b> se omite el Efecto Concurso de los movimientos. Quien gana la Colisión gana 3 de Clamor; en empate, 1 cada uno. El Furor sube 1 siempre.</p>
 ${tbl(['Al terminar el Duelo','Bono de Clamor'],[['Empate: al de menor Clamor','+3'],['Terminar las rondas con más Vida','+3'],['Debilitar al rival (por Vida)','+5'],['Ganar sin recibir daño (se suma)','+3'],['Ser quien más Furor sumó','+5'],['Ganar muy rápido (antes del 20 % de las rondas)','−8, o −5 si usó un movimiento de la categoría del Concurso']])}
-<p>Gana el Concurso quien termina con más Clamor después de los bonos.</p>
+<p>El Duelo se cierra con «Terminar combate» en la pestaña Combate. Gana el Concurso quien termina con más Clamor después de los bonos. Si empatan, desempata en orden el Clamor de la Fase 3, el de la Fase 2 y el de la Fase 1.</p>
 <p><b>Efectos Concurso.</b> «Quien actuó justo antes» y «los que ya actuaron» se refieren a la ronda en curso.</p>
 ${tbl(['Familia','Efecto','Clamor','Tropiezo','Qué hace'],CEF.map(e=>[esc(e[1]),'<b>'+esc(e[0])+'</b>','+'+e[2],e[3]?'−'+e[3]:'—',esc(e[4])]))}`}]; }
 /* ---- vistas ---- */
@@ -2982,7 +2998,7 @@ function cnFase2HTML(){ let h=`<div class="card"><h2>Presentación Grupal</h2><p
 function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
   let h=`<div class="card"><h2><span>Enfrentamiento <span class="ronda">${F.fin?'Rondas terminadas':`Ronda ${F.ronda} de ${F.n}`}</span></span><span class="row">${cnFurorBox(cnFuror())}</span></h2>`;
   if(F.fin) return h+`<p class="note">Terminaron las ${F.n} rondas. Pasan al Duelo los 2 con más Clamor.</p></div>`;
-  h+=`<p class="note">Cada Entrenador presenta 1 Pokémon. En cada ronda todos eligen su movimiento en secreto; cuando están listos, el Master revela las acciones una a una en orden de iniciativa. La tirada de Precisión (1d100) decide: si falla, no hay Clamor; si supera la afinidad del Pokémon con la categoría del movimiento, gana la mitad; con 10 o menos, el doble.</p><div class="res">`;
+  h+=`<p class="note">Cada Entrenador presenta 1 Pokémon. En cada ronda todos eligen su movimiento en secreto; cuando están listos, el Master revela las acciones una a una en orden de iniciativa. El movimiento siempre se realiza: se tira 1d100 contra la afinidad del Pokémon con la categoría del movimiento. Si la supera, gana la mitad del Clamor; con 10 o menos, el doble.</p><div class="res">`;
   F.ini.forEach((k,i)=>{ const p=cnPart(k); if(!p) return; const can=cnCan(p), s=cnSel3(k), y=p.team.find(z=>z.id===s.pk), br=num(F.br[k]);
     const done=q&&q.acts.findIndex(a=>a.k===k)<num(q.i);
     h+=`<div class="r cnrow${done?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${i+1}. ${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span> ${y?`<span class="pill sel">${esc(charName(y.f))}${y.f.nat?' · '+esc(y.f.nat):''}</span>`:''}${br?` <span class="pill" title="Brillo">${'★'.repeat(br)}</span>`:''}${cnBar(cnClamor(k),100)}`;
@@ -3003,21 +3019,23 @@ function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
 function cnFase4HTML(){ const F=CN.f4; if(!F) return ''; const ron=num(CB.ronda);
   let h=`<div class="card"><h2><span>Duelo de Gala <span class="ronda">Ronda ${Math.min(ron,F.n)} de ${F.n}</span></span><span class="row">${cnFurorBox(num(F.fu))}</span></h2>`;
   if(F.fin.length<2) return h+`<p class="note">No hay 2 finalistas.</p></div>`;
-  h+=`<p class="note">El Duelo se juega en la pestaña <b>Combate</b> con las reglas de siempre: cada finalista entra con el guante 🥊. Además, cada movimiento que conecta aplica su Efecto Concurso y baja el Clamor del rival. Un KO o llegar a 0 de Clamor termina el Duelo; si no, termina al cerrar la ronda ${F.n}.</p><div class="res">`;
-  F.fin.forEach(k=>{ const p=cnPart(k); if(!p) return; const la=cnLado(k), s=F.st[k]||{};
-    h+=`<div class="r cnrow"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>${num(s.br)?` <span class="pill" title="Brillo">${'★'.repeat(num(s.br))}</span>`:''}${cnBar(num(F.cl[k]),50)}
-      <div class="note">${la.n?`En combate: Vida ${pct(la.frac)}${la.ko?' · debilitado':''}`:'Aún no entra al combate.'}</div></div><div style="text-align:right"><span class="big">${num(F.cl[k])}</span></div></div>`; });
+  h+=`<p class="note">${F.armado?'El Duelo se juega en la pestaña <b>Combate</b> con las reglas de siempre. Además, cada movimiento que conecta aplica su Efecto Concurso y baja el Clamor del rival. Un KO o llegar a 0 de Clamor termina el Duelo; si no, termina al cerrar la ronda '+F.n+'. El Master lo cierra con «Terminar combate» en la pestaña Combate, y ahí se calculan los bonos.':'Cada finalista elige al Pokémon que llevará al Duelo. Cuando los dos hayan escogido, empieza solo un combate nuevo con ellos en la pestaña <b>Combate</b>.'}</p><div class="res">`;
+  F.fin.forEach(k=>{ const p=cnPart(k); if(!p) return; const la=cnLado(k), s=F.st[k]||{}, e=cnSel4(k), can=cnCan(p), y=p.team.find(z=>z.id===e.pk), loc=CNU.sel['4'+k]||e.pk;
+    h+=`<div class="r cnrow"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>${e.ok&&y?` <span class="pill sel">${esc(charName(y.f))}</span>`:''}${num(s.br)?` <span class="pill" title="Brillo">${'★'.repeat(num(s.br))}</span>`:''}${cnBar(num(F.cl[k]),50)}
+      ${F.armado||F.res?`<div class="note">${la.n?`En combate: Vida ${pct(la.frac)}${la.ko?' · debilitado':''}`:F.res?'':'Fuera del combate.'}</div>`
+        :e.ok?`<div class="note">✔ ${esc(charName(p.f))} ha escogido a su Pokémon.${can?` <button class="btn sm" data-cn="unpick4" data-k="${esc(k)}">Cambiar</button>`:''}</div>`
+        :can?`<div class="grid g3" style="margin-top:6px"><label class="f">Pokémon para el Duelo<select data-cnf="f4.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,charName(z.f)]),loc,'Elige…')}</select></label></div><p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pick4" data-k="${esc(k)}"${loc?'':' disabled'}>Escoger</button></p>`
+        :'<div class="note">Aún no escoge a su Pokémon.</div>'}</div><div style="text-align:right"><span class="big">${num(F.cl[k])}</span></div></div>`; });
   h+=`</div>`;
+  if(!F.armado&&!F.res&&F.fin.every(k=>cnSel4(k).ok)&&!isMaster()) h+=`<p class="note">Los dos escogieron: el combate empieza cuando el Master tenga la app abierta.</p>`;
   if((F.log||[]).length) h+=`<details class="rlog" open><summary>Efectos de Concurso</summary><div class="steps-res">${[...F.log].reverse().map(e=>`<div><b>R${e.r} · ${esc(e.q)}</b>${e.l.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`).join('')}</div></details>`;
-  if(F.res){ const R=F.res; h+=`<div class="fx-box" style="margin-top:10px"><b>Resultado: ${esc(CN_RES[R.tipo])}</b>${cnSteps(R.lines.map(t=>({k:'',t})))}<div class="row" style="margin-top:6px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: ${num(F.cl[k])} ${sg(R.bon[k])} = <b>${R.tot[k]}</b></span>`).join('')}</div><p style="margin:8px 0 0"><b>🎀 Gana el Concurso: ${esc(cnNombre(R.gan))}</b></p>${isMaster()?'<p class="row" style="margin-top:6px"><button class="btn sm" data-cn="reopen4">Reabrir el Duelo</button></p>':''}</div>`; }
-  else if(isMaster()){ const au=cnAuto4(); const ops=[['','Automático: '+CN_RES[au.tipo]+(au.w?' · '+cnNombre(au.w):'')],...F.fin.flatMap((k,i)=>['ko','clamor','vida'].map(t=>[`${t}:${i}`,`${CN_RES[t]} · ${cnNombre(k)}`])),['empate:0','Empate']];
-    h+=`<div class="grid g3" style="margin-top:10px"><label class="f">Resultado del combate<select data-cnf="res">${cnOpt(ops,CNU.res)}</select></label></div><p class="row" style="margin-top:6px"><button class="btn pri" data-cn="cerrar4">Cerrar el Duelo y calcular bonos</button></p>`; }
+  if(F.res){ const R=F.res; h+=`<div class="fx-box" style="margin-top:10px"><b>Resultado: ${esc(CN_RES[R.tipo])}</b>${cnSteps(R.lines.map(t=>({k:'',t})))}<div class="row" style="margin-top:6px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: ${num(F.cl[k])} ${sg(R.bon[k])} = <b>${R.tot[k]}</b></span>`).join('')}</div><p style="margin:8px 0 0"><b>${R.gan?'🎀 Gana el Concurso: '+esc(cnNombre(R.gan)):'Empate total: lo decide el Master'}</b></p></div>`; }
   return h+`</div>`; }
 function concursoHTML(){ let h=cnCabeza(); const f=CN.fase;
   if(f===1) h+=cnFase1HTML(); else if(f===2) h+=cnFase2HTML(); else if(f===3) return h+cnTablaHTML()+cnFase3HTML()+cnJuecesHTML(); else if(f===4) h+=cnFase4HTML();
   return h+cnTablaHTML()+cnJuecesHTML(); }
 /* Aviso en Combate mientras se juega el Duelo */
-function cnDueloAviso(){ const F=CN.f4; if(CN.fase!==4||!F||F.fin.length<2) return ''; return `<div class="fx-box cnaviso" style="margin-bottom:8px"><div class="row" style="justify-content:space-between"><span><b>Duelo de Gala</b> · <span class="ronda">Ronda ${num(CB.ronda)} de ${F.n} (máximo)</span></span>${cnFurorBox(num(F.fu))}</div><div class="row" style="margin-top:4px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: Clamor <b>${num(F.cl[k])}</b></span>`).join('')}${F.res?`<span class="pill">Gana ${esc(cnNombre(F.res.gan))}</span>`:''}</div></div>`; }
+function cnDueloAviso(){ const F=CN.f4; if(CN.fase!==4||!F||F.fin.length<2) return ''; return `<div class="fx-box cnaviso" style="margin-bottom:8px"><div class="row" style="justify-content:space-between"><span><b>Duelo de Gala</b> · <span class="ronda">Ronda ${num(CB.ronda)} de ${F.n} (máximo)</span></span>${cnFurorBox(num(F.fu))}</div><div class="row" style="margin-top:4px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: Clamor <b>${num(F.cl[k])}</b></span>`).join('')}${F.res&&F.res.gan?`<span class="pill">Gana ${esc(cnNombre(F.res.gan))}</span>`:''}</div></div>`; }
 function cnClick(b){ const a=b.dataset.cn, k=b.dataset.k||'';
   if(a==='no'){ CNU.conf=''; }
   else if(a==='end'||a==='next'){ CNU.conf=a; }
@@ -3039,18 +3057,18 @@ function cnClick(b){ const a=b.dataset.cn, k=b.dataset.k||'';
   else if(a==='resolve3'){ cnResolver3(); return; }
   else if(a==='sig3'&&isMaster()&&CN.f3&&CN.f3.q){ const F=structuredClone(CN.f3); F.q.i=Math.min(F.q.acts.length,num(F.q.i)+1); cnWrite({f3:F}); }
   else if(a==='close3'){ cnCerrar3(); return; }
-  else if(a==='cerrar4'){ cnCerrar4(); return; }
-  else if(a==='reopen4'&&isMaster()&&CN.f4){ const F=structuredClone(CN.f4); F.res=null; cnWrite({f4:F}); }
+  else if(a==='pick4'){ const p=cnPart(k), pk=CNU.sel['4'+k]||cnSel4(k).pk; if(cnCan(p)&&pk&&CN.f4&&!CN.f4.armado){ cnWriteU(k,{f4:{pk,ok:true}}); delete CNU.sel['4'+k]; cnArmarDuelo(); } }
+  else if(a==='unpick4'){ if(cnCan(cnPart(k))&&CN.f4&&!CN.f4.armado) cnWriteU(k,{f4:{ok:false}}); }
   renderSheet(); }
 function cnChange(el){ const f=el.dataset.cnf, k=el.dataset.k||'', v=el.value; const p=k?cnPart(k):null;
   if(f==='cat'&&isMaster()){ cnWrite({cat:v,jz:[],jv:{}}); }
   else if(f==='rango'&&isMaster()){ cnWrite({rango:v}); }
-  else if(f==='res'){ CNU.res=v; return; }
   else if(f.startsWith('m1.')&&isMaster()){ cnWrite({m1:{...CN.m1,[k]:{...(CN.m1[k]||{}),[f.slice(3)]:v}}}); }
   else if(f.startsWith('f1.')&&cnCan(p)){ const c=f.slice(3); cnWriteU(k,{f1:{[c]:c==='bono'?num(v):v}}); if(c==='bono') return; }
   else if(f.startsWith('f2.')&&cnCan(p)){ const c=f.slice(3); cnWriteU(k,{f2:{[c]:v,...(c==='p1'?{m1:''}:c==='p2'?{m2:''}:{})}}); }
   else if(f==='f3.pk'&&cnCan(p)){ delete CNU.sel[k]; cnWriteU(k,{f3:{pk:v,mv:'',ok:false}}); }
   else if(f==='f3.mv'&&cnCan(p)){ CNU.sel[k]=v; }
+  else if(f==='f4.pk'&&cnCan(p)){ CNU.sel['4'+k]=v; }
   renderSheet(); }
 
 function render(){
