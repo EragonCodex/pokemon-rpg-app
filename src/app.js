@@ -978,6 +978,11 @@ function renderSheet(){
     if(S.open.src==='master') h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`;
   }
   h+=`</div><div class="note" data-c="sub" style="margin-top:8px"></div></div></div></div>`;
+  if(!isP){ /* Equipo y caja: antes de Combate, en 2 columnas y con los tipos de cada especie */
+    const team=teamOf(S.open);
+    h+=`<div class="card"><h2>Equipo y caja</h2><div class="items team2">${team.map(p=>teamItemHTML(p)).join('')||'<p class="note">Sin Pokémon todavía.</p>'}</div>
+      ${S.ro?'':`<div class="row" style="margin-top:8px"><button class="btn" data-act="addTeam">+ Pokémon al equipo</button><span class="note">${team.filter(p=>p.f.lugar!=='caja').length}/6 en el equipo</span></div>`}</div>`;
+  }
   // combate
   h+=`<div class="card"><h2>Combate</h2><div class="cstats">
     <div class="stat" style="grid-area:ps"><div class="k">PS</div><div class="v" data-c="ps"></div><div class="psbar"><i data-c="psbar"></i></div><div class="x">Daño <input type="text" inputmode="text" data-f="dano" value="${num(f.dano)}" ${S.ro?'disabled':''} aria-label="Daño recibido (admite +15 o −5)" title="Escribe un número, o +15 / −5 para sumar o restar" style="width:72px"></div></div>
@@ -1028,11 +1033,6 @@ function renderSheet(){
   h+=`</div>`;
   if(nMv>6||!S.ro){ h+=`<h3 class="subh">Movimientos adicionales</h3><div class="moves">`; for(let i=6;i<nMv;i++) h+=mvCard(i); h+=`</div>${S.ro?'':'<div class="row" style="margin-top:8px"><button class="btn sm" data-act="addMove">+ Movimiento</button><span class="note">Los adicionales no cuentan para los límites de creación.</span></div>'}`; }
   h+=`<div class="check" data-c="mvChk"></div><p class="note">Precisión = 75 % + 5 % × (precisión del movimiento + modificador). Daño = dado de (Base + STAB) + atributo. Máximo 6: 1 OverRanked (un Rango más, de su tipo) + los libres de su Rango.</p></div>`;
-  if(!isP){
-    const team=teamOf(S.open);
-    h+=`<div class="card"><h2>Equipo y caja</h2><div class="items">${team.map(p=>itemHTML(p)).join('')||'<p class="note">Sin Pokémon todavía.</p>'}</div>
-      ${S.ro?'':`<div class="row" style="margin-top:8px"><button class="btn" data-act="addTeam">+ Pokémon al equipo</button><span class="note">${team.filter(p=>p.f.lugar!=='caja').length}/6 en el equipo</span></div>`}</div>`;
-  }
   if(!isP) h+=mochilaHTML(f);
   h+=`<div class="card"><h2>Notas</h2>${field('','notas',f.notas||'','area')}</div>`;
   if(!S.ro) h+=`<div class="row">${S.open.src==='jug'||S.open.src==='master'?'<button class="btn" data-act="copyOpen">Copiar</button><span id="copyConfirm" class="row" style="gap:6px"></span>':''}${isP&&S.open.src==='jug'?'<button class="btn" data-act="free">Liberar</button><span id="freeConfirm"></span>':''}<button class="btn danger" data-act="del">Borrar ficha</button><span id="delConfirm"></span></div>`;
@@ -1143,7 +1143,7 @@ function fillComputed(){
   for(let i=0;i<Math.max(6,(f.moves||[]).length);i++){ const mi=moveInfo(f,(f.moves||[])[i],c);
     if(!mi){ set('mv'+i,''); set('mvfx'+i,''); continue; }
     set('mv'+i, moveMeta(f,mi,c,i<6&&ri(mi.m[5])===R+1));
-    set('mvfx'+i, esc(mi.m[11]));
+    set('mvfx'+i, esc(mi.m[11])+cnFxHTML(mi.m[0]));
   }
 }
 function moveMeta(f,mi,c,isOR){ const m=mi.m; return `${chip(m[2])} ${claseChip(m[3])} <span>${rankChip(m[5])}${isOR?' <span class="pill">OverRanked</span>':''}</span><span>Prec <b>${mi.prec}%</b></span><span>Daño <b>${mi.dice==='-'?'—':mi.dice+' + '+mi.atr}</b> ${mi.dice==='-'?'':attrChip(mi.ak)}${mi.stab?' <span class="pill">STAB</span>':''}</span>${typeof m[12]==='number'?`<span>R. Extra <b>${pct(m[12])}</b></span>`:''}${num(m[8])?`<span>Prioridad <b>${m[8]>0?'+':''}${m[8]}</b></span>`:''}<span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?`<span>Concurso ${socialChip(m[14])}</span>`:''}${m[13]&&m[13]!=='-'?`<span class="pill">${esc(m[13])}</span>`:''}`; }
@@ -1378,6 +1378,7 @@ ${tbl(['Llega a','−2 a +2','±3 y ±4','±5 y ±6','±7 y ±8','±9','±10'],[
 <p><b>Frustración</b> suma +1 a la CD por cada punto de Vínculo bajo 0 (máximo +5) y <b>Retribución</b> +1 por cada 2 puntos sobre 0 (máximo +5). La app lo suma sola al atacar.</p>
 ${tbl(['Vínculo','Lo que siente'],VIN_FRASE.map((t,i)=>[String(i-10).replace('-','−'),t]))}`});
 /* el índice del Glosario va en orden alfabético */
+GLOS.push(...cnGlos());
 GLOS.sort((a,b)=>a.t.localeCompare(b.t,'es'));
 let GLOS_OPEN='';
 const TYPE_ABBR=t=>({Electrico:'ELÉ',Psiquico:'PSÍ',Dragon:'DRA',Siniestro:'SIN',Fantasma:'FAN'}[t]||deacc(t).slice(0,3).toUpperCase());
@@ -1570,7 +1571,7 @@ function doTie(){
   const parts=[]; tied.forEach(x=>{ T.tie[x.k]=d(20); parts.push(`${charName(x.r.f)} ${T.tie[x.k]}`); });
   if(parts.length) logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null);
 }
-const MCOLS=[['Movimiento',1],['Tipo',2],['Clase',3],['Nivel',5],['Prec',6],['Base',7],['Atrib.',4],['Distancia',10],['R.E.',12],['Precio MT',16]];
+const MCOLS=[['Movimiento',1],['Tipo',2],['Clase',3],['Nivel',5],['Prec',6],['Base',7],['Atrib.',4],['Distancia',10],['R.E.',12],['Concurso',14],['Precio MT',16]];
 const uniq=(i)=>[...new Set(D.atk.map(a=>a[i]).filter(x=>x&&x!=='-'))].sort();
 const CATS=[...new Set(D.atk.flatMap(a=>String(a[13]||'').split(/[,;]\s*/)).map(s=>s.trim()).filter(x=>x&&x!=='-'))].sort();
 function toolMov(){
@@ -1587,7 +1588,7 @@ function toolMov(){
       if(A===null||B===null){ if(A===null&&B===null) return x[1].localeCompare(y[1],'es'); return A===null?1:-1; }
       const an=typeof A==='number', bn=typeof B==='number'; let r;
       if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
-  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${vistaBtn('mov',a[0])}<b>${esc(a[1])}</b></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr><tr class="fx"><td colspan="10">${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}</td></tr>`;
+  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${vistaBtn('mov',a[0])}<button class="linkbtn" data-movopen="${esc(a[0])}" aria-expanded="${T.mopen===a[0]}"><b>${esc(a[1])}</b></button></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td>${socialChip(a[14])}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr>${T.mopen===a[0]?`<tr class="fx"><td colspan="11"><b>Combate:</b> ${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}${cnFxHTML(a[0]).replace('<div class="cnfx">','<div class="cnfx"><b>Concurso:</b> ')}</td></tr>`:''}`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
   return h;
 }
@@ -2199,7 +2200,7 @@ function cbAttackHTML(){
         <label class="mini" title="Bonus a la Clase de Dado">CD <input type="number" data-cbf="bonus" data-mv="${id}" value="${num(CBU.bon[id])}" aria-label="Bonus CD de ${esc(m[1])}"></label>
         <label class="mini" title="Repeticiones seguidas">Rep. <input type="number" min="0" data-cbf="rep" data-mv="${id}" value="${ai.n}" aria-label="Repeticiones de ${esc(m[1])}"></label></div>
       <div class="mvdata">${chip(ai.mi.tipo)} ${claseChip(m[3])} <span>Prec <b>${ai.prec}%</b>${ai.pen?` <span class="ko">(−${ai.pen})</span>`:''}</span><span>CD <b>${ai.mi.dice==='-'?'—':ai.mi.dice}</b></span><span>Prio <b>${ai.mi.prio>0?'+':''}${ai.mi.prio}</b></span><span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?socialChip(m[14]):''}</div>
-      <div class="mvfx">${esc(m[11])}${ai.reR!==null?`<div class="re">R. Extra <b>${pct(ai.reR)}</b></div>`:''}</div>`;
+      <div class="mvfx">${esc(m[11])}${ai.reR!==null?`<div class="re">R. Extra <b>${pct(ai.reR)}</b></div>`:''}${CN.fase===4?cnFxHTML(m[0]):''}</div>`;
     if(on){ const others=combatants().filter(y=>y.key!==x.key);
       h+=`<div class="mvpick">${mode==='none'?'':`<div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(charName(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div>`}
         <div class="row" style="margin-top:8px"><button class="btn pri" data-cb="roll" ${mode!=='none'&&!CBU.targets.length?'disabled':''}>Lanzar dados</button><button class="btn" data-cb="cancel">Cancelar</button></div></div>`; }
@@ -2566,7 +2567,7 @@ function cbClick(b){
   if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
-  else if(act==='endYes'){ cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:1,rondaLog:null,cond:{},voto:null,eq:{},acted:null,tn:null},true); render(); }
+  else if(act==='endYes'){ cnFinCombate(); cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:1,rondaLog:null,cond:{},voto:null,eq:{},acted:null,tn:null},true); render(); }
   else if(act==='round'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm')&&($('#endConfirm').innerHTML=''); $('#roundConfirm').innerHTML=`<button class="btn sm pri" data-cb="roundYes">Sí, terminar la ronda ${num(CB.ronda)}</button> <button class="btn sm" data-cb="roundNo">Cancelar</button>`; }
   else if(act==='roundNo'){ $('#roundConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
   else if(act==='roundYes'){ b.disabled=true; endRound(); }
@@ -2608,15 +2609,15 @@ function cbChange(el){
 /* ---------- Concurso (2026-11-15): Fases de Jueces (0 a 2) y de Enfrentamiento (3 y 4) ---------- */
 const CN_SOC=['Dureza','Estilo','Belleza','Dulzura','Astucia'];
 const SOC_NEG={Dureza:['Dulzura','Belleza'],Estilo:['Astucia','Dulzura'],Belleza:['Dureza','Astucia'],Dulzura:['Estilo','Dureza'],Astucia:['Belleza','Estilo']};
-/* cef: 0 efecto,1 familia,2 Clamor,3 Tropiezo,4 texto · catk: movimiento → índice de cef · jueces: 0 Arte Afín,1-5 afinidad por categoría · natSoc: naturaleza → afinidad por categoría */
+/* cef: 0 efecto,1 familia,2 Clamor,3 Tropiezo,4 texto · catk: movimiento → índice de cef · jueces: 0 Arte Afín,1-5 afinidad por categoría,6 nombre · natSoc: naturaleza → afinidad por categoría */
 const CEF=D.cef||[], JUECES=D.jueces||[];
 const cefDe=id=>CEF[(D.catk||{})[id]]||CEF[0]||['Gran Exhibición','Exhibición',4,0,''];
 const cefN=n=>CEF.find(e=>e[0]===n)||CEF[0];
 const CN_FASES=['Preparación','Exhibición','Presentación','Enfrentamiento','Duelo'];
 const CN_R3=[4,4,6,6,8,10], CN_R4=[5,7,10,12,15,20], CN_PASAN=[0,8,4,2];
-const CN0=()=>({parts:[],snaps:{},fase:0,cat:'Belleza',rango:'Starter',jz:[],jzVis:false,out:{},m1:{},f3:null,f4:null});
+const CN0=()=>({parts:[],snaps:{},fase:0,cat:'Belleza',rango:'Starter',jz:[],jv:{},out:{},m1:{},f3:null,f4:null});
 const CN={exists:false,u:{},...CN0()};
-const CNU={sel:{},conf:'',res:''};
+const CNU={sel:{},conf:'',res:'',vopen:false};
 let cnChain=Promise.resolve();
 const cnObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function cnMerge(a,b){ if(!cnObj(a)||!cnObj(b)) return b; const o={...a}; for(const [k,v] of Object.entries(b)) o[k]=cnMerge(a[k],v); return o; }
@@ -2658,6 +2659,12 @@ function cnToggle(k){ const [src,uid,id]=String(k).split('|'); const ref={src,ui
   cnWrite({parts,snaps}); render(); }
 const ribbonBtn=k=>{ const on=cnIn(k); return `<button class="glove" data-ribbon="${esc(k)}" aria-pressed="${on}" title="${on?'Quitar del Concurso':'Enviar al Concurso'}" aria-label="${on?'Quitar del Concurso':'Enviar al Concurso'}">🎀</button>`; };
 const juezCat=j=>CN_SOC[j.slice(1).indexOf(100)]||'';
+/* Visibilidad de los jueces: jv['n:dato'] = jugadores que lo ven ('*' = toda la mesa). Datos: nom, arte y cada categoría */
+const CN_JITEMS=['nom','arte',...CN_SOC];
+const cnVe=(n,it)=>{ if(isMaster()) return true; const l=(CN.jv||{})[`${n}:${it}`]||[]; return l.includes('*')||l.includes(S.uid); };
+const cnArteChip=j=>badge(j[0],SOCIAL_BG[juezCat(j)]||'CCCCCC');
+const cnFxHTML=id=>{ const m=atkById.get(id); if(!m||!CN_SOC.includes(m[14])) return ''; const e=cefDe(id); return `<div class="cnfx">${socialChip(m[14])} <b>${esc(e[0])}</b>: ${esc(e[4])}</div>`; };
+const teamItemHTML=p=>itemHTML(p).replace('<span class="s">',`<span class="s">${tiposDe(p.f).map(chip).join(' ')} `);
 const cnAff=(ji,cat)=>num((JUECES[ji]||[])[1+CN_SOC.indexOf(cat)]);
 function cnSortear(){ const all=JUECES.map((j,i)=>i); const main=all.filter(i=>juezCat(JUECES[i])===CN.cat); const a=main.length?main[d(main.length)-1]:all[d(all.length)-1];
   const rest=all.filter(i=>i!==a); const b=rest.splice(d(rest.length)-1,1)[0]; const c=rest[d(rest.length)-1]; return [a,b,c]; }
@@ -2704,24 +2711,27 @@ const cnSel3=k=>{ const s=cnU(k).f3||{}; return {pk:s.pk||'',mv:s.rd===num((CN.f
 function cnResolver3(){ if(!isMaster()||!CN.f3||CN.f3.q||CN.f3.fin) return; const F=structuredClone(CN.f3); const ord=F.ini; if(!ord.length||ord.some(k=>!cnSel3(k).ok)) return;
   const act=CN.parts.filter(k=>!CN.out[k]); const C={}; act.forEach(k=>{ C[k]=num(F.cl[k]); }); const start={...C}, fu0=num(F.fu);
   const st={acted:[],gain:{},cat:{},filled:{},gAll:{},g1:{},risky:{},nerv:{},calma:false}; const nx={first:[],last:[],shuffle:false}; const acts=[];
-  ord.forEach((k,pos)=>{ const p=cnPart(k), sel=cnSel3(k), y=p&&p.team.find(z=>z.id===sel.pk), m=atkById.get(sel.mv); const L=[], dl={}, fl=cnFl(F,k);
+  ord.forEach((k,pos)=>{ const p=cnPart(k), sel=cnSel3(k), y=p&&p.team.find(z=>z.id===sel.pk), m=atkById.get(sel.mv); const H=[], La=[], Le=[], Lc=[], Lf=[], dl={}, fl=cnFl(F,k);
     const add=(t,v)=>{ if(!v||C[t]===undefined) return; const n0=C[t]; C[t]=Math.max(0,C[t]+v); dl[t]=num(dl[t])+(C[t]-n0); };
-    const fin=()=>{ st.acted.push(k); acts.push({k,L,dl,fu:num(F.fu)}); };
+    const fin=()=>{ st.acted.push(k); acts.push({k,L:[...H,...La,...Le,...Lc,...Lf],dl,fu:num(F.fu)}); };
     const eraConc=!!fl.conc; delete fl.conc; /* Concentración dura hasta su próxima exhibición */
-    if(!y||!m){ L.push({k:'ko',t:`${cnNombre(k)} no presentó un movimiento.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
+    if(!y||!m){ H.push({k:'ko',t:`${cnNombre(k)} no presentó un movimiento.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
     const nm=charName(y.f);
-    if(st.nerv[k]&&!eraConc){ L.push({k:'ko',t:`${nm} está Nervioso y pierde su exhibición.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
+    if(st.nerv[k]&&!eraConc){ H.push({k:'ko',t:`${nm} está Nervioso y pierde su exhibición.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
     const ef0=cefDe(sel.mv); let ef=ef0; if(ef0[0]==='Bis'){ ef=cefN(fl.lastEf&&fl.lastEf!=='Bis'?fl.lastEf:'Gran Exhibición'); }
     const efN=ef[0], cat=m[14], mi=moveInfo(y.f,sel.mv,calc(y.f)), prec=mi?mi.prec:75, r=d(100), hit=r<=prec, br=num(F.br[k]);
-    const soc=Math.min(100,num(((D.natSoc||{})[y.f.nat]||[])[CN_SOC.indexOf(cat)]||20)+10*br);
-    L.push({k:hit?'ok':'ko',t:`${nm} usa ${m[1]} · ${cat} · ${ef0[0]}${ef0[0]==='Bis'?` (repite ${efN})`:''}: d100 [${r}] contra Precisión ${prec}% → ${hit?'se luce':'falla la exhibición'}`});
-    if(hit) L.push({k:'fx',t:`${efN}: ${ef[4]}`});
+    const soc=Math.min(100,num(((D.natSoc||{})[y.f.nat]||[])[CN_SOC.indexOf(cat)]||20)+10*br), crit=hit&&r<=10;
+    H.push({k:'',t:`${nm} usa ${m[1]} · ${cat}`});
+    La.push(!hit?{k:'ko',t:`d100 [${r}]: falla la Precisión (${prec}%). La exhibición no cuenta.`}
+      :crit?{k:'ok',t:`d100 [${r}]: conecta (Precisión ${prec}%) con crítico de Clamor (10 o menos): el doble.`}
+      :r>soc?{k:'wa',t:`d100 [${r}]: conecta (Precisión ${prec}%), pero supera su afinidad con ${cat} (${soc}%): la mitad del Clamor.`}
+      :{k:'ok',t:`d100 [${r}]: conecta (Precisión ${prec}%) dentro de su afinidad con ${cat} (${soc}%): Clamor completo.`});
     let rep=0; if(fl.lastMv===sel.mv&&ef0[0]!=='Bis'&&ef0[0]!=='Incansable'){ fl.rep=num(fl.rep)+1; rep=3+2*(fl.rep-1); } else fl.rep=0;
     const prevK=st.acted[st.acted.length-1]; let gain=0;
     const jam=(t,n)=>{ if(t===k||C[t]===undefined) return; const ft=cnFl(F,t), tn=cnNombre(t);
-      if(st.gAll[t]||ft.conc||ft.inm===F.ronda){ L.push({k:'',t:`${tn} está protegido y no tropieza.`}); return; }
-      if(st.g1[t]){ st.g1[t]=false; L.push({k:'',t:`${tn} anula el tropiezo con su Guardia.`}); return; }
-      const v=n*(st.risky[t]?2:1); add(t,-v); L.push({k:'ko',t:`${tn} tropieza: −${v} de Clamor${st.risky[t]?' (Arriesgado: el doble)':''}.`}); };
+      if(st.gAll[t]||ft.conc||ft.inm===F.ronda){ Lc.push({k:'',t:`${tn} está protegido y no tropieza.`}); return; }
+      if(st.g1[t]){ st.g1[t]=false; Lc.push({k:'',t:`${tn} anula el tropiezo con su Guardia.`}); return; }
+      const v=n*(st.risky[t]?2:1); add(t,-v); Lc.push({k:'ko',t:`${tn} tropieza: −${v} de Clamor${st.risky[t]?' (Arriesgado: el doble)':''} → queda en ${C[t]}.`}); };
     if(hit){ let V=num(ef[2]), post=null, mult=1, agit=false; const why=[];
       if(fl.dbl){ mult*=2; delete fl.dbl; why.push('Preparación × 2'); }
       if(fl.combo){ if(fl.combo.t===m[2]||fl.combo.c===cat){ mult*=2; why.push('Preludio: combo × 2'); } delete fl.combo; }
@@ -2733,8 +2743,8 @@ function cnResolver3(){ if(!isMaster()||!CN.f3||CN.f3.q||CN.f3.fin) return; cons
         case 'Tropiezo en cadena': post=()=>st.acted.forEach(t=>jam(t,2)); break;
         case 'Rivalidad': post=()=>st.acted.forEach(t=>jam(t,st.cat[t]===cat?4:1)); break;
         case 'Golpe de Escena': post=()=>act.forEach(t=>jam(t,4)); fl.skip=F.ronda+1; fl.inm=F.ronda+1; break;
-        case 'Nervios': post=()=>ord.slice(pos+1).forEach(t=>{ const tn=cnNombre(t); if(cnFl(F,t).conc){ L.push({k:'',t:`${tn} está concentrado: no se pone Nervioso.`}); return; }
-          const z=d(100), u=Math.min(95,50+10*num(F.br[t])); if(z>u){ st.nerv[t]=true; L.push({k:'ko',t:`${tn} se pone Nervioso: d100 [${z}] sobre ${u}.`}); } else L.push({k:'',t:`${tn} mantiene la calma: d100 [${z}] contra ${u}.`}); }); break;
+        case 'Nervios': post=()=>ord.slice(pos+1).forEach(t=>{ const tn=cnNombre(t); if(cnFl(F,t).conc){ Le.push({k:'',t:`${tn} está concentrado: no se pone Nervioso.`}); return; }
+          const z=d(100), u=Math.min(95,50+10*num(F.br[t])); if(z>u){ st.nerv[t]=true; Le.push({k:'ko',t:`${tn} se pone Nervioso: d100 [${z}] sobre ${u}.`}); } else Le.push({k:'',t:`${tn} mantiene la calma: d100 [${z}] contra ${u}.`}); }); break;
         case 'Guardia Total': st.gAll[k]=true; break;
         case 'Guardia': st.g1[k]=true; break;
         case 'Contraste': { const g=prevK?num(st.gain[prevK]):null; V=g===null?3:g<=2?6:g===3?3:0; } break;
@@ -2751,28 +2761,29 @@ function cnResolver3(){ if(!isMaster()||!CN.f3||CN.f3.q||CN.f3.fin) return; cons
         case 'Desorden': nx.shuffle=true; break;
         case 'Brillo': F.br[k]=Math.min(3,br+1); break;
         case 'Lucimiento': V=[1,3,5,7][Math.min(3,br)]; break;
-        case 'Apagar': post=()=>st.acted.forEach(t=>{ if(num(F.br[t])){ F.br[t]=0; L.push({k:'ko',t:`${cnNombre(t)} pierde su Brillo.`}); } }); break;
+        case 'Apagar': post=()=>st.acted.forEach(t=>{ if(num(F.br[t])){ F.br[t]=0; Le.push({k:'ko',t:`${cnNombre(t)} pierde su Brillo.`}); } }); break;
         case 'Clímax': V=1+Math.min(8,F.ronda-1); break;
         case 'Primer Acto': V=F.ronda<=2?6:1; break;
         case 'Racha': V=2+Math.min(4,num(fl.racha)); break;
         case 'Gran Cierre': V=F.ronda===F.n?8:3; break;
         case 'Preparación': fl.dbl=true; break;
         case 'Preludio': fl.combo={t:m[2],c:cat}; break;
-        case 'Robar Foco': post=()=>{ if(!prevK) return; jam(prevK,1); if(num(F.br[prevK])>0){ F.br[prevK]=num(F.br[prevK])-1; F.br[k]=Math.min(3,num(F.br[k])+1); L.push({k:'ok',t:`Le quita 1 Brillo a ${cnNombre(prevK)}.`}); } }; break;
+        case 'Robar Foco': post=()=>{ if(!prevK) return; jam(prevK,1); if(num(F.br[prevK])>0){ F.br[prevK]=num(F.br[prevK])-1; F.br[k]=Math.min(3,num(F.br[k])+1); Le.push({k:'ok',t:`Le quita 1 Brillo a ${cnNombre(prevK)}.`}); } }; break;
         case 'Remontada': { const s=act.filter(t=>!cnFl(F,t).fin).map(t=>C[t]).sort((a,b)=>a-b); V=C[k]<=s[0]?6:s.length>2&&C[k]<=s[1]?3:1; } break;
         case 'Ovación Sostenida': V=prevK&&st.filled[prevK]?5:2; break;
         case 'Concentración': fl.conc=true; break;
       }
       V=V*mult+br; if(br) why.push(`Brillo +${br}`);
-      const crit=r<=10; if(crit){ V*=2; why.push('crítico de Clamor × 2'); } else if(r>soc){ V=Math.floor(V/2); why.push(`[${r}] supera su afinidad con ${cat} (${soc}%): la mitad`); } else why.push(`dentro de su afinidad con ${cat} (${soc}%)`);
-      gain=V; add(k,V); L.push({k:'ok',t:`Clamor +${V}${why.length?' · '+why.join(' · '):''}`});
+      if(crit) V*=2; else if(r>soc) V=Math.floor(V/2);
+      Le.unshift({k:'fx',t:`${ef0[0]==='Bis'?`Bis (repite ${efN})`:efN}: ${ef[4]}${why.length?' · '+why.join(' · '):''}`});
+      gain=V; add(k,V); Lc.push({k:'ok',t:`Clamor +${V} → queda en ${C[k]}.`});
       if(post) post();
       if(!st.calma){ const f0=num(F.fu); if(agit) F.fu=f0+1; if(cat===CN.cat) F.fu=num(F.fu)+(crit?2:1); else if((SOC_NEG[CN.cat]||[]).includes(cat)) F.fu=Math.max(0,num(F.fu)-1);
-        if(num(F.fu)!==f0) L.push({k:'',t:`Furor ${f0} → ${Math.min(5,num(F.fu))}${cat===CN.cat?` (${cat} es la categoría del Concurso)`:''}.`});
-        if(num(F.fu)>=5){ add(k,5); gain+=5; F.fu=0; st.filled[k]=true; L.push({k:'ok',t:'¡Furor al máximo! +5 de Clamor; el Furor vuelve a 0.'}); } }
-      else if(cat===CN.cat||agit) L.push({k:'',t:'Calma: el Furor no sube en esta ronda.'});
+        if(num(F.fu)>=5){ add(k,5); gain+=5; F.fu=0; st.filled[k]=true; Lf.push({k:'ok',t:`Furor ${f0} → 5: ¡al máximo! +5 de Clamor (queda en ${C[k]}) y el Furor vuelve a 0.`}); }
+        else if(num(F.fu)!==f0) Lf.push({k:'',t:`Furor ${f0} → ${num(F.fu)}${cat===CN.cat?` (${cat} es la categoría del Concurso)`:num(F.fu)<f0?` (${cat} le desagrada a este público)`:''}.`}); }
+      else if(cat===CN.cat||agit) Lf.push({k:'',t:'Calma: el Furor no sube en esta ronda.'});
     }
-    if(rep){ add(k,-rep); L.push({k:'wa',t:`Repite ${m[1]}: −${rep} de Clamor.`}); }
+    if(rep){ add(k,-rep); Lc.push({k:'wa',t:`Repite ${m[1]}: −${rep} de Clamor → queda en ${C[k]}.`}); }
     fl.lastMv=sel.mv; fl.lastEf=efN; fl.racha=gain>0?num(fl.racha)+1:0; st.gain[k]=gain; st.cat[k]=hit?cat:''; fin(); });
   const prev={}; act.forEach(k=>{ prev[k]=C[k]-start[k]; });
   F.prev=prev; F.next=nx; F.q={acts,i:0,start,end:C,fu0};
@@ -2785,18 +2796,20 @@ const cnDuenoDe=x=>x.f.tipo==='E'?x.key:`${x.src}|${x.uid||''}|${x.f.entrenador|
 function cnDuelo(x){ const F=CN.f4; if(CN.fase!==4||!F||F.res||!x) return null; const k=cnDuenoDe(x); if(!F.fin.includes(k)||F.fin.length<2) return null; return {F:structuredClone(F),k,rv:F.fin.find(z=>z!==k)}; }
 function cnGuardar4(F,lines,quien){ F.log=[...(F.log||[]),{q:quien,r:num(CB.ronda),l:lines}].slice(-12); cnWrite({f4:F}); if(S.view==='concurso') renderSheet(); }
 /* Se llama al usar un movimiento en Combate: devuelve las líneas del efecto de Concurso */
-function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return null; const {F,k,rv}=D4; const L=[]; const s=(F.st[k] ||= {}), o=(F.st[rv] ||= {}); const ron=num(CB.ronda);
-  F.undo={ts,cl:{...F.cl},fu:num(F.fu),st:structuredClone(F.st)};
+function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return null; const {F,k,rv}=D4; const La=[], Le=[], Lc=[], Lf=[]; const s=(F.st[k] ||= {}), o=(F.st[rv] ||= {}); const ron=num(CB.ronda);
+  F.undo={ts,cl:{...F.cl},fu:num(F.fu),st:structuredClone(F.st),fuAdd:{...(F.fuAdd||{})}}; F.fuAdd ||= {};
   const ef0=cefDe(mvId); let ef=ef0; if(ef0[0]==='Bis') ef=cefN(s.lastEf&&s.lastEf!=='Bis'?s.lastEf:'Gran Exhibición'); const efN=ef[0], cat=m[14];
   const sub=(t,v)=>{ F.cl[t]=Math.max(0,num(F.cl[t])-v); };
   delete s.conc;
   let rep=0; if(s.lastMv===mvId&&ef0[0]!=='Bis'&&ef0[0]!=='Incansable'){ s.rep=num(s.rep)+1; rep=3+2*(s.rep-1); } else s.rep=0;
-  if(!ok) L.push({k:'',t:'Concurso: el movimiento no conecta, sin efecto sobre el Clamor.'});
+  if(!ok) La.push({k:'',t:'El movimiento no conecta: sin Efecto Concurso.'});
   else { let V=num(ef[2]), T=num(ef[3]), mult=1; const br=num(s.br), why=[];
-    const soc=Math.min(100,num(((D.natSoc||{})[x.f.nat]||[])[CN_SOC.indexOf(cat)]||20)+10*br);
+    const soc=Math.min(100,num(((D.natSoc||{})[x.f.nat]||[])[CN_SOC.indexOf(cat)]||20)+10*br), crit=r<=10;
+    La.push(crit?{k:'ok',t:`Afinidad con ${cat} (${soc}%): [${r}] es crítico de Clamor (10 o menos), el doble.`}
+      :r>soc?{k:'wa',t:`Afinidad con ${cat} (${soc}%): [${r}] la supera, la mitad del Clamor.`}:{k:'ok',t:`Afinidad con ${cat} (${soc}%): [${r}] queda dentro, Clamor completo.`});
     if(s.dbl){ mult*=2; delete s.dbl; why.push('Preparación × 2'); }
     if(s.combo){ if(s.combo.t===m[2]||s.combo.c===cat){ mult*=2; why.push('Preludio: combo × 2'); } delete s.combo; }
-    let agit=false, calma=false;
+    let agit=false;
     switch(efN){
       case 'Azar': { const z=d(4); V=[1,2,4,8][z-1]; why.push(`1d4 [${z}]`); } break;
       case 'Euforia': V=[1,1,3,4,6][Math.min(4,num(F.fu))]; break;
@@ -2812,7 +2825,7 @@ function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return n
       case 'Guardia Total': s.gAll=ron; break;
       case 'Concentración': s.conc=true; break;
       case 'Agitador': agit=true; break;
-      case 'Calma': F.calma=ron; calma=true; break;
+      case 'Calma': F.calma=ron; break;
       case 'Apagar': if(num(o.br)){ o.br=0; why.push('apaga el Brillo del rival'); } break;
       case 'Robar Foco': if(num(o.br)>0){ o.br=num(o.br)-1; s.br=Math.min(3,num(s.br)+1); why.push('le quita 1 Brillo'); } break;
       case 'Rivalidad': T=o.lastCat===cat?4:1; break;
@@ -2823,25 +2836,32 @@ function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return n
       case 'Ovación Sostenida': V=o.filled?5:2; break;
     }
     V=V*mult+br; if(br) why.push(`Brillo +${br}`);
-    const crit=r<=10; if(crit){ V*=2; why.push('crítico de Clamor × 2'); } else if(r>soc){ V=Math.floor(V/2); why.push(`[${r}] supera su afinidad con ${cat} (${soc}%): la mitad`); }
-    if(T){ if(o.gAll===ron||o.conc){ T=0; why.push('el rival está protegido del Tropiezo'); } else if(o.g1){ o.g1=false; T=0; why.push('la Guardia del rival anula el Tropiezo'); } }
+    if(crit) V*=2; else if(r>soc) V=Math.floor(V/2);
+    let tnota='';
+    if(T){ if(o.gAll===ron||o.conc){ T=0; tnota=' (el rival está protegido del Tropiezo)'; } else if(o.g1){ o.g1=false; T=0; tnota=' (la Guardia del rival anula el Tropiezo)'; } }
+    Le.push({k:'fx',t:`${ef0[0]==='Bis'?`Bis (repite ${efN})`:efN}: ${ef[4]}${why.length?' · '+why.join(' · '):''}`});
     sub(rv,V+T); s.lastGain=V; s.lastCat=cat; s.filled=false; if(cat===CN.cat) s.usoCat=true;
-    L.push({k:'fx',t:`Concurso · ${efN}${ef0[0]==='Bis'?' (Bis)':''}: ${cnNombre(rv)} pierde ${V+T} de Clamor${T?` (${V} + ${T} de Tropiezo)`:''}${why.length?' · '+why.join(' · '):''} → queda en ${num(F.cl[rv])}.`});
-    if(F.calma!==ron||calma){ const f0=num(F.fu); if(F.calma!==ron){ if(agit) F.fu=f0+1; if(cat===CN.cat) F.fu=num(F.fu)+1; }
-      if(num(F.fu)!==f0) L.push({k:'',t:`Furor ${f0} → ${Math.min(5,num(F.fu))}.`});
-      if(num(F.fu)>=5){ sub(rv,5); F.fu=0; s.filled=true; L.push({k:'ok',t:`¡Furor al máximo! ${cnNombre(rv)} pierde 5 de Clamor más → queda en ${num(F.cl[rv])}.`}); } }
+    Lc.push({k:'ok',t:`${cnNombre(rv)} pierde ${V+T} de Clamor${T?` (${V} + ${T} de Tropiezo)`:''}${tnota} → queda en ${num(F.cl[rv])}.`});
+    const f0=num(F.fu);
+    if(F.calma!==ron){ if(agit) F.fu=f0+1; if(cat===CN.cat) F.fu=num(F.fu)+1; }
+    else if(cat===CN.cat||agit) Lf.push({k:'',t:'Calma: el Furor no sube en esta ronda.'});
+    if(num(F.fu)>f0) F.fuAdd[k]=num(F.fuAdd[k])+(num(F.fu)-f0);
+    if(num(F.fu)>=5){ sub(rv,5); F.fu=0; s.filled=true; Lf.push({k:'ok',t:`Furor ${f0} → 5: ¡al máximo! ${cnNombre(rv)} pierde 5 de Clamor más (queda en ${num(F.cl[rv])}) y el Furor vuelve a 0.`}); }
+    else if(num(F.fu)!==f0) Lf.push({k:'',t:`Furor ${f0} → ${num(F.fu)}.`});
     s.racha=num(s.racha)+1; }
   if(!ok) s.racha=0;
-  if(rep){ sub(k,rep); L.push({k:'wa',t:`Concurso: repite ${m[1]}, −${rep} de Clamor propio → queda en ${num(F.cl[k])}.`}); }
+  if(rep){ sub(k,rep); Lc.push({k:'wa',t:`Repite ${m[1]}: −${rep} de Clamor propio → queda en ${num(F.cl[k])}.`}); }
   s.lastMv=mvId; s.lastEf=efN;
-  if(num(F.cl[rv])<=0) L.push({k:'ko',t:`${cnNombre(rv)} llegó a 0 de Clamor: el Duelo termina.`});
+  if(num(F.cl[rv])<=0) Lc.push({k:'ko',t:`${cnNombre(rv)} llegó a 0 de Clamor: el Duelo termina.`});
+  const L=[...La,...Le,...Lc,...Lf];
   cnGuardar4(F,L.map(l=>l.t),`${charName(x.f)} · ${m[1]}`); return L; }
 /* Colisión: se omiten los efectos de Concurso; el ganador gana 3 de Clamor (empate: 1 cada uno) y el Furor sube 1 */
 function cnDuelCol(L,A,t,winKey){ const D4=cnDuelo(A); if(!D4||cnDuenoDe(t)!==D4.rv) return []; const {F,k,rv}=D4; const out=[];
-  if(F.undo&&F.undo.ts===L.ts){ F.cl=F.undo.cl; F.fu=F.undo.fu; F.st=F.undo.st; F.undo=null; out.push({k:'',t:'Concurso: en la Colisión se omite el efecto de Concurso del movimiento.'}); }
+  if(F.undo&&F.undo.ts===L.ts){ F.cl=F.undo.cl; F.fu=F.undo.fu; F.st=F.undo.st; F.fuAdd=F.undo.fuAdd||{}; F.undo=null; out.push({k:'',t:'Colisión: se omite el Efecto Concurso del movimiento.'}); }
+  F.fuAdd ||= {};
   const w=winKey===A.key?k:winKey===t.key?rv:null;
-  if(w){ F.cl[w]=num(F.cl[w])+3; out.push({k:'ok',t:`Concurso: ${cnNombre(w)} gana la Colisión, +3 de Clamor → ${F.cl[w]}.`}); }
-  else { F.fin.forEach(z=>{ F.cl[z]=num(F.cl[z])+1; }); out.push({k:'',t:'Concurso: empate en la Colisión, +1 de Clamor a cada uno.'}); }
+  if(w){ F.cl[w]=num(F.cl[w])+3; F.fuAdd[w]=num(F.fuAdd[w])+1; out.push({k:'ok',t:`${cnNombre(w)} gana la Colisión: +3 de Clamor → queda en ${F.cl[w]}.`}); }
+  else { F.fin.forEach(z=>{ F.cl[z]=num(F.cl[z])+1; }); out.push({k:'',t:'Empate en la Colisión: +1 de Clamor a cada uno.'}); }
   const f0=num(F.fu); F.fu=f0+1; out.push({k:'',t:`Furor ${f0} → ${Math.min(5,F.fu)}.`});
   if(F.fu>=5){ F.fu=0; if(w){ const l=w===k?rv:k; F.cl[l]=Math.max(0,num(F.cl[l])-5); out.push({k:'ok',t:`¡Furor al máximo! ${cnNombre(l)} pierde 5 de Clamor → ${F.cl[l]}.`}); } else out.push({k:'',t:'El Furor llega al máximo en un empate: vuelve a 0 sin efecto.'}); }
   cnGuardar4(F,out.map(l=>l.t),'Colisión'); return out; }
@@ -2853,7 +2873,9 @@ function cnAuto4(){ const F=CN.f4; const [a,b]=F.fin; const la=cnLado(a), lb=cnL
   if(la.ko!==lb.ko) return {tipo:'ko',w:la.ko?b:a};
   if(Math.abs(la.frac-lb.frac)<0.05) return {tipo:'empate',w:null};
   return {tipo:'vida',w:la.frac>lb.frac?a:b}; }
-/* Bonos del resultado: empate +3 al de menor Clamor · más Vida +3 · debilitar por Vida +5 · sin recibir daño +3 · ganar antes del 20 % de las rondas −8 (+3 si usó la categoría del Concurso) */
+/* Bonos del resultado: empate +3 al de menor Clamor · más Vida +3 · debilitar por Vida +5 · sin recibir daño +3 · ganar antes del 20 % de las rondas −8 (+3 si usó la categoría del Concurso) · quien más Furor sumó +5 */
+/* Al pulsar «Terminar combate» en Combate, el Duelo se cierra solo con el estado de Rondas, Vida y Clamor */
+function cnFinCombate(){ if(isMaster()&&CN.fase===4&&CN.f4&&!CN.f4.res&&CN.f4.fin.length===2){ CNU.res=''; cnCerrar4(); } }
 function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const F=structuredClone(CN.f4); const [a,b]=F.fin; const au=cnAuto4(); let tipo=au.tipo, w=au.w;
   if(CNU.res){ const [t,i]=CNU.res.split(':'); tipo=t; w=t==='empate'?null:F.fin[num(i)]; }
   const bon={[a]:0,[b]:0}, lines=[]; const ron=num(CB.ronda), lim=Math.max(1,Math.floor(num(F.n)*0.2));
@@ -2863,24 +2885,56 @@ function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const 
     if(tipo==='clamor') lines.push(`${cnNombre(w)} deja al rival en 0 de Clamor (sin bono).`);
     if(cnLado(w).sinDano){ bon[w]+=3; lines.push('Gana sin recibir daño: +3.'); }
     if(tipo!=='vida'&&ron<=lim){ const c=((F.st[w]||{}).usoCat)?3:0; bon[w]+=c-8; lines.push(`Gana en la ronda ${ron} (antes del 20 % de las ${F.n} rondas): −8${c?', +3 por usar un movimiento de '+CN.cat:''}.`); } }
+  { const fa=num((F.fuAdd||{})[a]), fb=num((F.fuAdd||{})[b]); if(fa!==fb){ const l=fa>fb?a:b; bon[l]+=5; lines.push(`${cnNombre(l)} fue quien más Furor sumó (${Math.max(fa,fb)} contra ${Math.min(fa,fb)}): +5.`); } }
   const tot={[a]:num(F.cl[a])+bon[a],[b]:num(F.cl[b])+bon[b]}; const la=cnLado(a), lb=cnLado(b);
   const gan=tot[a]!==tot[b]?(tot[a]>tot[b]?a:b):(w||(la.frac>=lb.frac?a:b));
   F.res={tipo,w:w||null,bon,tot,lines,gan,ronda:ron}; cnWrite({f4:F}); logRoll('Concurso',`Duelo de Gala: ${cnNombre(a)} ${tot[a]} · ${cnNombre(b)} ${tot[b]} → gana ${cnNombre(gan)}`,null); renderSheet(); }
 
+/* Glosario de Concursos: Presentación (Fases 1 y 2) y Enfrentamiento (Fases 3 y 4) */
+function cnGlos(){ const R6=['Starter','Beginner','Amateur','Elite','Master','Legend'];
+  return [{id:'concurso-pres',t:'Concursos: Presentación (Fases 1 y 2)',h:()=>`<p>Un Concurso tiene una <b>categoría</b> (Dureza, Estilo, Belleza, Dulzura o Astucia) y un <b>Rango</b>. Se inscribe al <b>Entrenador</b> con el lazo 🎀 y participa con todo su equipo; los NPC son Entrenadores del Master. Pasan a la fase siguiente los <b>8, 4 y 2</b> con más Clamor (el Master puede eliminar o reincorporar a mano), y un Concurso se puede jugar con menos participantes.</p>
+<p><b>Clamor:</b> el ánimo del público con cada participante; es el puntaje del Concurso.</p>
+${tbl(['Fase','Clamor al empezar','Se puede ganar'],[['1 · Exhibición','0','hasta 50'],['2 · Presentación','lo ganado en la Fase 1','hasta 50 más (25 por Pokémon)'],['3 · Enfrentamiento','50 para todos','sube y baja'],['4 · Duelo','50 para ambos','solo baja; al final se suman los bonos']])}
+<p><b>Jueces:</b> el panel tiene 3 jueces: 1 <b>Juez Principal</b>, afín a la categoría del Concurso, y 2 al azar. El sorteo es una tirada secreta del Master. Cada juez tiene una <b>afinidad</b> (40 % a 100 %) con cada categoría y un <b>Arte Afín</b>. Los jugadores solo ven de cada juez lo que descubren antes del Concurso; conocerlos no da puntos, solo ayuda a decidir qué presentar.</p>
+<p><b>Nota de cada juez = (tirada − Exigencia) × su afinidad con la categoría.</b> La Exigencia depende del Rango del Concurso:</p>
+${tbl(['Exigencia',...R6],[['Fase 1 (2 × bonus)','2','4','6','8','10','12'],['Fase 2 (3 × bonus)','3','6','9','12','15','18']])}
+<p><b>Fase 1 · Exhibición de Participante.</b> El Entrenador describe su saludo al público y elige un Atributo y un Talento; el Master decide a qué categoría y a qué arte corresponde. <b>Tirada: 1d20 + Atributo + Talento</b> (+ bono por Vestimenta, Accesorios o Rasgos). Si el arte es el Arte Afín de un juez, su nota vale <b>× 1,5</b>. <b>Clamor = suma de las 3 notas × 0,75</b>, máximo 50. Un 1 natural da 0 y un 20 natural da 50.</p>
+<p><b>Fase 2 · Presentación Grupal.</b> El Entrenador lleva 2 Pokémon, cada uno con un movimiento, y aplica un Talento propio. Cada Pokémon tira <b>1d20 + Atributo del movimiento + Talento del Entrenador</b>, con <b>+3 de Sincronía</b> si los dos movimientos son de la misma categoría. Cada juez califica cada movimiento con su afinidad por la categoría de ese movimiento; el arte no aplica. <b>Cada Pokémon aporta suma × 0,45</b>, máximo 25. Un 1 natural no aporta y un 20 natural aporta 25.</p>
+<p><b>Artes por categoría</b> (el color del Arte Afín indica la categoría favorita del juez):</p>
+${tbl(['Categoría','Artes'],CN_SOC.map(c=>[socialChip(c),JUECES.filter(j=>juezCat(j)===c).map(j=>esc(j[0])).join(', ')]))}`},
+  {id:'concurso-enf',t:'Concursos: Enfrentamiento (Fases 3 y 4)',h:()=>`<p>En estas fases cada movimiento tiene un <b>Efecto Concurso</b> y una <b>categoría</b>, y todos parten con <b>50 de Clamor</b>.</p>
+${tbl(['Término','Qué es'],[['Afinidad','Lo que le gusta cada categoría al Pokémon, según su naturaleza: 80 % en su categoría y 20 % a 60 % en las demás. Cada Brillo suma 10.'],['Furor','Contador de 0 a 5 que comparten todos. Sube 1 con un movimiento de la categoría del Concurso (2 si es crítico de Clamor) y baja 1 con una categoría que le desagrada al público. Al llegar a 5 da <b>+5 de Clamor</b> a quien lo llenó y vuelve a 0. No cambia el orden de los turnos.'],['Tropiezo','Clamor que un efecto le quita a un rival.'],['Nervioso','Pierde su exhibición de la ronda. Se resiste con 1d100 ≤ 50 + 10 por Brillo.'],['Brillo','Hasta 3. Cada uno da +1 de Clamor en cada exhibición, +10 a la afinidad y ayuda contra los Nervios.'],['Guardia','Anula el próximo Tropiezo de la ronda. <b>Guardia Total</b> anula todos los de la ronda y <b>Concentración</b> protege de Tropiezos y Nervios hasta su próxima exhibición.']])}
+<p><b>Tirada:</b> la misma tirada de Precisión (1d100) decide todo. Si <b>falla</b> la Precisión, la exhibición no da Clamor ni aplica su efecto. Si conecta pero <b>supera la afinidad</b> del Pokémon con la categoría del movimiento, gana la <b>mitad</b> del Clamor (hacia abajo). Con <b>10 o menos</b> es crítico de Clamor: el doble.</p>
+${tbl(['Categoría del Concurso','Le desagradan (Furor −1)'],CN_SOC.map(c=>[socialChip(c),SOC_NEG[c].map(socialChip).join(' ')]))}
+<p><b>Repetición:</b> repetir el movimiento de la ronda anterior resta 3 de Clamor, y 2 más por cada ronda seguida extra (−3, −5, −7…). Incansable y Bis no penalizan.</p>
+<p><b>Fase 3 · Enfrentamiento.</b> Cada Entrenador presenta <b>1 Pokémon</b>, que elige en la Ronda 1 y vale para toda la fase. En cada ronda todos eligen su movimiento en secreto y luego las acciones se revelan una a una. <b>Iniciativa:</b> en la Ronda 1, por el Clamor de las Fases 1 y 2; después, por el Clamor ganado en la ronda anterior (los empates, con el criterio de la Ronda 1). Los efectos de orden (Adelantarse, Retrasarse) se aplican después de calcularla, y Desorden la baraja.</p>
+${tbl(['Rondas',...R6],[['Fase 3',...CN_R3.map(String)],['Fase 4 (máximo)',...CN_R4.map(String)],['Fase 4: «ganar rápido» hasta la ronda',...CN_R4.map(n=>String(Math.max(1,Math.floor(n*0.2))))]])}
+<p><b>Fase 4 · Duelo de Gala.</b> Es un combate normal entre los 2 finalistas, y además cada movimiento que conecta <b>baja el Clamor del rival</b> en lo que marca su Efecto Concurso (su Clamor más su Tropiezo). La Guardia solo anula la parte de Tropiezo. Los efectos que dependen del orden de la ronda (Apertura, Cierre, Crescendo, Adelantarse, Retrasarse, Desorden) usan su valor base. Si el Furor se llena, el rival pierde 5 más. Un KO o llegar a <b>0 de Clamor</b> termina el Duelo al instante.</p>
+<p><b>Colisión:</b> se omite el Efecto Concurso de los movimientos. Quien gana la Colisión gana 3 de Clamor; en empate, 1 cada uno. El Furor sube 1 siempre.</p>
+${tbl(['Al terminar el Duelo','Bono de Clamor'],[['Empate: al de menor Clamor','+3'],['Terminar las rondas con más Vida','+3'],['Debilitar al rival (por Vida)','+5'],['Ganar sin recibir daño (se suma)','+3'],['Ser quien más Furor sumó','+5'],['Ganar muy rápido (antes del 20 % de las rondas)','−8, o −5 si usó un movimiento de la categoría del Concurso']])}
+<p>Gana el Concurso quien termina con más Clamor después de los bonos.</p>
+<p><b>Efectos Concurso.</b> «Quien actuó justo antes» y «los que ya actuaron» se refieren a la ronda en curso.</p>
+${tbl(['Familia','Efecto','Clamor','Tropiezo','Qué hace'],CEF.map(e=>[esc(e[1]),'<b>'+esc(e[0])+'</b>','+'+e[2],e[3]?'−'+e[3]:'—',esc(e[4])]))}`}]; }
 /* ---- vistas ---- */
 const cnBar=(v,max)=>`<div class="psbar cnbar"><i style="width:${clamp(v/max,0,1)*100}%"></i></div>`;
+const cnFurorBox=n=>`<span class="furorbox"><b>Furor</b>${cnPips(n)}<span>${n}/5</span></span>`;
 const cnPips=n=>`<span class="furor" title="Furor ${n} de 5" aria-label="Furor ${n} de 5">${[0,1,2,3,4].map(i=>`<i class="${i<n?'on':''}"></i>`).join('')}</span>`;
 const cnOpt=(l,sel,ph)=>(ph?`<option value="">${esc(ph)}</option>`:'')+l.map(o=>{ const [v,t]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}"${String(v)===String(sel||'')?' selected':''}>${esc(t)}</option>`; }).join('');
 const cnQuien=p=>p.src==='master'?'Master':(S.players[p.uid]?.alias||'');
 const cnMovs=y=>(y.f.moves||[]).filter(Boolean).map(id=>atkById.get(id)).filter(Boolean);
 const cnMovOpt=(y,sel)=>cnOpt(cnMovs(y).map(m=>[m[0],`${m[1]} · ${m[14]} · ${cefDe(m[0])[0]}`]),sel,'Movimiento…');
 const cnSteps=L=>`<div class="steps-res">${L.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')}</div>`;
-function cnJuecesHTML(){ const ver=isMaster()||CN.jzVis; let h=`<div class="card"><h2><span>Jueces</span><span class="row">${isMaster()?`${CN.fase===0?'<button class="btn sm" data-cn="sortear">Sortear panel</button>':''}${CN.jz.length?`<button class="btn sm" data-cn="verjz" aria-pressed="${!!CN.jzVis}">${CN.jzVis?'Ocultar a los jugadores':'Mostrar a los jugadores'}</button>`:''}`:''}</span></h2>`;
-  if(!CN.jz.length) return h+`<p class="note">${isMaster()?'Aún no hay panel: se sortea al comenzar (1 Juez Principal afín a la categoría y 2 al azar), o ahora con «Sortear panel».':'El Master sortea el panel en secreto.'}</p></div>`;
-  if(!ver) return h+`<p class="note">El panel tiene 3 jueces y es secreto: conócelos antes del Concurso para saber qué les gusta.</p></div>`;
-  h+=`<div class="res">${CN.jz.map((ji,n)=>{ const j=JUECES[ji]; return `<div class="r"><div><b>Juez ${n+1}${n===0?' · Principal':''}</b> <span class="note">Arte Afín: ${esc(j[0])}</span><div class="row" style="margin-top:4px">${CN_SOC.map((c,i)=>`<span class="pill">${socialChip(c)} ${j[1+i]}%</span>`).join('')}</div></div></div>`; }).join('')}</div>`;
-  return h+`${isMaster()&&!CN.jzVis?'<p class="note">Solo tú ves el panel (tirada secreta).</p>':''}</div>`; }
-function cnCabeza(){ const f=CN.fase; const nAct=cnActivos().length; let h=`<div class="card"><h2><span>Concurso · Fase ${f} · ${CN_FASES[f]}</span><span class="row">${(f>=3)?cnPips(cnFuror()):''}${isMaster()&&CN.exists&&(CN.parts.length||f>0)?'<button class="btn sm danger" data-cn="end">Terminar Concurso</button>':''}</span></h2>`;
+function cnJuecesHTML(){ const M=isMaster(), op=M&&CNU.vopen, jug=dexPlayers();
+  let h=`<div class="card"><h2><span>Jueces</span><span class="row">${M?`${CN.fase===0?'<button class="btn sm" data-cn="sortear">Sortear panel</button>':''}${CN.jz.length?`<button class="btn sm ${op?'pri':''}" data-cn="jvopen" aria-expanded="${!!op}">Visibilidad</button>`:''}`:''}</span></h2>`;
+  if(!CN.jz.length) return h+`<p class="note">${M?'Aún no hay panel: se sortea al comenzar (1 Juez Principal afín a la categoría y 2 al azar), o ahora con «Sortear panel».':'El Master sortea el panel en secreto.'}</p></div>`;
+  h+=`<div class="res">${CN.jz.map((ji,n)=>{ const j=JUECES[ji]; let ed='';
+    if(op){ ed=`<div class="jvgrid">${CN_JITEMS.map(it=>{ const l=CN.jv[`${n}:${it}`]||[], all=l.includes('*');
+        return `<div class="jvrow"><span class="note">${it==='nom'?'Nombre':it==='arte'?'Arte Afín':it}</span><button class="btn sm" data-cn="jv" data-k="${n}:${it}:*" aria-pressed="${all}">Todos</button>${jug.map(u=>`<button class="btn sm" data-cn="jv" data-k="${n}:${it}:${esc(u)}" aria-pressed="${all||l.includes(u)}"${all?' disabled':''}>${esc(S.players[u]?.alias||'Jugador')}</button>`).join('')}</div>`; }).join('')}
+        <div class="jvrow"><span class="note">Todo el juez</span><button class="btn sm" data-cn="jvall" data-k="${n}:1">Mostrar todo a todos</button><button class="btn sm" data-cn="jvall" data-k="${n}:0">Ocultar todo</button></div></div>`; }
+    return `<div class="r"><div style="min-width:0"><b>Juez ${n+1}${n===0?' · Principal':''}${cnVe(n,'nom')&&j[6]?' · '+esc(j[6]):''}</b> <span class="note">Arte Afín:</span> ${cnVe(n,'arte')?cnArteChip(j):'<span class="pill">?</span>'}
+      <div class="row" style="margin-top:4px">${CN_SOC.map((c,i)=>`<span class="pill">${socialChip(c)} ${cnVe(n,c)?j[1+i]+'%':'?'}</span>`).join('')}</div>${ed}</div></div>`; }).join('')}</div>`;
+  return h+`<p class="note">${M?(op?'Marca quién ve cada dato de cada juez; «Todos» lo muestra a toda la mesa.'+(jug.length?'':' Aún no hay jugadores en esta mesa.'):'Solo tú ves el panel completo (tirada secreta). Con «Visibilidad» eliges qué descubre cada jugador de cada juez.'):'Los «?» son datos de los jueces que aún no descubres.'}</p></div>`; }
+function cnCabeza(){ const f=CN.fase; const nAct=cnActivos().length; let h=`<div class="card"><h2><span>Concurso · Fase ${f} · ${CN_FASES[f]}</span><span class="row">${isMaster()&&CN.exists&&(CN.parts.length||f>0)?'<button class="btn sm danger" data-cn="end">Terminar Concurso</button>':''}</span></h2>`;
   if(isMaster()&&f===0) h+=`<div class="grid g3"><label class="f">Categoría del Concurso<select data-cnf="cat">${cnOpt(CN_SOC,CN.cat)}</select></label><label class="f">Rango del Concurso<select data-cnf="rango">${cnOpt(RANGOS,CN.rango)}</select></label></div>`;
   else h+=`<p class="note">Categoría ${socialChip(CN.cat)} · Rango ${esc(CN.rango)} · ${nAct} participante${nAct===1?'':'s'} en carrera</p>`;
   if(CNU.conf==='end') h+=`<p class="row"><b>¿Terminar el Concurso y borrar su avance?</b> <button class="btn sm danger" data-cn="endYes">Sí, terminar</button><button class="btn sm" data-cn="no">No</button></p>`;
@@ -2890,17 +2944,18 @@ function cnCabeza(){ const f=CN.fase; const nAct=cnActivos().length; let h=`<div
       else h+=`<p class="row"><button class="btn pri" data-cn="next"${listo?'':' disabled'}>${sig}</button>${listo?'':`<span class="note">${f===0?'Envía Entrenadores con el lazo 🎀 junto a su nombre.':f===3?'Falta terminar las rondas.':'Faltan presentaciones.'}</span>`}</p>`; } }
   return h+`</div>`; }
 function cnTablaHTML(){ const ps=cnParts(); if(!ps.length) return `<div class="card"><h2>Participantes</h2><p class="note">Nadie entró al Concurso todavía. Usa el lazo 🎀 junto a tu Entrenador (en Mis fichas o en Mesa): participa con todo su equipo.</p></div>`;
-  const max=CN.fase>=3?100:100; const ord=[...ps].sort((a,b)=>(!!CN.out[a.key])-(!!CN.out[b.key])||cnClamor(b.key)-cnClamor(a.key));
-  return `<div class="card"><h2>${CN.fase===0?'Participantes y equipo inscrito':'Clamor'}</h2><div class="res">${ord.map((p,i)=>{ const out=!!CN.out[p.key], v=cnClamor(p.key);
-    return `<div class="r cnrow${out?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${CN.fase?`${i+1}. `:''}${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}${out?' · eliminado':''}</span>
-      ${CN.fase?cnBar(v,max):''}<div class="row" style="margin-top:4px">${p.team.map(y=>`<span class="pill" title="${esc((y.f.nat||'')+' · '+tiposDe(y.f).join(' / '))}">${esc(charName(y.f))}</span>`).join('')||'<span class="note">Sin Pokémon en el equipo.</span>'}</div></div>
+  const F3=CN.fase===3&&CN.f3&&!CN.f3.fin?CN.f3:null; const pos=k=>{ const i=F3?F3.ini.indexOf(k):-1; return i<0?99:i; };
+  const ord=[...ps].sort((a,b)=>(!!CN.out[a.key])-(!!CN.out[b.key])||(F3?pos(a.key)-pos(b.key):0)||cnClamor(b.key)-cnClamor(a.key));
+  return `<div class="card"><h2>${CN.fase===0?'Participantes y equipo inscrito':F3?`Iniciativa <span class="ronda">Ronda ${F3.ronda} de ${F3.n}</span>`:'Clamor'}</h2><div class="res">${ord.map((p,i)=>{ const out=!!CN.out[p.key], v=cnClamor(p.key), elg=CN.fase===3?cnSel3(p.key).pk:'';
+    return `<div class="r cnrow${out?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${CN.fase?`${i+1}. `:''}${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}${out?' · eliminado':F3&&pos(p.key)===99?' · no actúa esta ronda':''}</span>
+      ${CN.fase?cnBar(v,CN.fase===4?50:100):''}<div class="row" style="margin-top:4px">${p.team.map(y=>`<span class="pill${y.id===elg?' sel':''}" title="${esc((y.f.nat||'')+' · '+tiposDe(y.f).join(' / '))}">${esc(charName(y.f))}</span>`).join('')||'<span class="note">Sin Pokémon en el equipo.</span>'}</div></div>
       <div style="text-align:right">${CN.fase?`<span class="big">${v}</span>`:''}${isMaster()?`<div class="row" style="justify-content:flex-end">${CN.fase>0&&CN.fase<4?`<button class="btn sm" data-cn="elim" data-k="${esc(p.key)}">${out?'Reincorporar':'Eliminar'}</button>`:''}${CN.fase===0||out?`<button class="btn sm" data-ribbon="${esc(p.key)}">Quitar</button>`:''}</div>`:(CN.fase===0&&cnCan(p)?`<div><button class="btn sm" data-ribbon="${esc(p.key)}">Quitar</button></div>`:'')}</div></div>`; }).join('')}</div>
     ${isMaster()&&ps.some(p=>p.src==='master')&&CN.fase<3?'<p class="note"><button class="btn sm" data-cn="resnap">Actualizar copias de los NPC</button> Los jugadores ven una copia de los Entrenadores del Master y de su equipo.</p>':''}</div>`; }
-function cnNotasHTML(notas,ver){ return `<div class="row" style="margin-top:4px">${notas.map((x,i)=>`<span class="pill">Juez ${i+1}: <b>${x.n}</b>${ver?` <span class="note">(${x.af}%${x.afin?' · Arte Afín × 1,5':''})</span>`:x.afin?' ✦':''}</span>`).join('')}</div>`; }
-function cnFase1HTML(){ const ver=isMaster()||CN.jzVis; let h=`<div class="card"><h2>Exhibición de Participante</h2><p class="note">Cada Entrenador describe su saludo al público y elige Atributo y Talento. El Master define la categoría y el arte de la exhibición. «Presentar» tira 1d20 + Atributo + Talento (+ bono), resta la Exigencia (${2*rb(CN.rango)}) y calcula la nota de cada juez. Clamor = suma de las notas × 0,75 (máximo 50).</p><div class="res">`;
+function cnNotasHTML(notas,cat){ return `<div class="row" style="margin-top:4px">${notas.map((x,i)=>{ const det=[cnVe(i,cat)?x.af+'%':'',x.afin&&cnVe(i,'arte')?'Arte Afín × 1,5':''].filter(Boolean).join(' · '); return `<span class="pill">Juez ${i+1}: <b>${x.n}</b>${det?` <span class="note">(${det})</span>`:''}</span>`; }).join('')}</div>`; }
+function cnFase1HTML(){ let h=`<div class="card"><h2>Exhibición de Participante</h2><p class="note">Cada Entrenador describe su saludo al público y elige Atributo y Talento. El Master define la categoría y el arte de la exhibición. «Presentar» tira 1d20 + Atributo + Talento (+ bono), resta la Exigencia (${2*rb(CN.rango)}) y calcula la nota de cada juez. Clamor = suma de las notas × 0,75 (máximo 50).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f1||{}, mm=CN.m1[k]||{}, can=cnCan(p), r=s.r;
     h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>`;
-    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,ver)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div>`;
+    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,r.cat)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div>`;
     else { h+=`<div class="grid g3" style="margin-top:6px"><label class="f">Atributo<select data-cnf="f1.atr" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ATTR.map(a=>[a,`${ATTR_FULL[a]} (${sg(calc(p.f).A[a])})`]),s.atr,'Elige…')}</select></label>
         <label class="f">Talento<select data-cnf="f1.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label>
         <label class="f">Bono (Vestimenta, Accesorios, Rasgos)<input type="number" data-cnf="f1.bono" data-k="${esc(k)}" value="${num(s.bono)}"${can?'':' disabled'}></label>
@@ -2910,27 +2965,27 @@ function cnFase1HTML(){ const ver=isMaster()||CN.jzVis; let h=`<div class="card"
       h+=listo?(can?`<p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pres1" data-k="${esc(k)}">Presentar</button></p>`:'<p class="note">Listo para presentar.</p>'):`<p class="note">Falta: ${[!s.atr&&'Atributo',!s.tal&&'Talento',!mm.cat&&'Categoría (Master)',!mm.arte&&'Arte (Master)'].filter(Boolean).join(', ')}.</p>`; }
     h+=`</div><div style="text-align:right">${r?`<span class="big">${r.cl}</span>${isMaster()?`<div><button class="btn sm" data-cn="redo1" data-k="${esc(k)}">Repetir</button></div>`:''}`:''}</div></div>`; }
   return h+`</div></div>`; }
-function cnFase2HTML(){ const ver=isMaster()||CN.jzVis; let h=`<div class="card"><h2>Presentación Grupal</h2><p class="note">Cada Entrenador lleva 2 Pokémon al escenario, cada uno con un movimiento, y aplica un Talento propio. Cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador (+3 de Sincronía si los dos movimientos son de la misma categoría) y resta la Exigencia (${3*rb(CN.rango)}). Cada juez califica con su afinidad por la categoría de cada movimiento; el arte no aplica. Cada Pokémon aporta suma × 0,45 (máximo 25).</p><div class="res">`;
+function cnFase2HTML(){ let h=`<div class="card"><h2>Presentación Grupal</h2><p class="note">Cada Entrenador lleva 2 Pokémon al escenario, cada uno con un movimiento, y aplica un Talento propio. Cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador (+3 de Sincronía si los dos movimientos son de la misma categoría) y resta la Exigencia (${3*rb(CN.rango)}). Cada juez califica con su afinidad por la categoría de cada movimiento; el arte no aplica. Cada Pokémon aporta suma × 0,45 (máximo 25).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f2||{}, can=cnCan(p), r=s.r;
     h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))} · trae ${num(((cnU(k).f1||{}).r||{}).cl)} de Clamor</span>`;
     if(r){ h+=`<div class="note">${esc(TAL_LABEL(s.tal))} ${sg(r.T)}${r.sinc?' · Sincronía +3':''} · Exigencia −${r.ex}</div>`;
-      r.ap.forEach(a=>{ h+=cnSteps([{k:a.d===1?'ko':'ok',t:`${a.n} con ${a.mv} (${a.cat}): d20 [${a.d}] + ${a.ak} ${a.A} + ${r.T}${r.sinc?' + 3':''} = ${a.tir}${a.d===1?' · 1 natural: sin aporte':a.d===20?' · 20 natural: aporte máximo':''} → aporta ${a.cl}`}])+cnNotasHTML(a.notas,ver); });
+      r.ap.forEach(a=>{ h+=cnSteps([{k:a.d===1?'ko':'ok',t:`${a.n} con ${a.mv} (${a.cat}): d20 [${a.d}] + ${a.ak} ${a.A} + ${r.T}${r.sinc?' + 3':''} = ${a.tir}${a.d===1?' · 1 natural: sin aporte':a.d===20?' · 20 natural: aporte máximo':''} → aporta ${a.cl}`}])+cnNotasHTML(a.notas,a.cat); });
       h+=`<div class="note"><b>Clamor +${r.cl}</b></div>`; }
-    else { const fila=n=>{ const y=p.team.find(z=>z.id===s['p'+n]); return `<label class="f">Pokémon ${n}<select data-cnf="f2.p${n}" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(p.team.filter(z=>z.id!==s['p'+(3-n)]).map(z=>[z.id,charName(z.f)]),s['p'+n],'Elige…')}</select></label>
-        <label class="f">Movimiento ${n}<select data-cnf="f2.m${n}" data-k="${esc(k)}"${can&&y?'':' disabled'}>${y?cnOpt(cnMovs(y).map(m=>[m[0],`${m[1]} · ${m[14]} · ${ATTR_FULL[short(m[4])]||m[4]}`]),s['m'+n],'Movimiento…'):'<option value="">—</option>'}</select></label>`; };
-      h+=`<div class="grid g3" style="margin-top:6px">${fila(1)}${fila(2)}<label class="f">Talento del Entrenador<select data-cnf="f2.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label></div>`;
+    else { const selP=n=>`<label class="f">Pokémon ${n}<select data-cnf="f2.p${n}" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(p.team.filter(z=>z.id!==s['p'+(3-n)]).map(z=>[z.id,charName(z.f)]),s['p'+n],'Elige…')}</select></label>`;
+      const selM=n=>{ const y=p.team.find(z=>z.id===s['p'+n]); return `<label class="f">Movimiento ${n}<select data-cnf="f2.m${n}" data-k="${esc(k)}"${can&&y?'':' disabled'}>${y?cnOpt(cnMovs(y).map(m=>[m[0],`${m[1]} · ${m[14]} · ${ATTR_FULL[short(m[4])]||m[4]}`]),s['m'+n],'Movimiento…'):'<option value="">—</option>'}</select></label>`; };
+      h+=`<div class="grid g3" style="margin-top:6px"><div class="cncol">${selP(1)}${selP(2)}</div><div class="cncol">${selM(1)}${selM(2)}</div><div class="cncol"><label class="f">Talento del Entrenador<select data-cnf="f2.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label></div></div>`;
       const cats=[s.m1,s.m2].map(id=>(atkById.get(id)||[])[14]).filter(Boolean); if(cats.length) h+=`<div class="row" style="margin-top:4px"><span class="note">Categoría de la presentación:</span> ${cats.map(socialChip).join(' ')}${cats.length===2&&cats[0]===cats[1]?' <span class="pill">Sincronía +3</span>':''}</div>`;
       const listo=s.p1&&s.p2&&s.m1&&s.m2&&s.tal;
       h+=listo?(can?`<p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pres2" data-k="${esc(k)}">Presentar</button></p>`:'<p class="note">Listo para presentar.</p>'):`<p class="note">${p.team.length<2?'Necesita 2 Pokémon en su equipo.':'Falta elegir los 2 Pokémon, sus movimientos y el Talento.'}</p>`; }
     h+=`</div><div style="text-align:right">${r?`<span class="big">+${r.cl}</span>${isMaster()?`<div><button class="btn sm" data-cn="redo2" data-k="${esc(k)}">Repetir</button></div>`:''}`:''}</div></div>`; }
   return h+`</div></div>`; }
 function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
-  let h=`<div class="card"><h2><span>Enfrentamiento <span class="ronda">${F.fin?'Rondas terminadas':`Ronda ${F.ronda} de ${F.n}`}</span></span><span class="row">${cnPips(cnFuror())}</span></h2>`;
+  let h=`<div class="card"><h2><span>Enfrentamiento <span class="ronda">${F.fin?'Rondas terminadas':`Ronda ${F.ronda} de ${F.n}`}</span></span><span class="row">${cnFurorBox(cnFuror())}</span></h2>`;
   if(F.fin) return h+`<p class="note">Terminaron las ${F.n} rondas. Pasan al Duelo los 2 con más Clamor.</p></div>`;
   h+=`<p class="note">Cada Entrenador presenta 1 Pokémon. En cada ronda todos eligen su movimiento en secreto; cuando están listos, el Master revela las acciones una a una en orden de iniciativa. La tirada de Precisión (1d100) decide: si falla, no hay Clamor; si supera la afinidad del Pokémon con la categoría del movimiento, gana la mitad; con 10 o menos, el doble.</p><div class="res">`;
   F.ini.forEach((k,i)=>{ const p=cnPart(k); if(!p) return; const can=cnCan(p), s=cnSel3(k), y=p.team.find(z=>z.id===s.pk), br=num(F.br[k]);
     const done=q&&q.acts.findIndex(a=>a.k===k)<num(q.i);
-    h+=`<div class="r cnrow${done?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${i+1}. ${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span> ${y?`<span class="pill">${esc(charName(y.f))}${y.f.nat?' · '+esc(y.f.nat):''}</span>`:''}${br?` <span class="pill" title="Brillo">${'★'.repeat(br)}</span>`:''}${cnBar(cnClamor(k),100)}`;
+    h+=`<div class="r cnrow${done?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${i+1}. ${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span> ${y?`<span class="pill sel">${esc(charName(y.f))}${y.f.nat?' · '+esc(y.f.nat):''}</span>`:''}${br?` <span class="pill" title="Brillo">${'★'.repeat(br)}</span>`:''}${cnBar(cnClamor(k),100)}`;
     if(!q){ if(can&&!s.ok){ const loc=CNU.sel[k]||s.mv;
           h+=`<div class="grid g3" style="margin-top:6px">${F.ronda===1||!y?`<label class="f">Pokémon<select data-cnf="f3.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,charName(z.f)]),s.pk,'Elige…')}</select></label>`:''}
             <label class="f">Movimiento (secreto)<select data-cnf="f3.mv" data-k="${esc(k)}"${y?'':' disabled'}>${y?cnMovOpt(y,loc):'<option value="">—</option>'}</select></label></div>
@@ -2946,30 +3001,33 @@ function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
   else if(isMaster()){ const falta=F.ini.filter(k=>!cnSel3(k).ok).length; h+=`<p class="row" style="margin-top:8px"><button class="btn pri" data-cn="resolve3"${falta||!F.ini.length?' disabled':''}>Resolver la ronda</button>${falta?`<span class="note">Falta${falta===1?'':'n'} ${falta} por escoger.</span>`:''}</p>`; }
   return h+`</div>`; }
 function cnFase4HTML(){ const F=CN.f4; if(!F) return ''; const ron=num(CB.ronda);
-  let h=`<div class="card"><h2><span>Duelo de Gala <span class="ronda">Ronda ${Math.min(ron,F.n)} de ${F.n}</span></span><span class="row">${cnPips(num(F.fu))}</span></h2>`;
+  let h=`<div class="card"><h2><span>Duelo de Gala <span class="ronda">Ronda ${Math.min(ron,F.n)} de ${F.n}</span></span><span class="row">${cnFurorBox(num(F.fu))}</span></h2>`;
   if(F.fin.length<2) return h+`<p class="note">No hay 2 finalistas.</p></div>`;
   h+=`<p class="note">El Duelo se juega en la pestaña <b>Combate</b> con las reglas de siempre: cada finalista entra con el guante 🥊. Además, cada movimiento que conecta aplica su Efecto Concurso y baja el Clamor del rival. Un KO o llegar a 0 de Clamor termina el Duelo; si no, termina al cerrar la ronda ${F.n}.</p><div class="res">`;
   F.fin.forEach(k=>{ const p=cnPart(k); if(!p) return; const la=cnLado(k), s=F.st[k]||{};
     h+=`<div class="r cnrow"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>${num(s.br)?` <span class="pill" title="Brillo">${'★'.repeat(num(s.br))}</span>`:''}${cnBar(num(F.cl[k]),50)}
       <div class="note">${la.n?`En combate: Vida ${pct(la.frac)}${la.ko?' · debilitado':''}`:'Aún no entra al combate.'}</div></div><div style="text-align:right"><span class="big">${num(F.cl[k])}</span></div></div>`; });
   h+=`</div>`;
-  if((F.log||[]).length) h+=`<details class="rlog" open><summary>Efectos de Concurso</summary><div class="steps-res">${[...F.log].reverse().map(e=>`<div><b>R${e.r} · ${esc(e.q)}:</b> ${e.l.map(esc).join(' ')}</div>`).join('')}</div></details>`;
+  if((F.log||[]).length) h+=`<details class="rlog" open><summary>Efectos de Concurso</summary><div class="steps-res">${[...F.log].reverse().map(e=>`<div><b>R${e.r} · ${esc(e.q)}</b>${e.l.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`).join('')}</div></details>`;
   if(F.res){ const R=F.res; h+=`<div class="fx-box" style="margin-top:10px"><b>Resultado: ${esc(CN_RES[R.tipo])}</b>${cnSteps(R.lines.map(t=>({k:'',t})))}<div class="row" style="margin-top:6px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: ${num(F.cl[k])} ${sg(R.bon[k])} = <b>${R.tot[k]}</b></span>`).join('')}</div><p style="margin:8px 0 0"><b>🎀 Gana el Concurso: ${esc(cnNombre(R.gan))}</b></p>${isMaster()?'<p class="row" style="margin-top:6px"><button class="btn sm" data-cn="reopen4">Reabrir el Duelo</button></p>':''}</div>`; }
   else if(isMaster()){ const au=cnAuto4(); const ops=[['','Automático: '+CN_RES[au.tipo]+(au.w?' · '+cnNombre(au.w):'')],...F.fin.flatMap((k,i)=>['ko','clamor','vida'].map(t=>[`${t}:${i}`,`${CN_RES[t]} · ${cnNombre(k)}`])),['empate:0','Empate']];
     h+=`<div class="grid g3" style="margin-top:10px"><label class="f">Resultado del combate<select data-cnf="res">${cnOpt(ops,CNU.res)}</select></label></div><p class="row" style="margin-top:6px"><button class="btn pri" data-cn="cerrar4">Cerrar el Duelo y calcular bonos</button></p>`; }
   return h+`</div>`; }
 function concursoHTML(){ let h=cnCabeza(); const f=CN.fase;
-  if(f===1) h+=cnFase1HTML(); else if(f===2) h+=cnFase2HTML(); else if(f===3) h+=cnFase3HTML(); else if(f===4) h+=cnFase4HTML();
+  if(f===1) h+=cnFase1HTML(); else if(f===2) h+=cnFase2HTML(); else if(f===3) return h+cnTablaHTML()+cnFase3HTML()+cnJuecesHTML(); else if(f===4) h+=cnFase4HTML();
   return h+cnTablaHTML()+cnJuecesHTML(); }
 /* Aviso en Combate mientras se juega el Duelo */
-function cnDueloAviso(){ const F=CN.f4; if(CN.fase!==4||!F||F.fin.length<2) return ''; return `<div class="fx-box" style="margin-bottom:8px"><b>Duelo de Gala</b> · Ronda ${Math.min(num(CB.ronda),F.n)} de ${F.n} ${cnPips(num(F.fu))}<div class="row" style="margin-top:4px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: Clamor <b>${num(F.cl[k])}</b></span>`).join('')}${F.res?`<span class="pill">Gana ${esc(cnNombre(F.res.gan))}</span>`:''}</div></div>`; }
+function cnDueloAviso(){ const F=CN.f4; if(CN.fase!==4||!F||F.fin.length<2) return ''; return `<div class="fx-box cnaviso" style="margin-bottom:8px"><div class="row" style="justify-content:space-between"><span><b>Duelo de Gala</b> · <span class="ronda">Ronda ${num(CB.ronda)} de ${F.n} (máximo)</span></span>${cnFurorBox(num(F.fu))}</div><div class="row" style="margin-top:4px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: Clamor <b>${num(F.cl[k])}</b></span>`).join('')}${F.res?`<span class="pill">Gana ${esc(cnNombre(F.res.gan))}</span>`:''}</div></div>`; }
 function cnClick(b){ const a=b.dataset.cn, k=b.dataset.k||'';
   if(a==='no'){ CNU.conf=''; }
   else if(a==='end'||a==='next'){ CNU.conf=a; }
   else if(a==='endYes'&&isMaster()){ CN.u={}; CNU.conf=''; CNU.sel={}; CNU.res=''; cnWrite(CN0(),true); render(); return; }
   else if(a==='nextYes'){ cnAvanzar(); return; }
-  else if(a==='sortear'&&isMaster()){ cnWrite({jz:cnSortear()}); }
-  else if(a==='verjz'&&isMaster()){ cnWrite({jzVis:!CN.jzVis}); }
+  else if(a==='sortear'&&isMaster()){ cnWrite({jz:cnSortear(),jv:{}}); }
+  else if(a==='jvopen'&&isMaster()){ CNU.vopen=!CNU.vopen; }
+  else if(a==='jv'&&isMaster()){ const [n,it,...r]=k.split(':'), u=r.join(':'), key=`${n}:${it}`; let l=[...(CN.jv[key]||[])];
+    if(u==='*') l=l.includes('*')?[]:['*']; else l=l.includes(u)?l.filter(z=>z!==u):[...l,u]; cnWrite({jv:{...CN.jv,[key]:l}}); }
+  else if(a==='jvall'&&isMaster()){ const [n,on]=k.split(':'); const jv={...CN.jv}; CN_JITEMS.forEach(it=>{ jv[`${n}:${it}`]=on==='1'?['*']:[]; }); cnWrite({jv}); }
   else if(a==='resnap'&&isMaster()){ const snaps={}; CN.parts.forEach(z=>{ const [src,,id]=z.split('|'); if(src==='master'&&S.master[id]) snaps[z]=cnSnapDe({src,uid:null,id}); }); cnWrite({snaps}); }
   else if(a==='elim'&&isMaster()){ const out={...CN.out}; if(out[k]) delete out[k]; else out[k]=true; cnWrite({out}); }
   else if(a==='pres1'){ cnPresentar1(k); return; }
@@ -2985,7 +3043,7 @@ function cnClick(b){ const a=b.dataset.cn, k=b.dataset.k||'';
   else if(a==='reopen4'&&isMaster()&&CN.f4){ const F=structuredClone(CN.f4); F.res=null; cnWrite({f4:F}); }
   renderSheet(); }
 function cnChange(el){ const f=el.dataset.cnf, k=el.dataset.k||'', v=el.value; const p=k?cnPart(k):null;
-  if(f==='cat'&&isMaster()){ cnWrite({cat:v,jz:[]}); }
+  if(f==='cat'&&isMaster()){ cnWrite({cat:v,jz:[],jv:{}}); }
   else if(f==='rango'&&isMaster()){ cnWrite({rango:v}); }
   else if(f==='res'){ CNU.res=v; return; }
   else if(f.startsWith('m1.')&&isMaster()){ cnWrite({m1:{...CN.m1,[k]:{...(CN.m1[k]||{}),[f.slice(3)]:v}}}); }
@@ -3049,6 +3107,7 @@ document.addEventListener('click',async e=>{
   const vb=e.target.closest('[data-vistabulk]'); if(vb&&isMaster()){ const [k,v]=vb.dataset.vistabulk.split('|'); for(const id of VLAST[k]) v==='1'?VSET[k].add(id):VSET[k].delete(id); saveVistas(); return; }
   const va=e.target.closest('[data-vistaall]'); if(va&&isMaster()){ const [k,v]=va.dataset.vistaall.split('|'); const all=k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3]); VSET[k]=v==='1'?new Set(all):new Set(); saveVistas(); return; }
   const pb=e.target.closest('[data-prebuy]'); if(pb){ const id=pb.dataset.prebuy; T.pbuy=T.pbuy===id?'':id; T.pbuyN=1; renderSheet(); return; }
+  const mo=e.target.closest('[data-movopen]'); if(mo){ const id=mo.dataset.movopen; T.mopen=T.mopen===id?'':id; renderSheet(); return; }
   const pe=e.target.closest('[data-preopen]'); if(pe){ const id=pe.dataset.preopen; T.popen=T.popen===id?'':id; renderSheet(); return; }
   const vi=e.target.closest('[data-vistaid]'); if(vi&&isMaster()){ const i=vi.dataset.vistaid.indexOf('|'); const k=vi.dataset.vistaid.slice(0,i), id=vi.dataset.vistaid.slice(i+1); VSET[k].has(id)?VSET[k].delete(id):VSET[k].add(id); saveVistas(); return; }
   const lk=e.target.closest('[data-lock]'); if(lk){ const x=refByKey(lk.dataset.lock); if(x) setLock(x,!isLocked(x.f)); renderSheet(); return; }
