@@ -2630,7 +2630,7 @@ const SOC_NEG={Dureza:['Dulzura','Belleza'],Estilo:['Astucia','Dulzura'],Belleza
 const CEF=D.cef||[], JUECES=D.jueces||[];
 const cefDe=id=>CEF[(D.catk||{})[id]]||CEF[0]||['Gran Exhibición','Exhibición',4,0,''];
 const cefN=n=>CEF.find(e=>e[0]===n)||CEF[0];
-const CN_FASES=['Preparación','Exhibición','Presentación','Enfrentamiento','Duelo'];
+const CN_FASES=['Preparación','Exhibición','Presentación','Exhibición de Coordinadores','Duelo'];
 const CN_R3=[4,4,6,6,8,10], CN_R4=[5,7,10,12,15,20], CN_PASAN=[0,8,4,2];
 const CN0=()=>({parts:[],snaps:{},fase:0,cat:'Belleza',rango:'Starter',jz:[],jv:{},out:{},m1:{},f3:null,f4:null});
 const CN={exists:false,u:{},...CN0()};
@@ -2716,7 +2716,7 @@ function cnAvanzar(){ if(!isMaster()) return; const f=CN.fase;
     else { const cl={}; pasan.forEach(k=>{ cl[k]=50; const f=cnUk(k); if(CN.u[f]) CN.u[f]={...CN.u[f],f4:null}; }); cnWrite({fase:4,out,f4:{fin:pasan,n:CN_R4[cnRi()],cl,fu:0,st:{},log:[],undo:null,res:null,armado:false}},true); } }
   CNU.conf=''; render(); }
 
-/* ---- Fase 3 · Enfrentamiento ---- */
+/* ---- Fase 3 · Exhibición de Coordinadores ---- */
 const cnFl=(F,k)=>(F.fl[k] ||= {});
 /* Iniciativa: Ronda 1 por el Clamor de las Fases de Jueces; después por el Clamor ganado en la ronda previa (empate: criterio de la Ronda 1). Los efectos de Orden se aplican después; Desorden baraja. */
 function cnOrden3(F){ const byBase=(a,b)=>num(F.base[b])-num(F.base[a]);
@@ -2926,7 +2926,7 @@ function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const 
 function cnGlos(){ const R6=['Starter','Beginner','Amateur','Elite','Master','Legend'];
   return [{id:'concurso-pres',t:'Presentación (Fases 1 y 2)',h:()=>`<p>Un Concurso tiene una <b>categoría</b> (Dureza, Estilo, Belleza, Dulzura o Astucia) y un <b>Rango</b>. Se inscribe al <b>Entrenador</b> con el lazo 🎀 y participa con todo su equipo; los NPC son Entrenadores del Master. Pasan a la fase siguiente los <b>8, 4 y 2</b> con más Clamor (el Master puede eliminar o reincorporar a mano), y un Concurso se puede jugar con menos participantes.</p>
 <p><b>Clamor:</b> el ánimo del público con cada participante; es el puntaje del Concurso.</p>
-${tbl(['Fase','Clamor al empezar','Se puede ganar'],[['1 · Exhibición','0','hasta 50'],['2 · Presentación','lo ganado en la Fase 1','hasta 50 más (25 por Pokémon)'],['3 · Enfrentamiento','50 para todos','sube y baja'],['4 · Duelo','50 para ambos','solo baja; al final se suman los bonos']])}
+${tbl(['Fase','Clamor al empezar','Se puede ganar'],[['1 · Exhibición','0','hasta 50'],['2 · Presentación','lo ganado en la Fase 1','hasta 50 más (25 por Pokémon)'],['3 · Exhibición de Coordinadores','50 para todos','sube y baja'],['4 · Duelo','50 para ambos','solo baja; al final se suman los bonos']])}
 <p><b>Jueces:</b> el panel tiene 3 jueces: 1 <b>Juez Principal</b>, afín a la categoría del Concurso, y 2 al azar. El sorteo es una tirada secreta del Master. Cada juez tiene una <b>afinidad</b> (40 % a 100 %) con cada categoría y un <b>Arte Afín</b>. Los jugadores solo ven de cada juez lo que descubren antes del Concurso; conocerlos no da puntos, solo ayuda a decidir qué presentar.</p>
 <p><b>Nota de cada juez = (tirada − Exigencia) × su afinidad con la categoría.</b> La Exigencia depende del Rango del Concurso:</p>
 ${tbl(['Exigencia',...R6],[['Fase 1 (2 × bonus)','2','4','6','8','10','12'],['Fase 2 (3 × bonus)','3','6','9','12','15','18']])}
@@ -2939,7 +2939,7 @@ ${tbl(['Término','Qué es'],[['Afinidad','Lo que le gusta cada categoría al Po
 <p><b>Tirada de afinidad (1d100):</b> si el resultado <b>supera la afinidad</b> del Pokémon con la categoría del movimiento, gana la <b>mitad</b> del Clamor (hacia abajo); si queda dentro, el Clamor completo. Con <b>10 o menos</b> es crítico de Clamor: el doble. En la <b>Fase 3</b> el movimiento siempre se realiza y solo se tira esto. En la <b>Fase 4</b> se usa la misma tirada del ataque en combate: si el ataque falla, no hay Efecto Concurso.</p>
 ${tbl(['Categoría del Concurso','Le desagradan (Furor −1)'],CN_SOC.map(c=>[socialChip(c),SOC_NEG[c].map(socialChip).join(' ')]))}
 <p><b>Repetición:</b> repetir el movimiento de la ronda anterior resta 3 de Clamor, y 2 más por cada ronda seguida extra (−3, −5, −7…). Incansable y Bis no penalizan.</p>
-<p><b>Fase 3 · Enfrentamiento.</b> Cada Entrenador presenta <b>1 Pokémon</b>, que elige en la Ronda 1 y vale para toda la fase. En cada ronda todos eligen su movimiento en secreto y luego las acciones se revelan una a una. <b>Iniciativa:</b> en la Ronda 1, por el Clamor de las Fases 1 y 2; después, por el Clamor ganado en la ronda anterior (los empates, con el criterio de la Ronda 1). Los efectos de orden (Adelantarse, Retrasarse) se aplican después de calcularla, y Desorden la baraja.</p>
+<p><b>Fase 3 · Exhibición de Coordinadores.</b> Cada Entrenador presenta <b>1 Pokémon</b>, que elige en la Ronda 1 y vale para toda la fase. En cada ronda todos eligen su movimiento en secreto y luego las acciones se revelan una a una. <b>Iniciativa:</b> en la Ronda 1, por el Clamor de las Fases 1 y 2; después, por el Clamor ganado en la ronda anterior (los empates, con el criterio de la Ronda 1). Los efectos de orden (Adelantarse, Retrasarse) se aplican después de calcularla, y Desorden la baraja.</p>
 ${tbl(['Rondas',...R6],[['Fase 3',...CN_R3.map(String)],['Fase 4 (máximo)',...CN_R4.map(String)],['Fase 4: «ganar rápido» hasta la ronda',...CN_R4.map(n=>String(Math.max(1,Math.floor(n*0.2))))]])}
 <p><b>Fase 4 · Duelo de Gala.</b> Cada finalista elige 1 Pokémon y empieza solo un combate nuevo entre los dos. Es un combate normal, y además cada movimiento que conecta <b>baja el Clamor del rival</b> en lo que marca su Efecto Concurso (su Clamor más su Tropiezo). La Guardia solo anula la parte de Tropiezo. Los efectos que dependen del orden de la ronda (Apertura, Cierre, Crescendo, Adelantarse, Retrasarse, Desorden) usan su valor base. Si el Furor se llena, el rival pierde 5 más. Quien más Clamor le quitó al rival en una ronda tiene <b>+3 a la Iniciativa</b> en la siguiente. Un KO o llegar a <b>0 de Clamor</b> termina el Duelo al instante.</p>
 <p><b>Colisión:</b> se omite el Efecto Concurso de los movimientos. Quien gana la Colisión gana 3 de Clamor; en empate, 1 cada uno. El Furor sube 1 siempre.</p>
@@ -3012,7 +3012,7 @@ function cnFase2HTML(){ let h=`<div class="card"><h2>Presentación Grupal</h2><p
     h+=`</div><div style="text-align:right">${r?`<span class="big">+${r.cl}</span>${isMaster()?`<div><button class="btn sm" data-cn="redo2" data-k="${esc(k)}">Repetir</button></div>`:''}`:''}</div></div>`; }
   return h+`</div></div>`; }
 function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
-  let h=`<div class="card"><h2><span>Enfrentamiento <span class="ronda">${F.fin?'Rondas terminadas':`Ronda ${F.ronda} de ${F.n}`}</span></span><span class="row">${cnFurorBox(cnFuror())}</span></h2>`;
+  let h=`<div class="card"><h2><span>Exhibición de Coordinadores <span class="ronda">${F.fin?'Rondas terminadas':`Ronda ${F.ronda} de ${F.n}`}</span></span><span class="row">${cnFurorBox(cnFuror())}</span></h2>`;
   if(F.fin) return h+`<p class="note">Terminaron las ${F.n} rondas. Pasan al Duelo los 2 con más Clamor.</p></div>`;
   h+=`<p class="note">Cada Entrenador presenta 1 Pokémon. En cada ronda todos eligen su movimiento en secreto; cuando están listos, el Master revela las acciones una a una en orden de iniciativa. El movimiento siempre se realiza: se tira 1d100 contra la afinidad del Pokémon con la categoría del movimiento. Si la supera, gana la mitad del Clamor; con 10 o menos, el doble.</p><div class="res">`;
   F.ini.forEach((k,i)=>{ const p=cnPart(k); if(!p) return; const can=cnCan(p), s=cnSel3(k), y=p.team.find(z=>z.id===s.pk), br=num(F.br[k]);
