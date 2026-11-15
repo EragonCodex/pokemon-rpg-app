@@ -714,7 +714,10 @@ const CARGA_BASE=20, CARGA_FUE=5;
 function preNombres(){ const m=new Map(); (D.pre||[]).forEach(r=>{ const n=String(r[4]||'').trim(); if(n&&r[7]!=='Servicio'&&vistaVe('pre',r[3])&&!m.has(n)) m.set(n,r); }); return m; }
 function preDe(nombre){ const n=String(nombre||'').trim().toLowerCase(); if(!n) return null; for(const [k,r] of preNombres()) if(k.toLowerCase()===n) return r; return null; }
 /* el objeto que lleva equipado un Pokémon (1 unidad) no pesa en la Mochila */
-function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ const enPoke=it.eq&&it.eq!=='E'?1:0; peso+=num(it.peso)*Math.max(0,num(it.cant)-enPoke); valor+=num(it.precio)*num(it.cant); }); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE}; }
+/* Mochilas: «Aumenta en N kg la carga máxima». Solo cuenta la que el Entrenador marca como «en uso» (una a la vez) */
+const cargaDe=it=>{ if(!it||num(it.cant)<1) return 0; const r=preDe(it.obj); const m=/Aumenta en (\d+(?:[.,]\d+)?) kg la carga m[aá]xima/i.exec(String(it.efecto||'')+' '+String(r?r[9]:'')); return m?num(String(m[1]).replace(',','.')):0; };
+const mochilaEnUso=f=>(f.mochila||[]).find(it=>it.uso&&cargaDe(it))||null;
+function mochilaTotals(f){ const c=calc(f); let peso=0,valor=0; (f.mochila||[]).forEach(it=>{ const enPoke=it.eq&&it.eq!=='E'?1:0; peso+=num(it.peso)*Math.max(0,num(it.cant)-enPoke); valor+=num(it.precio)*num(it.cant); }); const mu=mochilaEnUso(f); return {peso:Math.round(peso*100)/100,valor,cap:CARGA_BASE+Math.max(0,c.A.FUE)*CARGA_FUE+(mu?cargaDe(mu):0),mu}; }
 function mochilaHTML(f){
   mkDL('dl-pre',[...preNombres().keys()]);
   const items=f.mochila||[]; const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja');
@@ -742,7 +745,7 @@ function mochilaHTML(f){
     <label class="f">Tipo de gasto<select data-bfl="gas">${opts(gastos,F.gas,'Todos')}</select></label>
 </div>`:''}
     <div class="tw"><table class="moch"><thead><tr>${S.ro?'':'<th><span class="sr">Ordenar</span></th>'}${sortHead(BCOLS,st,'bsort')}${S.ro?'':'<th></th>'}</tr></thead><tbody class="dlist" data-scope="moch">`;
-  vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px"><input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto">${it.eq?`<span class="pill eqpill" title="Lo lleva ${esc((holders.find(x=>x[0]===it.eq)||[,''])[1])}">Equipado${OBJ_EQ.has(String(it.obj).trim().toLowerCase())?' · automático':''}</span>`:''}</td>
+  vis.forEach(i=>{ const it=items[i]; h+=`<tr class="ditem" data-drag="${i}">${S.ro?'':`<td style="width:18px">${canDrag?`<span class="grip" data-grip title="Arrastra para ordenar" aria-label="Arrastrar ${esc(it.obj||'objeto')}">⋮⋮</span>`:''}</td>`}<td style="min-width:140px">${cargaDe(it)?`<div class="row" style="gap:6px;flex-wrap:nowrap"><button class="glove" data-act="mochUso" data-i="${i}" aria-pressed="${!!it.uso}" ${dis} title="${it.uso?'Mochila en uso: +'+cargaDe(it)+' kg de carga. Pulsa para dejar de usarla.':'Usar esta mochila: +'+cargaDe(it)+' kg de carga'}" aria-label="${it.uso?'Dejar de usar':'Usar'} ${esc(it.obj)}">🎒</button><div style="flex:1;min-width:0">`:''}<input data-f="mochila.${i}.obj" list="dl-pre" value="${esc(it.obj)}" placeholder="Escribe un objeto" ${lk} aria-label="Objeto">${cargaDe(it)&&it.uso?`<span class="pill sel" style="margin-top:4px;display:inline-block">En uso · +${cargaDe(it)} kg</span>`:''}${it.eq?`<span class="pill eqpill" title="Lo lleva ${esc((holders.find(x=>x[0]===it.eq)||[,''])[1])}">Equipado${OBJ_EQ.has(String(it.obj).trim().toLowerCase())?' · automático':''}</span>`:''}${cargaDe(it)?'</div></div>':''}</td>
     <td style="min-width:130px"><select data-f="mochila.${i}.eq" ${dis} aria-label="Equipado por"><option value="">—</option>${holders.map(([id,n])=>`<option value="${esc(id)}"${it.eq===id?' selected':''}>${esc(n)}</option>`).join('')}</select></td>
     <td style="width:70px"><input type="number" min="0" data-f="mochila.${i}.cant" value="${num(it.cant)}" ${dis} aria-label="Cantidad"></td>
     <td style="width:80px"><input type="number" min="0" step="0.1" data-f="mochila.${i}.peso" value="${num(it.peso)}" ${lk} aria-label="Peso en kg"></td>
@@ -751,12 +754,12 @@ function mochilaHTML(f){
     ${S.ro?'':`<td style="white-space:nowrap">${usoDe(it.obj)&&num(it.cant)>0?`<button class="btn sm" data-act="useOpen" data-i="${i}" aria-expanded="${T.useI===i}">Usar</button> `:''}<button class="btn sm" data-act="rmItem" data-i="${i}" aria-label="Quitar objeto">✕</button></td>`}</tr>${T.useI===i&&usoDe(it.obj)?usoHTML(i,it,8):''}`; });
   if(!items.length) h+=`<tr><td colspan="8" class="note">La mochila está vacía.</td></tr>`; else if(!vis.length) h+=`<tr><td colspan="8" class="note">Ningún objeto cumple los filtros.</td></tr>`;
   const ordBar=S.ro?'':sorted?`<span class="note">Ordenada por columna: quita el orden (clic en el encabezado hasta que no tenga flecha) para arrastrar.</span><button class="btn sm" data-act="mochFijarOrden">Guardar este orden</button>`:items.length>1?'<span class="note">Arrastra ⋮⋮ para cambiar el orden.</span>':'';
-  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza. El objeto que lleva equipado un Pokémon no cuenta en el peso. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
+  h+=`</tbody></table></div><div class="row" style="margin-top:8px">${S.ro||lockJug(f)?'':'<button class="btn" data-act="addItem">+ Objeto</button>'}${ordBar}</div><p class="note">El Entrenador carga 20 kg más 5 kg por cada punto de Fuerza, más lo que suma la mochila que marque con 🎒 (solo una a la vez). El objeto que lleva equipado un Pokémon no cuenta en el peso. Si el objeto está en la Tienda, su peso, precio y efecto se llenan solos (se agrega sin cobrar; para cobrarlo, usa «Comprar» en la Tienda). Los packs se guardan como unidades: «Raciones humanas (5 días)» queda como 5 × «Ración humana (día)».${lockJug(f)?' Ficha fijada: puedes usar (bajar la cantidad), equipar o quitar objetos y comprar en la Tienda, pero no agregar ni editar objetos aquí.':''} Cada personaje (Entrenador y cada Pokémon del equipo) puede tener 1 objeto equipado; el objeto equipado aparece en su ficha.</p></div>`;
   return h;
 }
 /* nuevo orden de los objetos visibles (índices originales): ocupan, en ese orden, los mismos lugares que tenían */
 function moverMochila(orden){ const f=S.cur; if(!f||S.ro||!f.mochila) return; const pos=[...orden].sort((a,b)=>a-b); const src=f.mochila.slice(); pos.forEach((p,k)=>{ f.mochila[p]=src[orden[k]]; }); commit(true); }
-function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
+function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=mochilaTotals(f); const el=document.querySelector('[data-c="mochTot"]'); if(el){ el.textContent=`Peso ${t.peso}/${t.cap} kg${t.mu?' (🎒 +'+cargaDe(t.mu)+')':''} · Valor ${t.valor.toLocaleString('es-CL')}\u00a0₽`; el.classList.toggle('ko',t.peso>t.cap); } }
 
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
@@ -1215,6 +1218,14 @@ function openRP(o){ RP=o; renderRP(); }
 /* consultas de rasgos para una tirada d20: las del Talento y del Atributo elegidos y las que valen para cualquier tirada */
 function rpConsultas(f){ if(!f||f.tipo!=='E') return []; const keys=['all','attr:'+RP.attr].concat(RP.tal?condKeysTal(RP.tal):[]);
   return rasgoFxDe(f).map((r,i)=>({r,id:r[0]+'|'+r[1]+'|'+r[4],auto:rasgoOpAuto(f,r[0])})).filter(x=>!x.r[3]&&keys.includes(x.r[1])&&num(x.r[2])!==0); }
+/* Rasgos que se consultan en una tirada d20 del Entrenador fuera del panel de dados (Comandar y Concurso):
+   los del Atributo y el Talento usados y los que valen para cualquier tirada. ctx 'concurso' marca solos los de Concursos. */
+function rasgoConsultas(f,attr,tal,ctx){ if(!f||f.tipo!=='E') return []; const keys=['all'].concat(attr?['attr:'+attr]:[],tal?condKeysTal(tal):[]);
+  return rasgoFxDe(f).filter(r=>!r[3]&&keys.includes(r[1])&&num(r[2])!==0).map(r=>({r,id:r[0]+'|'+r[1]+'|'+r[4],auto:rasgoOpAuto(f,r[0])||(ctx==='concurso'&&/concurso/i.test(String(r[4])))})); }
+const rasgoOn=(x,chk)=>chk&&chk[x.id]!==undefined?!!chk[x.id]:x.auto;
+function rasgoAskHTML(cq,chk,attrs,dis){ return cq.length?`<div class="rs-ask"><div class="k">¿Aplica algún rasgo?</div>${cq.map(x=>`<label><input type="checkbox" ${attrs} data-rid="${esc(x.id)}"${rasgoOn(x,chk)?' checked':''}${dis?' disabled':''}> <b class="rs-cond">${esc(x.r[0])}</b> ${x.r[2]===-99?'falla automáticamente':sg(x.r[2])}${x.r[4]?` <span class="note">(${esc(x.r[4])})</span>`:''}</label>`).join('')}</div>`:''; }
+function rasgoSuma(cq,chk){ const on=cq.filter(x=>rasgoOn(x,chk)); const fail=on.filter(x=>x.r[2]===-99), ok=on.filter(x=>x.r[2]!==-99);
+  return {v:ok.reduce((s,x)=>s+num(x.r[2]),0),fail:fail.length?fail.map(x=>x.r[0]).join(', '):'',txt:ok.map(x=>` ${x.r[2]<0?'−':'+'} ${Math.abs(x.r[2])} ${x.r[0]}`).join('')}; }
 /* ¿La condición de la subopción se cumple ahora? (clima activo, o alguien de ese tipo en el combate) */
 function rasgoOpAuto(f,n){ const v=rasgoOp(f,n); if(!v) return false; const K=condKeyOf(f); if(!K||!inCombat(K)) return false;
   if(/^(Sensible|Afinidad) al Clima$/.test(n)) return (((CB.cond||{}).clima||{}).n||'')===v&&!anulaClima();
@@ -2247,13 +2258,13 @@ function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||
     return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${need&&!pk.length?'disabled':''}>${esc(o[0])}</button>
       ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
       <div class="mvdata">${badge('Sin Tipo','DDDDDD')} <span class="pill">Comandar</span>${t?`<span>${esc(TAL_LABEL(t))} <b>${sg(b)||0}</b>${ex.why.length?` <span class="note">(${esc(ex.why.join(', '))})</span>`:''}</span><span>Tirada <b>1d20 + ${a} + ${esc(TAL_LABEL(t))}</b></span>`:'<span>Sin tirada</span>'}</div>
-      <div class="mvfx">${esc(o[3])}</div>${o[4]==='obj'?cmdObjHTML(x):''}</div>`; }).join('')+`</div></div>`;
+      <div class="mvfx">${esc(o[3])}</div>${t?rasgoAskHTML(rasgoConsultas(f,a,t),(CBU.cmdR||{})[i],`data-cmdr="${i}"`):''}${o[4]==='obj'?cmdObjHTML(x):''}</div>`; }).join('')+`</div></div>`;
   return h; }
 function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='E') return; const o=COMANDAR[i]; if(!o) return;
   const orden=!!ORDEN_FIJA[o[4]], need=orden||!o[4]; const y=combatant(CBU.cmdT); if(need&&!y) return;
   const f=x.f, c=calc(f), t=o[1], ex=orden?ordenExtra(f,y):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0; const steps=[]; let val=null, short;
-  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const r=d(20), tot=r+num(c.A[a])+b; val=tot;
-    const roll=`1d20 [${r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''} = ${tot}`;
+  if(t){ const a=(CBU.cmdA||{})[i]||o[2]; const rs=rasgoSuma(rasgoConsultas(f,a,t),(CBU.cmdR||{})[i]); const r=rs.fail?1:d(20), tot=r+num(c.A[a])+b+rs.v; val=tot;
+    const roll=`1d20 [${rs.fail?'—':r}] + ${a} ${sg(c.A[a])||0} + ${TAL_LABEL(t)} ${sg(b)||0}${ex.why.length?` (${ex.why.join(', ')})`:''}${rs.txt} = ${tot}${rs.fail?` · ${rs.fail}: falla automáticamente`:''}`;
     if(o[4]==='obj'){ const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v);
       steps.push({k:ok?'ok':'ko',t:`${roll} contra ${dif.n} (${dif.v}) → ${ok?'éxito':'falla'}${r===20?' (20 natural)':r===1?' (1 natural)':''}`});
       const os=cmdObjetos(x), ob=os.find(q=>q.i===CBU.objI), dest=ob&&cmdObjDest(x,ob.spec).find(y=>y.key===CBU.objT);
@@ -2680,19 +2691,19 @@ const r1=v=>Math.round(v*10)/10;
 
 /* ---- Fase 1 · Exhibición: 1d20 + Atributo + Talento (+ bono) − Exigencia (2 × bonus del Rango); cada juez pondera por su afinidad y × 1,5 si es su Arte Afín; Clamor = suma × 0,75 (máx. 50) ---- */
 function cnPresentar1(k){ const p=cnPart(k), s=cnU(k).f1||{}, mm=CN.m1[k]||{}; if(!p||!cnCan(p)||s.r||!s.atr||!s.tal||!mm.cat||!mm.arte||CN.jz.length!==3) return;
-  const A=num(calc(p.f).A[s.atr]), T=talBonus(p.f,s.tal), B=num(s.bono), r=d(20), res=r+A+T+B, ex=2*rb(CN.rango);
+  const A=num(calc(p.f).A[s.atr]), T=talBonus(p.f,s.tal), B=num(s.bono), rs=rasgoSuma(rasgoConsultas(p.f,s.atr,s.tal,'concurso'),s.rs), r=rs.fail?1:d(20), res=r+A+T+B+rs.v, ex=2*rb(CN.rango);
   const notas=CN.jz.map(ji=>{ const af=cnAff(ji,mm.cat), afin=JUECES[ji][0]===mm.arte; return {af,afin,n:Math.max(0,res-ex)*af/100*(afin?1.5:1)}; });
   const sum=notas.reduce((a,x)=>a+x.n,0), cl=r===1?0:r===20?50:Math.min(50,Math.floor(sum*0.75));
-  cnWriteU(k,{f1:{r:{d:r,A,T,B,res,ex,cat:mm.cat,arte:mm.arte,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl}}});
-  logRoll(charName(p.f),`Concurso · Exhibición (${mm.cat}): d20 [${r}] + ${s.atr} ${A} + ${TAL_LABEL(s.tal)} ${T}${B?` + bono ${B}`:''} = ${res} → Clamor ${cl}`,r); renderSheet(); }
+  cnWriteU(k,{f1:{r:{d:r,A,T,B,R:rs.txt,RF:rs.fail,res,ex,cat:mm.cat,arte:mm.arte,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl}}});
+  logRoll(charName(p.f),`Concurso · Exhibición (${mm.cat}): d20 [${r}] + ${s.atr} ${A} + ${TAL_LABEL(s.tal)} ${T}${B?` + bono ${B}`:''}${rs.txt} = ${res} → Clamor ${cl}`,r); renderSheet(); }
 /* ---- Fase 2 · Presentación: cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador + Sincronía (3 si comparten categoría) − Exigencia (3 × bonus del Rango); aporte = suma × 0,45 (máx. 25 cada uno) ---- */
 function cnPresentar2(k){ const p=cnPart(k), s=cnU(k).f2||{}; if(!p||!cnCan(p)||s.r||!s.tal||!s.p1||!s.p2||s.p1===s.p2||CN.jz.length!==3) return;
   const P=[[s.p1,s.m1],[s.p2,s.m2]].map(([pid,mid])=>({y:p.team.find(z=>z.id===pid),m:atkById.get(mid)})); if(P.some(z=>!z.y||!z.m)) return;
-  const T=talBonus(p.f,s.tal), sinc=P[0].m[14]===P[1].m[14]?3:0, ex=3*rb(CN.rango);
-  const ap=P.map(z=>{ const r=d(20), A=num((calc(z.y.f).A||{})[short(z.m[4])]), tir=r+A+T+sinc;
+  const rs=rasgoSuma(rasgoConsultas(p.f,'',s.tal,'concurso'),s.rs), T=talBonus(p.f,s.tal)+rs.v, sinc=P[0].m[14]===P[1].m[14]?3:0, ex=3*rb(CN.rango);
+  const ap=P.map(z=>{ const r=rs.fail?1:d(20), A=num((calc(z.y.f).A||{})[short(z.m[4])]), tir=r+A+T+sinc;
     const notas=CN.jz.map(ji=>{ const af=cnAff(ji,z.m[14]); return {af,n:Math.max(0,tir-ex)*af/100}; }); const sum=notas.reduce((a,x)=>a+x.n,0);
     return {n:charName(z.y.f),mv:z.m[1],cat:z.m[14],ak:short(z.m[4]),d:r,A,tir,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl:r===1?0:r===20?25:Math.min(25,Math.floor(sum*0.45))}; });
-  const cl=ap[0].cl+ap[1].cl; cnWriteU(k,{f2:{r:{T,sinc,ex,ap,cl}}});
+  const cl=ap[0].cl+ap[1].cl; cnWriteU(k,{f2:{r:{T,R:rs.txt,RF:rs.fail,sinc,ex,ap,cl}}});
   logRoll(charName(p.f),`Concurso · Presentación: ${ap.map(a=>`${a.n} con ${a.mv} d20 [${a.d}] → ${a.tir}`).join(' · ')} → Clamor +${cl}`,ap[0].d); renderSheet(); }
 
 /* ---- Paso de fase (Master): pasan los 8, 4 y 2 con más Clamor ---- */
@@ -2976,12 +2987,12 @@ function cnNotasHTML(notas,cat){ return `<div class="row" style="margin-top:4px"
 function cnFase1HTML(){ let h=`<div class="card"><h2>Exhibición de Participante</h2><p class="note">Cada Entrenador describe su saludo al público y elige Atributo y Talento. El Master define la categoría y el arte de la exhibición. «Presentar» tira 1d20 + Atributo + Talento (+ bono), resta la Exigencia (${2*rb(CN.rango)}) y calcula la nota de cada juez. Clamor = suma de las notas × 0,75 (máximo 50).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f1||{}, mm=CN.m1[k]||{}, can=cnCan(p), r=s.r;
     h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>`;
-    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,r.cat)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div>`;
+    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''}${r.R||''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.RF?` · ${r.RF}: falla automáticamente, sin Clamor`:r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,r.cat)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div>`;
     else { h+=`<div class="grid g3" style="margin-top:6px"><label class="f">Atributo<select data-cnf="f1.atr" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ATTR.map(a=>[a,`${ATTR_FULL[a]} (${sg(calc(p.f).A[a])})`]),s.atr,'Elige…')}</select></label>
         <label class="f">Talento<select data-cnf="f1.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label>
         <label class="f">Bono (Vestimenta, Accesorios, Rasgos)<input type="number" data-cnf="f1.bono" data-k="${esc(k)}" value="${num(s.bono)}"${can?'':' disabled'}></label>
         <label class="f">Categoría (Master)<select data-cnf="m1.cat" data-k="${esc(k)}"${isMaster()?'':' disabled'}>${cnOpt(CN_SOC,mm.cat,'Elige…')}</select></label>
-        <label class="f">Arte (Master)<select data-cnf="m1.arte" data-k="${esc(k)}"${isMaster()?'':' disabled'}>${cnOpt(JUECES.map(j=>j[0]).sort((a,b)=>a.localeCompare(b)),mm.arte,'Elige…')}</select></label></div>`;
+        <label class="f">Arte (Master)<select data-cnf="m1.arte" data-k="${esc(k)}"${isMaster()?'':' disabled'}>${cnOpt(JUECES.map(j=>j[0]).sort((a,b)=>a.localeCompare(b)),mm.arte,'Elige…')}</select></label></div>${s.atr&&s.tal?rasgoAskHTML(rasgoConsultas(p.f,s.atr,s.tal,'concurso'),s.rs,`data-cnf="f1.rs" data-k="${esc(k)}"`,!can):''}`;
       const listo=s.atr&&s.tal&&mm.cat&&mm.arte;
       h+=listo?(can?`<p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pres1" data-k="${esc(k)}">Presentar</button></p>`:'<p class="note">Listo para presentar.</p>'):`<p class="note">Falta: ${[!s.atr&&'Atributo',!s.tal&&'Talento',!mm.cat&&'Categoría (Master)',!mm.arte&&'Arte (Master)'].filter(Boolean).join(', ')}.</p>`; }
     h+=`</div><div style="text-align:right">${r?`<span class="big">${r.cl}</span>${isMaster()?`<div><button class="btn sm" data-cn="redo1" data-k="${esc(k)}">Repetir</button></div>`:''}`:''}</div></div>`; }
@@ -2989,12 +3000,12 @@ function cnFase1HTML(){ let h=`<div class="card"><h2>Exhibición de Participante
 function cnFase2HTML(){ let h=`<div class="card"><h2>Presentación Grupal</h2><p class="note">Cada Entrenador lleva 2 Pokémon al escenario, cada uno con un movimiento, y aplica un Talento propio. Cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador (+3 de Sincronía si los dos movimientos son de la misma categoría) y resta la Exigencia (${3*rb(CN.rango)}). Cada juez califica con su afinidad por la categoría de cada movimiento; el arte no aplica. Cada Pokémon aporta suma × 0,45 (máximo 25).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f2||{}, can=cnCan(p), r=s.r;
     h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))} · trae ${num(((cnU(k).f1||{}).r||{}).cl)} de Clamor</span>`;
-    if(r){ h+=`<div class="note">${esc(TAL_LABEL(s.tal))} ${sg(r.T)}${r.sinc?' · Sincronía +3':''} · Exigencia −${r.ex}</div>`;
+    if(r){ h+=`<div class="note">${esc(TAL_LABEL(s.tal))} ${sg(r.T)}${r.R?` (incluye${esc(r.R)})`:''}${r.RF?` · ${esc(r.RF)}: falla automáticamente`:''}${r.sinc?' · Sincronía +3':''} · Exigencia −${r.ex}</div>`;
       r.ap.forEach(a=>{ h+=cnSteps([{k:a.d===1?'ko':'ok',t:`${a.n} con ${a.mv} (${a.cat}): d20 [${a.d}] + ${a.ak} ${a.A} + ${r.T}${r.sinc?' + 3':''} = ${a.tir}${a.d===1?' · 1 natural: sin aporte':a.d===20?' · 20 natural: aporte máximo':''} → aporta ${a.cl}`}])+cnNotasHTML(a.notas,a.cat); });
       h+=`<div class="note"><b>Clamor +${r.cl}</b></div>`; }
     else { const selP=n=>`<label class="f">Pokémon ${n}<select data-cnf="f2.p${n}" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(p.team.filter(z=>z.id!==s['p'+(3-n)]).map(z=>[z.id,charName(z.f)]),s['p'+n],'Elige…')}</select></label>`;
       const selM=n=>{ const y=p.team.find(z=>z.id===s['p'+n]); return `<label class="f">Movimiento ${n}<select data-cnf="f2.m${n}" data-k="${esc(k)}"${can&&y?'':' disabled'}>${y?cnOpt(cnMovs(y).map(m=>[m[0],`${m[1]} · ${m[14]} · ${ATTR_FULL[short(m[4])]||m[4]}`]),s['m'+n],'Movimiento…'):'<option value="">—</option>'}</select></label>`; };
-      h+=`<div class="grid g3" style="margin-top:6px"><div class="cncol">${selP(1)}${selP(2)}</div><div class="cncol">${selM(1)}${selM(2)}</div><div class="cncol"><label class="f">Talento del Entrenador<select data-cnf="f2.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label></div></div>`;
+      h+=`<div class="grid g3" style="margin-top:6px"><div class="cncol">${selP(1)}${selP(2)}</div><div class="cncol">${selM(1)}${selM(2)}</div><div class="cncol"><label class="f">Talento del Entrenador<select data-cnf="f2.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label></div></div>${s.tal?rasgoAskHTML(rasgoConsultas(p.f,'',s.tal,'concurso'),s.rs,`data-cnf="f2.rs" data-k="${esc(k)}"`,!can):''}`;
       const cats=[s.m1,s.m2].map(id=>(atkById.get(id)||[])[14]).filter(Boolean); if(cats.length) h+=`<div class="row" style="margin-top:4px"><span class="note">Categoría de la presentación:</span> ${cats.map(socialChip).join(' ')}${cats.length===2&&cats[0]===cats[1]?' <span class="pill">Sincronía +3</span>':''}</div>`;
       const listo=s.p1&&s.p2&&s.m1&&s.m2&&s.tal;
       h+=listo?(can?`<p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pres2" data-k="${esc(k)}">Presentar</button></p>`:'<p class="note">Listo para presentar.</p>'):`<p class="note">${p.team.length<2?'Necesita 2 Pokémon en su equipo.':'Falta elegir los 2 Pokémon, sus movimientos y el Talento.'}</p>`; }
@@ -3069,6 +3080,7 @@ function cnChange(el){ const f=el.dataset.cnf, k=el.dataset.k||'', v=el.value; c
   if(f==='cat'&&isMaster()){ cnWrite({cat:v,jz:[],jv:{}}); }
   else if(f==='rango'&&isMaster()){ cnWrite({rango:v}); }
   else if(f.startsWith('m1.')&&isMaster()){ cnWrite({m1:{...CN.m1,[k]:{...(CN.m1[k]||{}),[f.slice(3)]:v}}}); }
+  else if((f==='f1.rs'||f==='f2.rs')&&cnCan(p)){ cnWriteU(k,{[f.slice(0,2)]:{rs:{[el.dataset.rid]:el.checked}}}); return; }
   else if(f.startsWith('f1.')&&cnCan(p)){ const c=f.slice(3); cnWriteU(k,{f1:{[c]:c==='bono'?num(v):v}}); if(c==='bono') return; }
   else if(f.startsWith('f2.')&&cnCan(p)){ const c=f.slice(3); cnWriteU(k,{f2:{[c]:v,...(c==='p1'?{m1:''}:c==='p2'?{m2:''}:{})}}); }
   else if(f==='f3.pk'&&cnCan(p)){ delete CNU.sel[k]; cnWriteU(k,{f3:{pk:v,mv:'',ok:false}}); }
@@ -3092,6 +3104,7 @@ document.addEventListener('change',e=>{
   if('cmdt' in e.target.dataset){ CBU.cmdT=e.target.value; return; }
   if('cmdobj' in e.target.dataset){ CBU.objI=num(e.target.value); renderSheet(); return; }
   if('cmdobjt' in e.target.dataset){ CBU.objT=e.target.value; return; }
+  if(e.target.dataset.cmdr!==undefined&&e.target.dataset.rid){ ((CBU.cmdR ||= {})[e.target.dataset.cmdr] ||= {})[e.target.dataset.rid]=e.target.checked; return; }
   if(e.target.dataset.cmda){ (CBU.cmdA ||= {})[e.target.dataset.cmda]=e.target.value; renderSheet(); return; }
   if(e.target.dataset.rs&&CBU.rs){ CBU.rs[e.target.dataset.rs]=e.target.value; CBU.rs.msg=''; return; }
   if(e.target.dataset.cbeq){ const k=e.target.dataset.cbeq; const c=combatant(k); if(c&&canGlove(c)){ const n=num(e.target.value); cbWrite({eq:{[k]:n||null}}); } renderSheet(); return; }
@@ -3184,6 +3197,7 @@ document.addEventListener('click',async e=>{
   else if(act==='restoreYes'&&S.cur&&!S.ro){ restoreAll(S.cur); commit(true); logRoll(charName(S.cur),'Restaurar Todo: daño, intentos, IC, bonos, estados y repeticiones a 0',null); }
   else if(act==='evade'&&S.cur&&!S.ro){ const L=CB.last; const ev=doEvade(S.open,S.cur,a.dataset.k,L?{d100:L.d100,mv:L.mv,by:L.by}:null); if(ev.crit){ const k=refKey(S.open); if(inCombat(k)) ev.txt+=' · '+esquivaCritica(k); } renderSheet(); openRP({kind:'res',title:a.dataset.k==='esq'?'Esquiva':'Temple',res:{v:ev.r,cls:ev.ok?'ok':'ko',html:esc(ev.txt)}}); }
   else if(act==='addItem'&&S.cur&&!S.ro&&!lockJug(S.cur)){ (S.cur.mochila ||= []).push({obj:'',eq:'',cant:1,peso:0,precio:0,efecto:''}); commit(true); }
+  else if(act==='mochUso'&&S.cur&&!S.ro){ const i=num(a.dataset.i), on=!(S.cur.mochila[i]||{}).uso; (S.cur.mochila||[]).forEach((it,j)=>{ if(j===i&&on) it.uso=true; else delete it.uso; }); commit(true); }
   else if(act==='rmItem'&&S.cur&&!S.ro){ S.cur.mochila.splice(num(a.dataset.i),1); commit(true); }
   else if(act==='rmRoll'){ delRoll(a.dataset.u,num(a.dataset.ts)); }
   else if(act==='clearRolls'){ const c=$('#clrConfirm'); if(c) c.innerHTML='<button class="btn sm danger" data-act="clearYes">Sí, vaciar</button> <button class="btn sm" data-act="clearNo">Cancelar</button>'; }
