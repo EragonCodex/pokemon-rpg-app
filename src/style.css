@@ -413,3 +413,18 @@ td.usos .pill{font-size:10.5px;margin:1px 0}
 
 .cardhead{justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .cardhead h2{margin:0}
+
+/* Concurso */
+.cnbar{max-width:320px}.cnbar i{background:var(--accent)}
+.furor{display:inline-flex;gap:3px;vertical-align:middle}.furor i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line);background:var(--panel)}.furor i.on{background:var(--warn);border-color:var(--warn)}
+.res .r.cnrow{align-items:start}.cnrow .grid{max-width:720px}
+.cncol{display:grid;gap:8px;align-content:start}
+.furorbox{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:#ffe08a;color:#5a3d00;border:2px solid #e0a100;font-weight:600;font-size:13px}
+.furorbox .furor i{border-color:#b98500;background:#fff6d6}.furorbox .furor i.on{background:#e4572e;border-color:#e4572e}
+.pill.sel{background:var(--teal);color:#fff;font-weight:700}
+.jvgrid{display:grid;gap:4px;margin-top:8px}.jvrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.jvrow .note{min-width:84px}
+.jvrow .btn[aria-pressed="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
+.cnfx{margin-top:5px;padding-top:5px;border-top:1px dashed var(--line)}
+.items.team2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+@media (max-width:640px){.items.team2{grid-template-columns:1fr}}
+details.glosf>summary{justify-content:flex-start}details.glosf>summary>span{flex:1}

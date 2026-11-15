@@ -48,7 +48,7 @@ function parse(path) {
   let M = 1; let m;
   if ((m = /^jug\/([^/]+)\/(fichas|notas)_m(\d+)(?:\/(.+))?$/.exec(path))) return { kind: m[2], uid: m[1], id: m[4], mesa: +m[3] };
   if ((m = /^(master|bitacora|tiradas)\/m(\d+)\/(?:fichas|notas|log)(?:\/(.+))?$/.exec(path))) { const k = m[1]; M = +m[2]; return k === 'tiradas' ? { kind: k, uid: m[3], mesa: M } : { kind: k, id: m[3], mesa: M }; }
-  if ((m = /^(combate\/actual|pokedex\/visibles|config\/vistas|config\/mesa)_m(\d+)$/.exec(path))) { const r = parse(m[1]); r.mesa = +m[2]; return r; }
+  if ((m = /^(combate\/actual|concurso\/actual|pokedex\/visibles|config\/vistas|config\/mesa)_m(\d+)$/.exec(path))) { const r = parse(m[1]); r.mesa = +m[2]; return r; }
   if (path === 'config/mesas') return { kind: 'mesas' };
   const r = parse1(path); r.mesa = 1; return r;
 }
@@ -66,6 +66,7 @@ function parse1(path) {
   if (path === 'config/vistas') return { kind: 'vistas' };
   if (path === 'config/kits') return { kind: 'kits' };
   if (path === 'combate/actual') return { kind: 'combate' };
+  if (path === 'concurso/actual') return { kind: 'concurso' };
   throw new Error('Ruta no soportada: ' + path);
 }
 
@@ -174,6 +175,10 @@ async function readDoc(r) {
     const { data, error } = await sb.from('combate').select('data').eq('id', r.mesa).maybeSingle(); fail(error);
     return data ? data.data : undefined;
   }
+  if (r.kind === 'concurso') {
+    const { data, error } = await sb.from('concurso').select('data').eq('id', r.mesa).maybeSingle(); fail(error);
+    return data && Object.keys(data.data || {}).length ? data.data : undefined;
+  }
   if (r.kind === 'jugador') {
     const { data, error } = await sb.from('jugadores').select('alias,creado,foto,color,tema,visto').eq('id', r.uid).maybeSingle(); fail(error);
     return data || undefined;
@@ -184,7 +189,7 @@ async function readDoc(r) {
 }
 const TABLES = {
   jugadores: ['jugadores'], jugador: ['jugadores'], fichas: ['fichas'], master: ['fichas'], notas: ['notas'],
-  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], vistas: ['config'], kits: ['config'], mesas: ['config'], combate: ['combate']
+  bitacora: ['bitacora'], tiradas: ['tiradas'], masters: ['masters'], pokedex: ['pokedex_visible', 'config'], vistas: ['config'], kits: ['config'], mesas: ['config'], combate: ['combate'], concurso: ['concurso']
 };
 
 /* ---------- escrituras ---------- */
@@ -203,6 +208,8 @@ async function writeDoc(r, data, uidActual) {
       if (!up || !up.length) fail((await sb.from('combate').insert({ id: r.mesa, data })).error); /* primera vez en una mesa nueva (solo un Master) */
       return;
     }
+    /* Concurso: siempre por guardar_concurso(), que mezcla en el servidor y deja a cada jugador cambiar solo lo suyo */
+    case 'concurso': { const { error } = await sb.rpc('guardar_concurso', { m: r.mesa, parche: data, completo: true }); return fail(error); }
     case 'mesas': { const { error } = await sb.from('config').upsert({ clave: 'mesas', valor: data }); return fail(error); }
     case 'masters': {
       const { data: cur, error } = await sb.from('masters').select('user_id').eq('mesa_id', r.mesa); fail(error);
@@ -263,6 +270,7 @@ function docRef(path) {
     get: async () => docSnap(path.split('/').pop(), await readDoc(r)),
     set: async data => writeDoc(r, data),
     update: async fields => {
+      if (r.kind === 'concurso') { const { error } = await sb.rpc('guardar_concurso', { m: r.mesa, parche: fields, completo: false }); return fail(error); }
       if (r.kind !== 'combate') throw new Error('update solo en combate');
       const cur = await readDoc(r); return writeDoc(r, deepMerge(cur, fields));
     },
