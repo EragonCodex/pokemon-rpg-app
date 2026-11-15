@@ -636,14 +636,15 @@ function dexPlayers(){ return Object.keys(S.players).filter(u=>!S.masters.includ
 function visState(id){ if(S.vis.has(id)) return 'all'; return dexPlayers().some(u=>S.visJ[u]&&S.visJ[u].has(id))?'some':'none'; }
 /* Vista de jugadores en Movimientos, Habilidades y Tienda: con el bloqueo activo, los jugadores solo ven lo que el Master desbloquea */
 const VSET={mov:new Set(),hab:new Set(),pre:new Set()};
-function setVistas(v){ for(const k of ['mov','hab','pre']){ const o=(v||{})[k]||{}; S.vistas[k]={on:!!o.on,ids:[...(o.ids||[])]}; VSET[k]=new Set(S.vistas[k].ids); } }
+function setVistas(v){ for(const k of ['mov','hab','pre']){ const o=(v||{})[k]||{}; S.vistas[k]={on:!!o.on,ids:[...(o.ids||[])],evento:!!o.evento}; VSET[k]=new Set(S.vistas[k].ids); } }
 const vistaOn=k=>!!(S.vistas[k]&&S.vistas[k].on);
-const veJug=(k,id)=>!vistaOn(k)||VSET[k].has(id);
+const veJug=(k,id)=>!vistaOn(k)||!!(S.vistas[k]&&S.vistas[k].evento)||VSET[k].has(id);
 const vistaVe=(k,id)=>isMaster()||veJug(k,id);
 function saveVistas(){ for(const k of ['mov','hab','pre']) S.vistas[k].ids=[...VSET[k]]; queueSave('config/vistas',structuredClone(S.vistas),500); renderSheet(); }
 function vistaBar(k,ids,nombre){ if(!isMaster()) return ''; const op=!!T.vopen[k], on=vistaOn(k); const vis=ids.filter(id=>VSET[k].has(id)).length;
   let h=`<div class="row vistabar" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${op?'pri':''}" data-vopen="${k}" aria-expanded="${op}">Visibilidad</button>`;
-  if(op){ h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
+  if(op){ h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>${k==='mov'?`<button class="btn sm ${S.vistas[k].evento?'pri':''}" data-act="vistaEvento" data-k="${k}" aria-pressed="${!!S.vistas[k].evento}">${S.vistas[k].evento?'Modo evento activo: todos visibles · Desactivar':'Activar modo evento (mostrar todos)'}</button><span class="note">El modo evento muestra todos los movimientos sin tocar los desbloqueados; al desactivarlo vuelven los de antes.</span>`:''}`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
+  if(!op&&k==='mov'&&on&&S.vistas[k].evento) h+='<span class="note ok">Modo evento activo: todos visibles.</span>';
   return h+'</div>'; }
 const vistaBtn=(k,id)=>isMaster()&&T.vopen[k]&&vistaOn(k)?`<button class="lockbtn vbtn" data-vistaid="${k}|${esc(id)}" aria-pressed="${VSET[k].has(id)}" title="${VSET[k].has(id)?'Visible para los jugadores: clic para ocultar':'Oculto para los jugadores: clic para mostrar'}" aria-label="${VSET[k].has(id)?'Ocultar a los jugadores':'Mostrar a los jugadores'}">${VSET[k].has(id)?'👁':'🔒'}</button> `:'';
 const VLAST={mov:[],hab:[],pre:[]};
@@ -1213,6 +1214,11 @@ const GEN_TXT={M:'Masculino',F:'Femenino',N:'Sin género'};
 function genderBtn(f){ let g=f.genero||'M'; if(f.tipo!=='P'&&g==='N') g='M';
   return `<button class="gender ${g.toLowerCase()}" data-act="gen" title="${GEN_TXT[g]}" aria-label="Género: ${GEN_TXT[g]}" ${S.ro?'disabled':''}>${GEN_SVG[g]}</button>`; }
 const D20_SVG='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><path d="M12 6.5 17.5 15h-11z"/><path d="M12 2v4.5M21 7l-3.5 8M3 7l3.5 8M6.5 15 3 17M17.5 15 21 17M6.5 15 12 22l5.5-7"/></svg>';
+/* Nombre con la especie entre paréntesis (Combate y Concurso) */
+function nameSp(f){ const n=charName(f); if(!f||f.tipo!=='P') return n; const dx=dexById.get(f.especie); return dx&&dx[1]&&n!==dx[1]?`${n} (${dx[1]})`:n; }
+/* Imagen de quien actúa: sale de la ficha si quien mira puede leerla; no se guarda en el combate ni en el Historial de Dados */
+function imgDeKey(k){ if(!k) return ''; const [src,uid,id]=String(k).split('|'); const f=src==='master'?(isMaster()?S.master[id]:null):(S.fichas[uid||'']||{})[id]; return f&&f.img?f.img:''; }
+const actImg=(k,alt)=>{ const u=imgDeKey(k); return u?`<img class="actimg" src="${esc(u)}" alt="${esc(alt||'')}">`:''; };
 function charName(f){ const dx=f.tipo==='P'?dexById.get(f.especie):null; return f.nombre||(dx?dx[1]:'Sin nombre'); }
 function openRP(o){ RP=o; renderRP(); }
 /* consultas de rasgos para una tirada d20: las del Talento y del Atributo elegidos y las que valen para cualquier tirada */
@@ -2065,7 +2071,7 @@ function applyOps(f,ops,role,ctx){
       const riv=role==='target'&&!!ctx.by&&!!ctx.tk&&ctx.by!==ctx.tk&&!aliados(ctx.by,ctx.tk); const rf=riv?reflejaBaja(own):null;
       for(let [k,v] of Object.entries(at)){ if(!ATTR.includes(k)) continue;
         if(v<0&&riv&&noBaja(own,k)){ notes.push(`${habOf(f)} impide bajar ${k}`); continue; }
-        if(v<0&&rf&&combatant(ctx.by)){ let n=''; mutate(ctx.by,af=>{ n=habAttr(af,k,v,`${rf[0]} de ${charName(f)}`,true); }); notes.push(`${rf[0]} devuelve la baja de ${k}${n?' → '+n:''}`); continue; }
+        if(v<0&&rf&&combatant(ctx.by)){ let n=''; mutate(ctx.by,af=>{ n=habAttr(af,k,v,`${rf[0]} de ${nameSp(f)}`,true); }); notes.push(`${rf[0]} devuelve la baja de ${k}${n?' → '+n:''}`); continue; }
         if(ca){ v=ca[6]==='×2'?v*2:-v; }
         if(v<0&&role==='target'&&ctx.by&&ctx.tk&&ctx.by!==ctx.tk&&!aliados(ctx.by,ctx.tk)) ctx.rivalBaja=true;
         f.attr[k] ||= {r:'',b:0}; const b0=num(f.attr[k].b); const b1=clamp(b0+v,-6,6); f.attr[k].b=b1; if(b1!==b0) notes.push(`${b1-b0>0?'+':''}${b1-b0} ${k} (bono ${b1>0?'+':''}${b1})`); else notes.push(`${k} ya está en el tope (${b0>0?'+':''}${b0})`); }
@@ -2086,10 +2092,10 @@ function cbOrderHTML(){
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c,cnb},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     const rsOn=CBU.rs&&CBU.rs.k===x.key;
-    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}${x.src==='jug'&&colorDe(x.uid)?` style="border-left:4px solid ${esc(colorDe(x.uid))}"`:''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
+    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}${x.src==='jug'&&colorDe(x.uid)?` style="border-left:4px solid ${esc(colorDe(x.uid))}"`:''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><b>${i+1}. ${esc(nameSp(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}${x.f.orden?`<div class="note cond-cn">Orden ${esc(x.f.orden.n)} de ${esc(x.f.orden.by)}: ${esc(ORDEN_TXT(x.f.orden))} en su siguiente movimiento</div>`:''}</div>
-      <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${cnb?`<div><span class="pill sel" title="Fue quien más Clamor le quitó al rival en la ronda anterior">+${cnb} Concurso</span></div>`:''}${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
+      <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(nameSp(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${cnb?`<div><span class="pill sel" title="Fue quien más Clamor le quitó al rival en la ronda anterior">+${cnb} Concurso</span></div>`:''}${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
     <p class="note">Iniciativa = Velocidad ÷ 5 + DES + SAB (+ Talento del Entrenador). Los empates se definen con 1d20. «Finalizar Ronda» aplica el daño residual, tira las Salvaciones, quita los estados superados y descuenta las rondas del clima, el campo y el entorno. El Master los elige a mano; los jugadores los crean con un movimiento o una Habilidad.</p>`;
   const RL=CB.rondaLog; if(RL&&RL.lines) h+=`<details class="rlog" open><summary>Fin de la ronda ${num(RL.n)-1}</summary><div class="steps-res">${RL.lines.map(l=>`<div class="${l.k||''}">${esc(l.t)}</div>`).join('')||'<div>Nadie tenía estados alterados.</div>'}</div></details>`;
   return h+`</div>`;
@@ -2102,7 +2108,7 @@ function habFinRonda(f,key,name,lines){ let ch=false;
     else if(k==='curaPS'&&/^1\/\d+$/.test(String(r[6]))){ const c0=calc(f), v=Math.max(1,Math.floor(c0.ps/Number(String(r[6]).split('/')[1]))), real=Math.min(v,num(f.dano)); if(real>0&&c0.act>0){ f.dano=num(f.dano)-real; lines.push({k:'ok',t:`${name}: ${r[0]}, recupera ${real} PS.`}); ch=true; } }
     else if(k==='liberaEst'&&(f.estF||f.estM)){ lines.push({k:'ok',t:`${name}: ${r[0]}, se libera de ${[f.estF,f.estM].filter(Boolean).join(' y ')}.`}); f.estF=''; f.estM=''; f.estFx={}; ch=true; } }
   if(f.estM==='Adormilado') for(const y of combatants()){ if(y.key===key||aliados(y.key,key)) continue;
-    for(const r of habRowsOf(y.f,['Fin de ronda'])) if(r[5]==='pierdePS'&&r[4]==='Rivales'){ const rr=rollResid(y.f.rango); f.dano=num(f.dano)+rr.t; ch=true; lines.push({k:'ko',t:`${name}: ${r[0]} de ${charName(y.f)}, ${rr.txt} = ${rr.t} de daño.`}); } }
+    for(const r of habRowsOf(y.f,['Fin de ronda'])) if(r[5]==='pierdePS'&&r[4]==='Rivales'){ const rr=rollResid(y.f.rango); f.dano=num(f.dano)+rr.t; ch=true; lines.push({k:'ko',t:`${name}: ${r[0]} de ${nameSp(y.f)}, ${rr.txt} = ${rr.t} de daño.`}); } }
   return ch; }
 /* Efectos de fin de ronda del clima y el campo sobre un Pokémon */
 function condFinRonda(f,em,name,lines){ const P=em.cond; if(!P) return false; const T=tiposDe(f), h=P.h; let ch=false;
@@ -2132,15 +2138,15 @@ function rsPanelHTML(x){ const R=CBU.rs; const dmg=R.m==='dmg'; const rk=R.r||x.
 function rsGo(){ const R=CBU.rs; if(!R) return; const x=combatant(R.k); if(!x||!canGlove(x)) return; const rk=R.r||x.f.rango||'Starter'; const dmg=R.m==='dmg';
   const c=calc(x.f); let idx=ri(rk)+2; const ex=[];
   if(dmg&&R.t){ const e=effectiveness(R.t,c.tipos,'');
-    if(e.immune){ R.msg=`${charName(x.f)} es inmune al tipo ${R.t}: no recibe daño.`; logRoll(charName(x.f),`Daño residual ${R.t}: inmune`,0); renderSheet(); return; }
+    if(e.immune){ R.msg=`${nameSp(x.f)} es inmune al tipo ${R.t}: no recibe daño.`; logRoll(nameSp(x.f),`Daño residual ${R.t}: inmune`,0); renderSheet(); return; }
     if(e.steps){ idx+=e.steps; ex.push(e.steps>0?`súper eficaz +${e.steps}`:`poco eficaz ${e.steps}`); }
     const rv=num(c.em.cdRecv[R.t]); if(rv){ idx+=rv; ex.push(`${rv>0?'+':''}${rv} CD recibida`); }
     if(R.t==='Roca'&&((CB.cond||{}).clima||{}).n==='Tormenta de Arena'){ idx+=1; ex.push('Tormenta de Arena +1 Rango'); } }
-  if(dmg){ const mur=(c.em.hk||[]).find(h=>h.k==='sinDañoIndirecto'); if(mur){ R.msg=`${mur.nm}: ${charName(x.f)} no recibe daño residual.`; renderSheet(); return; } }
+  if(dmg){ const mur=(c.em.hk||[]).find(h=>h.k==='sinDañoIndirecto'); if(mur){ R.msg=`${mur.nm}: ${nameSp(x.f)} no recibe daño residual.`; renderSheet(); return; } }
   const dd=dice(clamp(idx,1,24)), rl=rollDice(dd); let v=rl.t;
   mutate(x.key,f=>{ if(dmg) f.dano=num(f.dano)+v; else { v=Math.min(v,num(f.dano)); f.dano=num(f.dano)-v; } });
   R.msg=`${dmg?'Daño':'Curación'} residual ${rk}${R.t&&dmg?` de tipo ${R.t}`:''}: ${dd} [${rl.r.join(', ')}] = ${v}${ex.length?' · '+ex.join(', '):''}.`;
-  logRoll(charName(x.f),`${dmg?'Recibe':'Recupera'} ${v} PS · ${R.msg}`,v); renderSheet(); }
+  logRoll(nameSp(x.f),`${dmg?'Recibe':'Recupera'} ${v} PS · ${R.msg}`,v); renderSheet(); }
 async function endRound(){
   if(!CB.parts.length||!S.canWrite||!iAmIn()) return;
   const cur=num(CB.ronda); const sb=window.__sb;
@@ -2148,7 +2154,7 @@ async function endRound(){
   CB.ronda=cur+1;
   const lines=[], heals=[];
   for(const x of combatants()){
-    const f=structuredClone(x.f); CKEY.set(f,x.key); let changed=false; const name=charName(f); const em=estEffects(f,x.key);
+    const f=structuredClone(x.f); CKEY.set(f,x.key); let changed=false; const name=nameSp(f); const em=estEffects(f,x.key);
     if(f.oculto&&num(f.oculto.hasta)<=cur){ lines.push({k:'',t:`${name}: ya no está ${(LUGAR[f.oculto.l]||'oculto').toLowerCase()}.`}); delete f.oculto; changed=true; }
     if(f.orden&&(f.orden.hasta==null||num(f.orden.hasta)<=cur)){ lines.push({k:'',t:`${name}: la Orden ${f.orden.n||''} de ${f.orden.by||'su Entrenador'} se pierde sin usar.`}); delete f.orden; changed=true; }
     for(const cls of ['F','M']){ const field=cls==='F'?'estF':'estM'; const est=f[field]; if(!est) continue; const e=estMap.get(est); if(!e) continue;
@@ -2181,13 +2187,13 @@ async function endRound(){
       if(alt){ f.especie=alt[0]; changed=true; lines.push({k:'',t:`${name}: Mutapetito, pasa a ${alt[2]}.`}); } }
     if(changed) saveAny(x,f);
   }
-  for(const hl of heals){ mutate(hl.key,f=>{ f.dano=Math.max(0,num(f.dano)-hl.val); }); const t=combatant(hl.key); lines.push({k:'ok',t:`${t?charName(t.f):'Quien lo causó'} recupera ${hl.val} PS por el Drenado de ${hl.from}.`}); }
+  for(const hl of heals){ mutate(hl.key,f=>{ f.dano=Math.max(0,num(f.dano)-hl.val); }); const t=combatant(hl.key); lines.push({k:'ok',t:`${t?nameSp(t.f):'Quien lo causó'} recupera ${hl.val} PS por el Drenado de ${hl.from}.`}); }
   /* duración de climas, campos y entornos */
   for(const cls of ['clima','campo','entorno']){ const c=(CB.cond||{})[cls]; if(!c||!c.n||c.r==null) continue;
     if(num(c.r)<=1){ setCond(cls,''); lines.push({k:'',t:`${c.n} termina.`}); } else { cbWrite({cond:{[cls]:{...c,r:num(c.r)-1}}}); lines.push({k:'',t:`${c.n}: quedan ${num(c.r)-1} rondas.`}); } }
   { const t=CB.tn||{}; const debt={...(t.debt||{})}; const sin=Object.entries(debt).filter(([k,n])=>num(n)>0&&inCombat(k)).map(([k])=>k);
     for(const k of Object.keys(debt)) debt[k]=Math.max(0,num(debt[k])-1);
-    sin.forEach(k=>{ const y=combatant(k); lines.push({k:'',t:`${y?charName(y.f):k} empieza la ronda ${CB.ronda} sin Acción (prestada en una Colisión o por Aturdido).`}); });
+    sin.forEach(k=>{ const y=combatant(k); lines.push({k:'',t:`${y?nameSp(y.f):k} empieza la ronda ${CB.ronda} sin Acción (prestada en una Colisión o por Aturdido).`}); });
     CB.acted={r:CB.ronda,k:sin}; CB.tn={r:CB.ronda,prest:[],extra:[],debt}; }
   CB.rondaLog={n:CB.ronda,lines};
   cbWrite({ronda:CB.ronda,rondaLog:CB.rondaLog,acted:CB.acted,tn:CB.tn});
@@ -2204,7 +2210,7 @@ function cbAttackHTML(){
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
   if(x.key!==CBU.cmdFor){ CBU.cmdFor=x.key; CBU.cmdOpen=false; }
   const hb=x.f.tipo==='P'&&x.f.habilidad?x.f.habilidad:'';
-  h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
+  h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(nameSp(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
   if(hb&&CBU.habMsg&&CBU.habMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px">${CBU.habMsg.lines.map(t=>`<div class="ok">${esc(t)}</div>`).join('')}</div>`;
   if(x.f.tipo==='E'&&!mvs.includes('M0000')) mvs.unshift('M0000'); /* Forcejeo: movimiento estándar de todo Entrenador */
   if(!mvs.length) return h+`<p class="note">Este personaje no tiene movimientos.</p></div>`;
@@ -2219,7 +2225,7 @@ function cbAttackHTML(){
       <div class="mvdata">${chip(ai.mi.tipo)} ${claseChip(m[3])} <span>Prec <b>${ai.prec}%</b>${ai.pen?` <span class="ko">(−${ai.pen})</span>`:''}</span><span>CD <b>${ai.mi.dice==='-'?'—':ai.mi.dice}</b></span><span>Prio <b>${ai.mi.prio>0?'+':''}${ai.mi.prio}</b></span><span>${esc(m[10])}</span>${m[14]&&m[14]!=='-'?socialChip(m[14]):''}</div>
       <div class="mvfx">${esc(m[11])}${ai.reR!==null?`<div class="re">R. Extra <b>${pct(ai.reR)}</b></div>`:''}${CN.fase===4?cnFxHTML(m[0]):''}</div>`;
     if(on){ const others=combatants().filter(y=>y.key!==x.key);
-      h+=`<div class="mvpick">${mode==='none'?'':`<div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(charName(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div>`}
+      h+=`<div class="mvpick">${mode==='none'?'':`<div class="note">${mode==='single'?'Elige el objetivo':'Elige los objetivos'}</div><div class="grid g2" style="margin-top:6px">${others.map(y=>`<label class="row" style="gap:6px"><input type="${mode==='single'?'radio':'checkbox'}" name="cbt" data-cbt="${esc(y.key)}" ${CBU.targets.includes(y.key)?'checked':''}> ${esc(nameSp(y.f))} <span class="note">${esc(ownerLabel(y))}</span></label>`).join('')||'<p class="note">No hay otros combatientes.</p>'}</div>`}
         <div class="row" style="margin-top:8px"><button class="btn pri" data-cb="roll" ${mode!=='none'&&!CBU.targets.length?'disabled':''}>Lanzar dados</button><button class="btn" data-cb="cancel">Cancelar</button></div></div>`; }
     h+=`</div>`; }
   return h+`</div><p class="note">Clic en el nombre de un movimiento para atacar con él. La Precisión ya descuenta las repeticiones.</p></div>`;
@@ -2239,7 +2245,7 @@ const DIF_RANGO={Starter:['Fácil',9],Beginner:['Sencilla',13],Amateur:['Media',
 /* Dificultad de Comandar: la del rival de mayor Rango (Starter = Fácil, Beginner = Sencilla…) */
 function cmdDif(x){ const riv=combatants().filter(y=>!aliados(y.key,x.key)&&!(y.src===x.src&&y.uid===x.uid)); let best=null;
   for(const y of riv) if(!best||ri(y.f.rango)>ri(best.f.rango)) best=y;
-  const rk=best&&DIF_RANGO[best.f.rango]?best.f.rango:'Starter'; const [n,v]=DIF_RANGO[rk]; return {n,v,rk,by:best?charName(best.f):''}; }
+  const rk=best&&DIF_RANGO[best.f.rango]?best.f.rango:'Starter'; const [n,v]=DIF_RANGO[rk]; return {n,v,rk,by:best?nameSp(best.f):''}; }
 const ORDEN_TXT=o=>o.k==='apunta'?`−${o.v} a su tirada de Precisión`:o.k==='esquiva'?`−${o.v} a su tirada de Esquiva o Temple`:o.k==='critico'?`+${o.v} al Índice de Crítico`:`+1 etapa de Velocidad (+${o.v} ft)`;
 const misPokemon=x=>combatants().filter(y=>y.f.tipo==='P'&&y.src===x.src&&y.uid===x.uid&&(!y.f.entrenador||y.f.entrenador===x.id));
 /* Comandar › Usar Objeto: objetos de su Mochila con efecto usable en combate, y a quién se los da (él o sus Pokémon en combate) */
@@ -2248,12 +2254,12 @@ function cmdObjDest(x,spec){ const l=[]; if(spec.para!=='P') l.push(x); if(spec.
 function cmdObjHTML(x){ const os=cmdObjetos(x); if(!os.length) return '<div class="note">No tiene objetos usables en combate en su Mochila.</div>';
   if(!os.some(o=>o.i===CBU.objI)) CBU.objI=os[0].i; const sel=os.find(o=>o.i===CBU.objI); const ds=cmdObjDest(x,sel.spec); if(!ds.some(y=>y.key===CBU.objT)) CBU.objT=(ds[0]||{}).key||'';
   return `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px"><label class="mini">Objeto <select data-cmdobj>${os.map(o=>`<option value="${o.i}"${o.i===CBU.objI?' selected':''}>${esc(o.it.obj)} (${num(o.it.cant)})</option>`).join('')}</select></label>
-    <label class="mini">Para <select data-cmdobjt>${ds.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.objT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label><span class="note">${esc(sel.it.efecto||'')}</span></div>`; }
+    <label class="mini">Para <select data-cmdobjt>${ds.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.objT?' selected':''}>${esc(nameSp(y.f))}</option>`).join('')}</select></label><span class="note">${esc(sel.it.efecto||'')}</span></div>`; }
 function cmdHTML(x){ const f=x.f, c=calc(f); const pk=misPokemon(x); CBU.cmdA ||= {};
   if(!pk.some(y=>y.key===CBU.cmdT)) CBU.cmdT=pk[0]?pk[0].key:'';
   const dif=cmdDif(x);
   let h=`<div class="mvpick cmdpick"><p class="note" style="margin:0 0 6px">Las Órdenes y Usar Objeto se tiran contra la dificultad <b>${dif.n} (${dif.v})</b>${dif.by?`, por el rival de mayor Rango: ${esc(dif.by)} (${esc(dif.rk)})`:' (no hay rivales)'}. Si tienen éxito, el bono dura hasta usarse o hasta el final de la siguiente ronda. Una acción de Entrenador por ronda.</p>`;
-  h+=pk.length?`<div class="grid g3"><label class="f">Pokémon que recibe la Orden<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(charName(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate: las Órdenes y Retrasar Acción no están disponibles.</p>';
+  h+=pk.length?`<div class="grid g3"><label class="f">Pokémon que recibe la Orden<select data-cmdt>${pk.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.cmdT?' selected':''}>${esc(nameSp(y.f))}</option>`).join('')}</select></label></div>`:'<p class="note">No tiene Pokémon suyos en el combate: las Órdenes y Retrasar Acción no están disponibles.</p>';
   h+=`<div class="mvlist">`+COMANDAR.map((o,i)=>{ const t=o[1], orden=!!ORDEN_FIJA[o[4]], need=orden||!o[4]; const ex=orden?ordenExtra(f,combatant(CBU.cmdT)):{b:0,why:[]}, b=t?talBonus(f,t)+ex.b:0, a=CBU.cmdA[i]||o[2];
     return `<div class="mvrow"><div class="mvhead"><button class="mvname" data-cb="cmd" data-i="${i}" ${need&&!pk.length?'disabled':''}>${esc(o[0])}</button>
       ${t?`<label class="mini">Atributo <select data-cmda="${i}">${ATTR.map(k=>`<option value="${k}"${k===a?' selected':''}>${k} (${sg(c.A[k])||0})</option>`).join('')}</select></label>`:''}</div>
@@ -2278,13 +2284,13 @@ function doComandar(i){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.t
       short=`${o[0]}: ${roll} vs ${dif.v} · ${ok?'éxito':'falla'}`; }
     else if(orden){ const dif=cmdDif(x); const ok=r!==1&&(r===20||tot>=dif.v); const k=o[4], v=ORDEN_FIJA[k];
       steps.push({k:ok?'ok':'ko',t:`${roll} contra ${dif.n} (${dif.v}) → ${ok?'éxito':'falla'}${r===20?' (20 natural)':r===1?' (1 natural)':''}`});
-      if(ok){ mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:charName(f),hasta:num(CB.ronda)+1}; }); steps.push({k:'ok',t:`${charName(y.f)}: ${ORDEN_TXT({k,v})} hasta usarlo o hasta el final de la ronda ${num(CB.ronda)+1}.`}); }
+      if(ok){ mutate(y.key,pf=>{ pf.orden={k,v,n:o[0],by:nameSp(f),hasta:num(CB.ronda)+1}; }); steps.push({k:'ok',t:`${nameSp(y.f)}: ${ORDEN_TXT({k,v})} hasta usarlo o hasta el final de la ronda ${num(CB.ronda)+1}.`}); }
       else steps.push({k:'ko',t:'La Orden no se cumple.'});
-      short=`${o[0]} (${charName(y.f)}): ${roll} vs ${dif.v} · ${ok?'éxito':'falla'}`; }
+      short=`${o[0]} (${nameSp(y.f)}): ${roll} vs ${dif.v} · ${ok?'éxito':'falla'}`; }
     else { steps.push({k:'',t:roll}); steps.push({k:'fx',t:o[3]}); short=`${o[0]}: ${roll}`; } }
-  else { steps.push({k:'fx',t:`${charName(y.f)} espera. ${o[3]}`}); short=`${o[0]} (${charName(y.f)})`; }
-  const last={ts:Date.now(),by:charName(f),byKey:x.key,mv:o[0],mvId:'',cls:'Comandar',cmd:true,go:true,steps,res:[],selfDone:true};
-  cbWrite({last}); logRoll(charName(f),'Comandar '+short,val);
+  else { steps.push({k:'fx',t:`${nameSp(y.f)} espera. ${o[3]}`}); short=`${o[0]} (${nameSp(y.f)})`; }
+  const last={ts:Date.now(),by:nameSp(f),byKey:x.key,mv:o[0],mvId:'',cls:'Comandar',cmd:true,go:true,steps,res:[],selfDone:true};
+  cbWrite({last}); logRoll(nameSp(f),'Comandar '+short,val);
   CBU.cmdOpen=false; markActed(x.key); renderSheet(); }
 function rollDamage(ai,target,crit,bonus){
   const m=ai.mi.m; const tc=calc(target.f); const heal=hasCat(m,'Curacion')&&!hasCat(m,'Drenaje');
@@ -2335,14 +2341,14 @@ function doAttack(){
   if(pr&&!(x.f.oculto&&x.f.oculto.mv===mvId)){ const P=condPara(x.f,x.key)||{}; const salta=pr.l==='carga'&&(pr.salvo||[]).some(n=>[P.climaMov,P.campo,P.entorno].includes(n));
     if(!salta){ const nf=structuredClone(x.f); nf.oculto={l:pr.l,mv:mvId,hasta:num(CB.ronda)+1}; saveFicha(x,nf);
       const txt=pr.l==='carga'?`${m[1]}: usa esta Acción para cargar y lo lanza con su próxima Acción.`:`${m[1]}: queda ${LUGAR[pr.l].toLowerCase()} y ataca con su próxima Acción. Mientras tanto ${pr.l==='sombra'?'nadie puede golpearlo':'solo lo alcanzan '+ALCANZA[pr.l].join(', ')}.`;
-      const last={ts:Date.now(),by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:0,prec:ai.prec,hit:false,crit:false,re:false,go:false,steps:[{k:'ok',t:txt}],res:[],selfDone:true};
-      CBU.picking=false; CBU.targets=[]; cbWrite({last}); markActed(x.key); logRoll(charName(x.f),`${m[1]}: prepara (${LUGAR[pr.l]})`,null); renderSheet(); return; } }
+      const last={ts:Date.now(),by:nameSp(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:0,prec:ai.prec,hit:false,crit:false,re:false,go:false,steps:[{k:'ok',t:txt}],res:[],selfDone:true};
+      CBU.picking=false; CBU.targets=[]; cbWrite({last}); markActed(x.key); logRoll(nameSp(x.f),`${m[1]}: prepara (${LUGAR[pr.l]})`,null); renderSheet(); return; } }
   const r=d(100); const steps=[]; const ts=Date.now();
   const indf=indefensoEnCombate()||(ai.mi.hm.siempre?x:null), siempre=!!indf; /* Indefenso de cualquiera en combate: todo golpea, nadie esquiva */
   const pT=k=>{ const t=combatant(k); return t&&k!==x.key?clamp(ai.prec+condBlanco(m,x.f,t.f).prec,0,100):ai.prec; };
   const best=tkeys.length?Math.max(ai.prec,...tkeys.map(pT)):ai.prec;
   const hit=(r<=best||siempre)&&r!==100;
-  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}%${best>ai.prec?` (${best}% contra quien cumple la condición)`:''} → ${hit?'conecta':'falla'}${siempre&&r>ai.prec&&r!==100?` (${habOf(indf.f)}${indf===x?'':' de '+charName(indf.f)}: siempre golpea)`:''}`});
+  steps.push({k:hit?'ok':'ko',t:`Precisión: d100 [${r}] contra ${ai.prec}%${best>ai.prec?` (${best}% contra quien cumple la condición)`:''} → ${hit?'conecta':'falla'}${siempre&&r>ai.prec&&r!==100?` (${habOf(indf.f)}${indf===x?'':' de '+nameSp(indf.f)}: siempre golpea)`:''}`});
   if(r===1) steps.push({k:'ok',t:'01 natural: +1 al Bono de Evasión y algo a decisión del Narrador.'});
   if(r===100) steps.push({k:'ko',t:'100: fallo crítico, −1 al Bono de Evasión y algo a decisión del Narrador.'});
   let go=hit, crit=false, re=false, postCond=null;
@@ -2365,23 +2371,23 @@ function doAttack(){
     if(ai.mi.cm.notes.length) steps.push({k:'',t:`Condición: ${ai.mi.cm.notes.join(' · ')}`});
     const cl=[]; const nc=condDeMov(m); if(nc&&(!nc.re||re)) postCond=()=>crearCond(nc,x.key,cl,m[1],m[5]);
     if(/^Voto (Agua|Fuego|Planta)$/.test(m[1])){ const V=CB.voto; const ally=V&&num(V.ronda)===num(CB.ronda)&&V.key!==x.key&&V.mv!==mvId&&aliados(V.key,x.key)&&inCombat(V.key);
-      if(ally) postCond=()=>crearCond({n:'Arcoíris',r:4},x.key,cl,`${V.name} y ${charName(x.f)} combinan sus Voto`,m[5]);
-      cbWrite({voto:ally?null:{ronda:num(CB.ronda),key:x.key,mv:mvId,name:charName(x.f)}}); }
+      if(ally) postCond=()=>crearCond({n:'Arcoíris',r:4},x.key,cl,`${V.name} y ${nameSp(x.f)} combinan sus Voto`,m[5]);
+      cbWrite({voto:ally?null:{ronda:num(CB.ronda),key:x.key,mv:mvId,name:nameSp(x.f)}}); }
     if(postCond) steps.push({k:'ok',t:'',cl});
     if(mode==='none'||!tkeys.length){
-      const dr=rollDamage(ai,x,crit,bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:charName(x.f),...dr,selfMove:true});
+      const dr=rollDamage(ai,x,crit,bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:nameSp(x.f),...dr,selfMove:true});
       const notes=applyOps(nf,parseFx(m),'all',{re,rank:m[5],by:x.key});
-      if(notes.length) steps.push({k:'ok',t:`Efectos en ${charName(x.f)}: ${notes.join(' · ')}`});
+      if(notes.length) steps.push({k:'ok',t:`Efectos en ${nameSp(x.f)}: ${notes.join(' · ')}`});
       selfNow=true; }
     else for(const k of tkeys){ const t=combatant(k); if(!t) continue;
-      if(!siempre&&r>pT(k)){ res.push({key:k,name:charName(t.f),val:null,det:`Falla contra este Blanco: d100 [${r}] > ${pT(k)}%`,immune:true}); continue; }
+      if(!siempre&&r>pT(k)){ res.push({key:k,name:nameSp(t.f),val:null,det:`Falla contra este Blanco: d100 [${r}] > ${pT(k)}%`,immune:true}); continue; }
       const oc=t.f.oculto; let ocx2=false;
-      if(oc&&oc.l!=='carga'&&k!==x.key){ if(!(ALCANZA[oc.l]||[]).includes(m[1])){ res.push({key:k,name:charName(t.f),val:null,det:`No lo alcanza: está ${LUGAR[oc.l].toLowerCase()}`,immune:true}); continue; } ocx2=(DOBLE_OC[oc.l]||[]).includes(m[1]); }
+      if(oc&&oc.l!=='carga'&&k!==x.key){ if(!(ALCANZA[oc.l]||[]).includes(m[1])){ res.push({key:k,name:nameSp(t.f),val:null,det:`No lo alcanza: está ${LUGAR[oc.l].toLowerCase()}`,immune:true}); continue; } ocx2=(DOBLE_OC[oc.l]||[]).includes(m[1]); }
       const dr=rollDamage(ai,t,crit,bonus);
       if(ocx2&&num(dr.val)>0&&!dr.heal){ dr.val*=2; dr.det+=` × 2 (${LUGAR[oc.l].toLowerCase()})`; }
       const ck=dr.crit??crit; let est=''; if(ck&&!dr.heal&&!dr.immune){ const ce=critEstado(m); if(ce) est=estImmune(t.f,ce)?`Inmune a ${ce}`:`Crítico: aplica ${ce}`; }
       const ign=ai.mi.hm.ignEv&&!siempre?habOf(x.f):''; /* Ojomental: el Blanco puede evadir, pero sin sus cambios de Evasión */
-      res.push({key:k,name:charName(t.f),...dr,crit:ck,est,ign,kind:dr.immune||siempre?null:m[3]==='Estado'?'tem':'esq'}); }
+      res.push({key:k,name:nameSp(t.f),...dr,crit:ck,est,ign,kind:dr.immune||siempre?null:m[3]==='Estado'?'tem':'esq'}); }
     /* Reserva (Reserva acumula; Escupir y Tragar gastan los puntos) */
     if(/Acumula un punto de Reserva/.test(tx)){ nf.reserva=Math.min(3,num(nf.reserva)+1); const up=[]; for(const [k,v] of [...tx.matchAll(/\+(\d+) (FUE|VIT|ENE|SAB|DES|CAR) /g)].map(z=>[z[2],Number(z[1])])){ const dd=bumpAttr(nf,k,v); if(dd) up.push(`+${dd} ${k}`); } steps.push({k:'ok',t:`Reserva: ${nf.reserva} punto${nf.reserva>1?'s':''} (máx. 3)${up.length?' · '+up.join(' y '):''}.`}); }
     if(/resetea los [Pp]untos/.test(tx)&&num(nf.reserva)){ steps.push({k:'',t:`Reserva: gasta ${nf.reserva} punto${nf.reserva>1?'s':''}.`}); nf.reserva=0; }
@@ -2393,12 +2399,12 @@ function doAttack(){
   /* la condición se crea después de guardar al atacante (Predicción puede cambiar su forma) */
   if(postCond){ postCond(); const i=steps.findIndex(z=>z.cl); const cl=steps[i].cl; steps.splice(i,1,...cl.map(t=>({k:'ok',t}))); }
   { const cl=cnDuelMove(x,m,mvId,r,hit&&go,ts); if(cl) steps.push(...cl); } /* Duelo de Gala: efecto de Concurso */
-  const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
+  const last={ts,by:nameSp(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
   if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
   cbWrite({last}); markActed(x.key);
   if(recarga){ const t=TN(); t.debt[x.key]=num(t.debt[x.key])+1; cbWrite({tn:t}); }
-  logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
+  logRoll(nameSp(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
 }
 /* Habilidades que reaccionan al golpe: del que recibe (al recibir un ataque) y del atacante (causa estados, al debilitar) */
@@ -2407,8 +2413,8 @@ function habAlGolpear(L,z,t,A,m,act0,act1,ps){ const out=[]; const dmg=num(z.val
   if(dmg) for(const r of habRowsOf(t.f,['Al recibir un ataque'])){ if(!habCondOk(r[3],t.f,z.key,x)) continue; const k=r[5], v=r[6]; let mm;
     if(r[7]&&d(100)>hval(r[7])) continue;
     if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)&&z.key); }); if(n) out.push(n); }
-    else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${charName(A.f)} ${n}`); }
-    else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):v==='1/6'?Math.floor(pa/6):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
+    else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${nameSp(A.f)} ${n}`); }
+    else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):v==='1/6'?Math.floor(pa/6):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${nameSp(A.f)} pierde ${val} PS`); } }
   if(dmg&&m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
     if(d(100)>hval(r[7]||100)) continue; const e=pick(mm[1].split('/')); let n=''; mutate(z.key,f=>{ n=giveEstado(f,e,{rank:A.f.rango||'Starter',by:L.byKey},false); }); if(n) out.push(`${r[0]}: ${n}`); }
   if(x.ko) for(const r of habRowsOf(A.f,['Al debilitar'])){ const mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(r[5]); if(!mm) continue; let n=''; mutate(L.byKey,f=>{ n=habAttr(f,mm[1],hval(r[6]),r[0]); }); if(n) out.push(n); }
@@ -2423,10 +2429,10 @@ function connectHit(L,z,extra){
   const cbx=m&&A&&!z.selfMove&&!z.immune?condBlanco(m,A.f,t.f):null;
   /* Espejo Mágico: un movimiento de Estado de un rival se devuelve a quien lo usó */
   const em=m&&A&&m[3]==='Estado'&&!z.heal&&!z.selfMove&&z.key!==L.byKey&&!aliados(L.byKey,z.key)?habRowsOf(t.f).find(r=>r[5]==='reflejaEstado'):null;
-  if(em){ const out=[`${em[0]}: devuelve ${L.mv} a ${charName(A.f)}`]; const c2={...ctx,by:z.key,tk:L.byKey};
+  if(em){ const out=[`${em[0]}: devuelve ${L.mv} a ${nameSp(A.f)}`]; const c2={...ctx,by:z.key,tk:L.byKey};
     mutate(L.byKey,f=>{ out.push(...applyOps(f,ops,'target',c2)); });
-    if(!L.selfDone){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
-    logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')}${extra?' · '+extra:''}`,null);
+    if(!L.selfDone){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${nameSp(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
+    logRoll(nameSp(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')}${extra?' · '+extra:''}`,null);
     return out; }
   mutate(z.key,f=>{
     if(z.val&&!selfHeal){ if(z.heal) f.dano=Math.max(0,num(f.dano)-z.val); else { f.dano=num(f.dano)+z.val;
@@ -2438,18 +2444,18 @@ function connectHit(L,z,extra){
     if(cbx&&cbx.drainAll&&(f.estF===cbx.drainAll||f.estM===cbx.drainAll)){ if(f.estF===cbx.drainAll){ f.estF=''; setEstFx(f,'F',null); } else { f.estM=''; setEstFx(f,'M',null); } out.push(`se cura de ${cbx.drainAll}`); }
     const ep=m?empuje(m,f,A&&A.f):null; if(ep) out.push(`es empujado ${ep.ft} ft (${ep.det})`);
   });
-  if(selfHeal&&num(z.val)>0&&A){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-num(z.val)); }); out.push(`${charName(A.f)} recupera ${z.val} PS`); }
+  if(selfHeal&&num(z.val)>0&&A){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-num(z.val)); }); out.push(`${nameSp(A.f)} recupera ${z.val} PS`); }
   if(m&&A&&!z.heal&&!z.selfMove&&z.key!==L.byKey) out.push(...habAlGolpear(L,z,t,A,m,act0,act1,ps));
-  if(m&&hasCat(m,'Drenaje')&&!z.heal&&num(z.val)>0&&A){ const hv=cbx&&cbx.drainAll?num(z.val):Math.floor(num(z.val)/2); if(hv){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-hv); }); out.push(`${charName(A.f)} recupera ${hv} PS (Drenaje)`); } }
-  if(!L.selfDone&&!z.selfMove&&A&&m){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${charName(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
+  if(m&&hasCat(m,'Drenaje')&&!z.heal&&num(z.val)>0&&A){ const hv=cbx&&cbx.drainAll?num(z.val):Math.floor(num(z.val)/2); if(hv){ mutate(L.byKey,f=>{ f.dano=Math.max(0,num(f.dano)-hv); }); out.push(`${nameSp(A.f)} recupera ${hv} PS (Drenaje)`); } }
+  if(!L.selfDone&&!z.selfMove&&A&&m){ const n=[]; mutate(L.byKey,f=>{ n.push(...applyOps(f,ops,'self',ctx)); }); if(n.length) out.push(`${nameSp(A.f)}: ${n.join(' · ')}`); L.selfDone=true; cbWrite({last:L}); }
   if(!z.heal&&!z.immune&&num(z.val)>0&&z.key!==L.byKey){ const tf=(combatant(z.key)||{}).f; const h=tf&&tf.estM!=='Mareado'?habOf(tf):''; const ht=h?habMap.get(h):'';
     if(ht&&/^Cuando recibe un ataque/.test(ht)){ const c=condDeTexto(ht); if(c){ const cl=[]; crearCond(c,z.key,cl,h); out.push(...cl); } } }
-  logRoll(charName(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')||'sin efecto'}${extra?' · '+extra:''}`,z.val??null);
+  logRoll(nameSp(t.f),`${L.mv} de ${L.by}: ${out.join(' · ')||'sin efecto'}${extra?' · '+extra:''}`,z.val??null);
   return out;
 }
 function cbLastHTML(){
   const L=CB.last; if(!L) return '';
-  let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${L.cmd?'Comandar: ':''}${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
+  let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${L.cmd?'Comandar: ':''}${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="actrow">${actImg(L.byKey,L.by)}<div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div></div>`;
   if(L.res&&L.res.length) h+=`<div class="res" style="margin-top:10px">`+L.res.map(z=>{ const fk=`${L.ts}|${z.key}`; const fx=CB.lastFx[fk]||{}; const t=combatant(z.key); const can=t&&canEditRef(t)&&S.canWrite;
     const canCol=!z.heal&&L.cls!=='Estado'&&t&&dmgMoves(t.f).length>0&&z.key!==L.byKey&&puedeColisionar(z.key);
     let btns='';
@@ -2539,7 +2545,7 @@ function doEvade(ref,f,kind,against){
   const lim=against?Math.min(need,against.d100):need; const ok=r<=lim&&r!==100; const crit=ok&&r===1; /* Esquiva crítica: solo con 01 en el dado */
   const nf=structuredClone(f); const key=kind==='esq'?'cEsq':'cTem'; nf[key]=num(nf[key])+1; if(od) delete nf.orden; if(ref.key) saveAny(ref,nf); else saveFicha(ref,nf);
   const txt=`${od?`Orden ${od.n}: +${od.v} % a la Evasión. `:''}Intentó evitar ${against?`${against.mv} de ${against.by}`:'un movimiento'} con ${kind==='esq'?'Esquiva':'Temple'}${ign?` (${ign} ignora sus cambios de Evasión)`:''}: d100 [${r}] vs ${need}%${against?` y ≤ ${against.d100}`:''} → ${ok?(crit?'¡Esquiva crítica! Lo evita y puede atacar otra vez':'lo evita'):'no lo evita'}`;
-  logRoll(charName(f),txt,r);
+  logRoll(nameSp(f),txt,r);
   return {r,ok,txt,crit};
 }
 /* Colisión desde el último ataque */
@@ -2554,12 +2560,12 @@ function doCollide(L,z,mv){
   if(dcrit) log.push({k:'ok',t:'¡Crítico del defensor!'});
   const SA=clashSide(A,L.mvId,mv,true,!!L.crit), SB=clashSide(t,mv,L.mvId,false,dcrit);
   const diff=SA.tot-SB.tot, ad=Math.abs(diff); const win=diff>0?SA:diff<0?SB:null, lose=diff>0?SB:diff<0?SA:null;
-  log.push({k:'',t:`Puntos: ${charName(A.f)} ${SA.tot} · ${charName(t.f)} ${SB.tot} → ${win?`gana ${charName(win.x.f)} por ${ad}`:'empate'}`});
+  log.push({k:'',t:`Puntos: ${nameSp(A.f)} ${SA.tot} · ${nameSp(t.f)} ${SB.tot} → ${win?`gana ${nameSp(win.x.f)} por ${ad}`:'empate'}`});
   cnDuelCol(L,A,t,win?win.x.key:null).forEach(l=>log.push(l)); /* Duelo de Gala */
   const avgDice=dice(Math.round((SA.mi.idx+SB.mi.idx)/2));
-  const avgHit=(S_,crit)=>{ const rl=rollDice(avgDice); const v=rl.t*(crit?2:1); mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${charName(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}]${crit?' × 2 por el crítico del ganador':''}).`}); };
+  const avgHit=(S_,crit)=>{ const rl=rollDice(avgDice); const v=rl.t*(crit?2:1); mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${nameSp(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}]${crit?' × 2 por el crítico del ganador':''}).`}); };
   if(!win){ const atr=Math.round((num(SA.mi.atr)+num(SB.mi.atr))/2);
-    for(const S_ of [SA,SB]){ const rl=rollDice(avgDice); const v=rl.t+atr; mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${charName(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}] + promedio de Atributo ${atr}, sin defensa).`}); }
+    for(const S_ of [SA,SB]){ const rl=rollDice(avgDice); const v=rl.t+atr; mutate(S_.x.key,f=>{ f.dano=num(f.dano)+v; }); log.push({k:'ko',t:`${nameSp(S_.x.f)} recibe ${v} (promedio de CD ${avgDice} [${rl.r.join(', ')}] + promedio de Atributo ${atr}, sin defensa).`}); }
     log.push({k:'',t:'Empate: nadie aplica efectos secundarios.'}); }
   else {
     const wcrit=win===SA?!!L.crit:dcrit;
@@ -2572,16 +2578,16 @@ function doCollide(L,z,mv){
       if(ad<=3){ const rl=rollDice(avgDice); val=rl.t*(wcrit?2:1); det=`promedio de CD ${avgDice} [${rl.r.join(', ')}]${wcrit?' × 2':''}`; }
       else { const dr=rollDamage(dai,A,wcrit,0); val=dr.val; det=dr.det; }
       mutate(A.key,f=>{ if(val) f.dano=num(f.dano)+val; if(wcrit){ const ce=critEstado(dm); if(ce){ const tx=giveEstado(f,ce,ctx,true); if(tx) out.push('crítico: '+tx); } } out.push(...applyOps(f,ops,'target',ctx)); });
-      log.push({k:'ko',t:`${charName(A.f)} recibe ${val??0} (${det}).`}); if(out.length) log.push({k:'',t:`Efectos en ${charName(A.f)}: ${out.join(' · ')}`});
-      const so=[]; mutate(t.key,f=>{ so.push(...applyOps(f,ops,'self',ctx)); }); if(so.length) log.push({k:'',t:`Efectos en ${charName(t.f)}: ${so.join(' · ')}`});
+      log.push({k:'ko',t:`${nameSp(A.f)} recibe ${val??0} (${det}).`}); if(out.length) log.push({k:'',t:`Efectos en ${nameSp(A.f)}: ${out.join(' · ')}`});
+      const so=[]; mutate(t.key,f=>{ so.push(...applyOps(f,ops,'self',ctx)); }); if(so.length) log.push({k:'',t:`Efectos en ${nameSp(t.f)}: ${so.join(' · ')}`});
     }
   }
-  logRoll('Colisión',`${charName(t.f)} colisiona ${L.mv} de ${L.by} con ${dm[1]} · `+log.map(l=>l.t).join(' · '),r);
+  logRoll('Colisión',`${nameSp(t.f)} colisiona ${L.mv} de ${L.by} con ${dm[1]} · `+log.map(l=>l.t).join(' · '),r);
   return log;
 }
 function cbClick(b){
   const act=b.dataset.cb;
-  if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${charName(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
+  if(act==='tie'){ const ord=cbOrder(); const tied=ord.filter(a=>ord.some(z=>z!==a&&z.c.ini===a.c.ini)); const ties={}; const parts=[]; tied.forEach(t=>{ ties[t.x.key]=d(20); parts.push(`${nameSp(t.x.f)} ${ties[t.x.key]}`); }); if(parts.length){ cbWrite({ties}); logRoll('Iniciativa','Desempate 1d20: '+parts.join(' · '),null); } renderSheet(); }
   else if(act==='end'){ document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=true); $('#endConfirm').innerHTML='<button class="btn sm danger" data-cb="endYes">Sí, terminar</button> <button class="btn sm" data-cb="endNo">Cancelar</button>'; }
   else if(act==='endNo'){ $('#endConfirm').innerHTML=''; document.querySelectorAll('[data-cb="end"],[data-cb="round"],[data-cb="tie"]').forEach(e=>e.hidden=false); }
   else if(act==='endYes'){ cnFinCombate(); cbWrite({parts:[],snaps:{},ties:{},last:null,lastFx:{},ronda:1,rondaLog:null,cond:{},voto:null,eq:{},acted:null,tn:null},true); render(); }
@@ -2631,6 +2637,8 @@ const CEF=D.cef||[], JUECES=D.jueces||[];
 const cefDe=id=>CEF[(D.catk||{})[id]]||CEF[0]||['Gran Exhibición','Exhibición',4,0,''];
 const cefN=n=>CEF.find(e=>e[0]===n)||CEF[0];
 const CN_FASES=['Preparación','Exhibición','Coordinación','Presentación','Duelo'];
+/* Clamor inicial: Fase 3 parte en 0; Fase 4 según el Rango del Concurso */
+const CN_CL4=[15,20,25,30,35,40];
 const CN_R3=[4,4,6,6,8,10], CN_R4=[5,7,10,12,15,20], CN_PASAN=[0,8,4,2];
 const CN0=()=>({parts:[],snaps:{},fase:0,cat:'Belleza',rango:'Starter',jz:[],jv:{},out:{},m1:{},f3:null,f4:null});
 const CN={exists:false,u:{},...CN0()};
@@ -2642,10 +2650,13 @@ const cnUk=k=>'u_'+String(k).replace(/[^A-Za-z0-9]/g,'_');
 const cnU=k=>CN.u[cnUk(k)]||{};
 function cnData(){ const o={}; for(const k of Object.keys(CN0())) o[k]=CN[k]; for(const [k,v] of Object.entries(CN.u)) o[k]=v; return o; }
 /* Cada campo se manda completo: lo del Master en sus campos y lo de cada participante en el suyo (u_…), para que dos personas no se pisen */
-function cnSend(up,full){
-  cnChain=cnChain.then(async()=>{ try{ const ref=S.db.doc('concurso/actual');
-      if(full||!CN.exists){ await ref.set(cnData()); CN.exists=true; } else await ref.update(up);
-      setStatus('Guardado'); }catch(e){ onWriteError(e); } });
+let cnPend=0;
+function cnSend(up,full){ cnPend++;
+  cnChain=cnChain.then(async()=>{ const ref=S.db.doc('concurso/actual');
+    try{ if(full||!CN.exists){ await ref.set(cnData()); CN.exists=true; } else await ref.update(up);
+      setStatus('Guardado'); }catch(e){ onWriteError(e); }
+    /* Al terminar el último guardado se vuelve a leer, por si llegó algo de otra persona mientras tanto */
+    if(--cnPend===0&&ref.get){ try{ const s=await ref.get(); if(!cnPend){ CN.exists=s.exists; cnRemote(s.exists?s.data():{}); if(S.view==='concurso'||S.view==='combate') safeSheet(); } }catch(e){ console.warn(e); } } });
 }
 function cnWrite(fields,full){ for(const [k,v] of Object.entries(fields)) CN[k]=v; cnSend({...fields},full); }
 function cnWriteU(k,patch){ const f=cnUk(k); CN.u[f]=cnMerge(CN.u[f]||{},patch); cnSend({[f]:CN.u[f]}); }
@@ -2660,7 +2671,8 @@ function cnPart(k){ const [src,uid,id]=String(k).split('|'); const ref={src,uid:
 const cnParts=()=>CN.parts.map(cnPart).filter(Boolean);
 const cnActivos=()=>cnParts().filter(p=>!CN.out[p.key]);
 const cnCan=p=>!!p&&S.canWrite&&(isMaster()||(p.src==='jug'&&p.uid===S.uid));
-const cnNombre=k=>{ const p=cnPart(k); return p?charName(p.f):'Participante'; };
+const cnPkKey=k=>{ const [src,uid]=String(k).split('|'); const pk=cnSel3(k).pk; return pk?`${src}|${uid||''}|${pk}`:k; };
+const cnNombre=k=>{ const p=cnPart(k); return p?nameSp(p.f):'Participante'; };
 const cnJuegos=k=>num(((cnU(k).f1||{}).r||{}).cl)+num(((cnU(k).f2||{}).r||{}).cl); /* Clamor de las Fases de Jueces */
 function cnClamor(k){
   if(CN.fase===4&&CN.f4) return k in (CN.f4.cl||{})?num(CN.f4.cl[k]):num(((CN.f3||{}).cl||{})[k]);
@@ -2695,25 +2707,25 @@ function cnPresentar1(k){ const p=cnPart(k), s=cnU(k).f1||{}, mm=CN.m1[k]||{}; i
   const notas=CN.jz.map(ji=>{ const af=cnAff(ji,mm.cat), afin=JUECES[ji][0]===mm.arte; return {af,afin,n:Math.max(0,res-ex)*af/100*(afin?1.5:1)}; });
   const sum=notas.reduce((a,x)=>a+x.n,0), cl=r===1?0:r===20?50:Math.min(50,Math.floor(sum*0.75));
   cnWriteU(k,{f1:{r:{d:r,A,T,B,R:rs.txt,RF:rs.fail,res,ex,cat:mm.cat,arte:mm.arte,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl}}});
-  logRoll(charName(p.f),`Concurso · Exhibición (${mm.cat}): d20 [${r}] + ${s.atr} ${A} + ${TAL_LABEL(s.tal)} ${T}${B?` + bono ${B}`:''}${rs.txt} = ${res} → Clamor ${cl}`,r); renderSheet(); }
+  logRoll(nameSp(p.f),`Concurso · Exhibición (${mm.cat}): d20 [${r}] + ${s.atr} ${A} + ${TAL_LABEL(s.tal)} ${T}${B?` + bono ${B}`:''}${rs.txt} = ${res} → Clamor ${cl}`,r); renderSheet(); }
 /* ---- Fase 2 · Coordinación: cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador + Sincronía (3 si comparten categoría) − Exigencia (3 × bonus del Rango); aporte = suma × 0,45 (máx. 25 cada uno) ---- */
 function cnPresentar2(k){ const p=cnPart(k), s=cnU(k).f2||{}; if(!p||!cnCan(p)||s.r||!s.tal||!s.p1||!s.p2||s.p1===s.p2||CN.jz.length!==3) return;
   const P=[[s.p1,s.m1],[s.p2,s.m2]].map(([pid,mid])=>({y:p.team.find(z=>z.id===pid),m:atkById.get(mid)})); if(P.some(z=>!z.y||!z.m)) return;
   const rs=rasgoSuma(rasgoConsultas(p.f,'',s.tal,'concurso'),s.rs), T=talBonus(p.f,s.tal)+rs.v, sinc=P[0].m[14]===P[1].m[14]?3:0, ex=3*rb(CN.rango);
   const ap=P.map(z=>{ const r=rs.fail?1:d(20), A=num((calc(z.y.f).A||{})[short(z.m[4])]), tir=r+A+T+sinc;
     const notas=CN.jz.map(ji=>{ const af=cnAff(ji,z.m[14]); return {af,n:Math.max(0,tir-ex)*af/100}; }); const sum=notas.reduce((a,x)=>a+x.n,0);
-    return {n:charName(z.y.f),mv:z.m[1],cat:z.m[14],ak:short(z.m[4]),d:r,A,tir,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl:r===1?0:r===20?25:Math.min(25,Math.floor(sum*0.45))}; });
+    return {n:nameSp(z.y.f),mv:z.m[1],cat:z.m[14],ak:short(z.m[4]),d:r,A,tir,notas:notas.map(x=>({...x,n:r1(x.n)})),sum:r1(sum),cl:r===1?0:r===20?25:Math.min(25,Math.floor(sum*0.45))}; });
   const cl=ap[0].cl+ap[1].cl; cnWriteU(k,{f2:{r:{T,R:rs.txt,RF:rs.fail,sinc,ex,ap,cl}}});
-  logRoll(charName(p.f),`Concurso · Presentación: ${ap.map(a=>`${a.n} con ${a.mv} d20 [${a.d}] → ${a.tir}`).join(' · ')} → Clamor +${cl}`,ap[0].d); renderSheet(); }
+  logRoll(nameSp(p.f),`Concurso · Presentación: ${ap.map(a=>`${a.n} con ${a.mv} d20 [${a.d}] → ${a.tir}`).join(' · ')} → Clamor +${cl}`,ap[0].d); renderSheet(); }
 
 /* ---- Paso de fase (Master): pasan los 8, 4 y 2 con más Clamor ---- */
 function cnAvanzar(){ if(!isMaster()) return; const f=CN.fase;
   if(f===0){ if(!CN.parts.length) return; CN.u={}; cnWrite({fase:1,jz:CN.jz.length===3?CN.jz:cnSortear(),out:{},m1:{},f3:null,f4:null},true); }
   else if(f>=1&&f<=3){ const act=cnActivos().sort((a,b)=>cnClamor(b.key)-cnClamor(a.key)); const out={...CN.out}; act.slice(CN_PASAN[f]).forEach(p=>{ out[p.key]=true; }); const pasan=act.slice(0,CN_PASAN[f]).map(p=>p.key);
     if(f===1) cnWrite({fase:2,out},true);
-    else if(f===2){ const base={}, cl={}; CN.parts.forEach(k=>{ base[k]=cnJuegos(k); }); pasan.forEach(k=>{ cl[k]=50; });
+    else if(f===2){ const base={}, cl={}; CN.parts.forEach(k=>{ base[k]=cnJuegos(k); }); pasan.forEach(k=>{ cl[k]=0; });
       const F={n:CN_R3[cnRi()],ronda:1,base,cl,br:{},fu:0,fl:{},prev:{},next:null,q:null,fin:false,ini:[]}; CN.out=out; F.ini=cnOrden3(F); cnWrite({fase:3,out,f3:F},true); }
-    else { const cl={}; pasan.forEach(k=>{ cl[k]=50; const f=cnUk(k); if(CN.u[f]) CN.u[f]={...CN.u[f],f4:null}; }); cnWrite({fase:4,out,f4:{fin:pasan,n:CN_R4[cnRi()],cl,fu:0,st:{},log:[],undo:null,res:null,armado:false}},true); } }
+    else { const cl={}, c4=CN_CL4[cnRi()]; pasan.forEach(k=>{ cl[k]=c4; const f=cnUk(k); if(CN.u[f]) CN.u[f]={...CN.u[f],f4:null}; }); cnWrite({fase:4,out,f4:{fin:pasan,n:CN_R4[cnRi()],cl,fu:0,st:{},log:[],undo:null,res:null,armado:false,c0:c4}},true); } }
   CNU.conf=''; render(); }
 
 /* ---- Fase 3 · Presentaciones Paralelas ---- */
@@ -2734,7 +2746,7 @@ function cnResolver3(){ if(!isMaster()||!CN.f3||CN.f3.q||CN.f3.fin) return; cons
     const fin=()=>{ st.acted.push(k); acts.push({k,L:[...H,...La,...Le,...Lc,...Lf],dl,fu:num(F.fu)}); };
     const eraConc=!!fl.conc; delete fl.conc; /* Concentración dura hasta su próxima exhibición */
     if(!y||!m){ H.push({k:'ko',t:`${cnNombre(k)} no presentó un movimiento.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
-    const nm=charName(y.f);
+    const nm=nameSp(y.f);
     if(st.nerv[k]&&!eraConc){ H.push({k:'ko',t:`${nm} está Nervioso y pierde su exhibición.`}); st.gain[k]=0; st.cat[k]=''; fl.racha=0; fin(); return; }
     const ef0=cefDe(sel.mv); let ef=ef0; if(ef0[0]==='Bis'){ ef=cefN(fl.lastEf&&fl.lastEf!=='Bis'?fl.lastEf:'Gran Exhibición'); }
     const efN=ef[0], cat=m[14], r=d(100), hit=true, br=num(F.br[k]); /* en la Fase 3 el movimiento siempre se realiza: solo cuenta la afinidad */
@@ -2875,7 +2887,7 @@ function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return n
   { const q=(F.rq[ron] ||= {}); q[k]=num(q[k])+Math.max(0,c0-num(F.cl[rv])); }
   if(num(F.cl[rv])<=0) Lc.push({k:'ko',t:`${cnNombre(rv)} llegó a 0 de Clamor: el Duelo termina.`});
   const L=[...La,...Le,...Lc,...Lf];
-  cnGuardar4(F,L.map(l=>l.t),`${charName(x.f)} · ${m[1]}`); return L; }
+  cnGuardar4(F,L.map(l=>l.t),`${nameSp(x.f)} · ${m[1]}`); return L; }
 /* Colisión: se omiten los efectos de Concurso; el ganador gana 3 de Clamor (empate: 1 cada uno) y el Furor sube 1 */
 function cnDuelCol(L,A,t,winKey){ const D4=cnDuelo(A); if(!D4||cnDuenoDe(t)!==D4.rv) return []; const {F,k,rv}=D4; const out=[];
   if(F.undo&&F.undo.ts===L.ts){ F.cl=F.undo.cl; F.fu=F.undo.fu; F.st=F.undo.st; F.fuAdd=F.undo.fuAdd||{}; F.rq=F.undo.rq||{}; F.undo=null; out.push({k:'',t:'Colisión: se omite el Efecto Concurso del movimiento.'}); }
@@ -2892,7 +2904,7 @@ function cnArmarDuelo(){ const F=CN.f4; if(!isMaster()||!S.canWrite||CN.fase!==4
   const keys=F.fin.map(k=>{ const s=cnSel4(k), [src,uid]=k.split('|'); return s.ok&&s.pk?`${src}|${uid||''}|${s.pk}`:''; }); if(keys.some(k=>!k||!combatantOrFicha(k))) return;
   const snaps={}; keys.forEach(k=>{ const x=combatantOrFicha(k); if(x.src==='master') snaps[k]=snapOf(x.f); });
   cbWrite({parts:keys,snaps,ties:{},last:null,lastFx:{},ronda:1,rondaLog:null,cond:{},voto:null,eq:{},acted:null,tn:null},true);
-  const G=structuredClone(F); G.armado=true; cnWrite({f4:G}); logRoll('Concurso',`Duelo de Gala: ${keys.map(k=>charName(combatantOrFicha(k).f)).join(' contra ')}. Empieza el combate.`,null); render(); }
+  const G=structuredClone(F); G.armado=true; cnWrite({f4:G}); logRoll('Concurso',`Duelo de Gala: ${keys.map(k=>nameSp(combatantOrFicha(k).f)).join(' contra ')}. Empieza el combate.`,null); render(); }
 const combatantOrFicha=k=>refByKey(k);
 function cnLado(k){ const xs=combatants().filter(c=>cnDuenoDe(c)===k); const cs=xs.map(x=>calc(x.f)); const ps=cs.reduce((a,c)=>a+c.ps,0), act=cs.reduce((a,c)=>a+Math.max(0,c.act),0);
   return {n:xs.length,frac:ps?act/ps:1,ko:xs.length>0&&cs.every(c=>c.act<=0),sinDano:xs.length>0&&xs.every(x=>num(x.f.dano)===0)}; }
@@ -2926,7 +2938,7 @@ function cnCerrar4(){ if(!isMaster()||!CN.f4||CN.f4.fin.length<2) return; const 
 function cnGlos(){ const R6=['Starter','Beginner','Amateur','Elite','Master','Legend'];
   return [{id:'concurso-pres',t:'Jueces (Fases 1 y 2)',h:()=>`<p>Un Concurso tiene una <b>categoría</b> (Dureza, Estilo, Belleza, Dulzura o Astucia) y un <b>Rango</b>. Se inscribe al <b>Entrenador</b> con el lazo 🎀 y participa con todo su equipo; los NPC son Entrenadores del Master. Pasan a la fase siguiente los <b>8, 4 y 2</b> con más Clamor (el Master puede eliminar o reincorporar a mano), y un Concurso se puede jugar con menos participantes.</p>
 <p><b>Clamor:</b> el ánimo del público con cada participante; es el puntaje del Concurso.</p>
-${tbl(['Fase','Clamor al empezar','Se puede ganar'],[['1 · Exhibición','0','hasta 50'],['2 · Coordinación','lo ganado en la Fase 1','hasta 50 más (25 por Pokémon)'],['3 · Presentación','50 para todos','sube y baja'],['4 · Duelo','50 para ambos','solo baja; al final se suman los bonos']])}
+${tbl(['Fase','Clamor al empezar','Se puede ganar'],[['1 · Exhibición','0','hasta 50'],['2 · Coordinación','lo ganado en la Fase 1','hasta 50 más (25 por Pokémon)'],['3 · Presentación','0 para todos','sube y baja (nunca menos de 0)'],['4 · Duelo','según el Rango: 15 / 20 / 25 / 30 / 35 / 40','solo baja; al final se suman los bonos']])}
 <p><b>Jueces:</b> el panel tiene 3 jueces: 1 <b>Juez Principal</b>, afín a la categoría del Concurso, y 2 al azar. El sorteo es una tirada secreta del Master. Cada juez tiene una <b>afinidad</b> (40 % a 100 %) con cada categoría y un <b>Arte Afín</b>. Los jugadores solo ven de cada juez lo que descubren antes del Concurso; conocerlos no da puntos, solo ayuda a decidir qué presentar.</p>
 <p><b>Nota de cada juez = (tirada − Exigencia) × su afinidad con la categoría.</b> La Exigencia depende del Rango del Concurso:</p>
 ${tbl(['Exigencia',...R6],[['Fase 1 (2 × bonus)','2','4','6','8','10','12'],['Fase 2 (3 × bonus)','3','6','9','12','15','18']])}
@@ -2940,7 +2952,7 @@ ${tbl(['Término','Qué es'],[['Afinidad','Lo que le gusta cada categoría al Po
 ${tbl(['Categoría del Concurso','Le desagradan (Furor −1)'],CN_SOC.map(c=>[socialChip(c),SOC_NEG[c].map(socialChip).join(' ')]))}
 <p><b>Repetición:</b> repetir el movimiento de la ronda anterior resta 3 de Clamor, y 2 más por cada ronda seguida extra (−3, −5, −7…). Incansable y Bis no penalizan.</p>
 <p><b>Fase 3 · Presentaciones Paralelas.</b> Cada Entrenador presenta <b>1 Pokémon</b>, que elige en la Ronda 1 y vale para toda la fase. En cada ronda todos eligen su movimiento en secreto y luego las acciones se revelan una a una. <b>Iniciativa:</b> en la Ronda 1, por el Clamor de las Fases 1 y 2; después, por el Clamor ganado en la ronda anterior (los empates, con el criterio de la Ronda 1). Los efectos de orden (Adelantarse, Retrasarse) se aplican después de calcularla, y Desorden la baraja.</p>
-${tbl(['Rondas',...R6],[['Fase 3',...CN_R3.map(String)],['Fase 4 (máximo)',...CN_R4.map(String)],['Fase 4: «ganar rápido» hasta la ronda',...CN_R4.map(n=>String(Math.max(1,Math.floor(n*0.2))))]])}
+${tbl(['Rondas',...R6],[['Fase 3',...CN_R3.map(String)],['Fase 4 (máximo)',...CN_R4.map(String)],['Fase 4: «ganar rápido» hasta la ronda',...CN_R4.map(n=>String(Math.max(1,Math.floor(n*0.2))))],['Fase 4: Clamor inicial',...CN_CL4.map(String)]])}
 <p><b>Fase 4 · Duelo de Gala.</b> Cada finalista elige 1 Pokémon y empieza solo un combate nuevo entre los dos. Es un combate normal, y además cada movimiento que conecta <b>baja el Clamor del rival</b> en lo que marca su Efecto Concurso (su Clamor más su Tropiezo). La Guardia solo anula la parte de Tropiezo. Los efectos que dependen del orden de la ronda (Apertura, Cierre, Crescendo, Adelantarse, Retrasarse, Desorden) usan su valor base. Si el Furor se llena, el rival pierde 5 más. Quien más Clamor le quitó al rival en una ronda tiene <b>+3 a la Iniciativa</b> en la siguiente. Un KO o llegar a <b>0 de Clamor</b> termina el Duelo al instante.</p>
 <p><b>Colisión:</b> se omite el Efecto Concurso de los movimientos. Quien gana la Colisión gana 3 de Clamor; en empate, 1 cada uno. El Furor sube 1 siempre.</p>
 ${tbl(['Al terminar el Duelo','Bono de Clamor'],[['Empate: al de menor Clamor','+3'],['Terminar las rondas con más Vida','+3'],['Debilitar al rival (por Vida)','+5'],['Ganar sin recibir daño (se suma)','+3'],['Ser quien más Furor sumó','+5'],['Ganar muy rápido (antes del 20 % de las rondas)','−8, o −5 si usó un movimiento de la categoría del Concurso']])}
@@ -2979,15 +2991,16 @@ function cnTablaHTML(){ const ps=cnParts(); if(!ps.length) return `<div class="c
   const F3=CN.fase===3&&CN.f3&&!CN.f3.fin?CN.f3:null; const pos=k=>{ const i=F3?F3.ini.indexOf(k):-1; return i<0?99:i; };
   const ord=[...ps].sort((a,b)=>(!!CN.out[a.key])-(!!CN.out[b.key])||(F3?pos(a.key)-pos(b.key):0)||cnClamor(b.key)-cnClamor(a.key));
   return `<div class="card"><h2>${CN.fase===0?'Participantes y equipo inscrito':F3?`Iniciativa <span class="ronda">Ronda ${F3.ronda} de ${F3.n}</span>`:'Clamor'}</h2><div class="res">${ord.map((p,i)=>{ const out=!!CN.out[p.key], v=cnClamor(p.key), elg=CN.fase===3?cnSel3(p.key).pk:'';
-    return `<div class="r cnrow${out?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${CN.fase?`${i+1}. `:''}${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}${out?' · eliminado':F3&&pos(p.key)===99?' · no actúa esta ronda':''}</span>
-      ${CN.fase?cnBar(v,CN.fase===4?50:100):''}<div class="row" style="margin-top:4px">${p.team.map(y=>`<span class="pill${y.id===elg?' sel':''}" title="${esc((y.f.nat||'')+' · '+tiposDe(y.f).join(' / '))}">${esc(charName(y.f))}</span>`).join('')||'<span class="note">Sin Pokémon en el equipo.</span>'}</div></div>
+    return `<div class="r cnrow${out?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${CN.fase?`${i+1}. `:''}${esc(nameSp(p.f))}</b> <span class="note">${esc(cnQuien(p))}${out?' · eliminado':F3&&pos(p.key)===99?' · no actúa esta ronda':''}</span>
+      ${CN.fase?cnBar(v,CN.fase===4?num((CN.f4||{}).c0)||50:CN.fase===3?50:100):''}<div class="row" style="margin-top:4px">${p.team.map(y=>`<span class="pill${y.id===elg?' sel':''}" title="${esc((y.f.nat||'')+' · '+tiposDe(y.f).join(' / '))}">${esc(nameSp(y.f))}</span>`).join('')||'<span class="note">Sin Pokémon en el equipo.</span>'}</div></div>
       <div style="text-align:right">${CN.fase?`<span class="big">${v}</span>`:''}${isMaster()?`<div class="row" style="justify-content:flex-end">${CN.fase>0&&CN.fase<4?`<button class="btn sm" data-cn="elim" data-k="${esc(p.key)}">${out?'Reincorporar':'Eliminar'}</button>`:''}${CN.fase===0||out?`<button class="btn sm" data-ribbon="${esc(p.key)}">Quitar</button>`:''}</div>`:(CN.fase===0&&cnCan(p)?`<div><button class="btn sm" data-ribbon="${esc(p.key)}">Quitar</button></div>`:'')}</div></div>`; }).join('')}</div>
     ${isMaster()&&ps.some(p=>p.src==='master')&&CN.fase<3?'<p class="note"><button class="btn sm" data-cn="resnap">Actualizar copias de los NPC</button> Los jugadores ven una copia de los Entrenadores del Master y de su equipo.</p>':''}</div>`; }
 function cnNotasHTML(notas,cat){ return `<div class="row" style="margin-top:4px">${notas.map((x,i)=>{ const det=[cnVe(i,cat)?x.af+'%':'',x.afin&&cnVe(i,'arte')?'Arte Afín × 1,5':''].filter(Boolean).join(' · '); return `<span class="pill">Juez ${i+1}: <b>${x.n}</b>${det?` <span class="note">(${det})</span>`:''}</span>`; }).join('')}</div>`; }
 function cnFase1HTML(){ let h=`<div class="card"><h2>Exhibición Participantes</h2><p class="note">Cada Entrenador describe su saludo al público y elige Atributo y Talento. El Master define la categoría y el arte de la exhibición. «Presentar» tira 1d20 + Atributo + Talento (+ bono), resta la Exigencia (${2*rb(CN.rango)}) y calcula la nota de cada juez. Clamor = suma de las notas × 0,75 (máximo 50).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f1||{}, mm=CN.m1[k]||{}, can=cnCan(p), r=s.r;
-    h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>`;
-    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''}${r.R||''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.RF?` · ${r.RF}: falla automáticamente, sin Clamor`:r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,r.cat)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div>`;
+    h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(nameSp(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>`;
+    if(r) h+=`<div class="actrow" style="margin-top:6px">${actImg(k,nameSp(p.f))}<div style="flex:1;min-width:0">`;
+    if(r) h+=cnSteps([{k:r.d===1?'ko':'ok',t:`d20 [${r.d}] + ${s.atr} ${r.A} + ${TAL_LABEL(s.tal)} ${r.T}${r.B?` + bono ${r.B}`:''}${r.R||''} = ${r.res} · Exigencia −${r.ex} · ${r.cat} · ${r.arte}${r.RF?` · ${r.RF}: falla automáticamente, sin Clamor`:r.d===1?' · 1 natural: sin Clamor':r.d===20?' · 20 natural: Clamor máximo':''}`}])+cnNotasHTML(r.notas,r.cat)+`<div class="note">Suma ${r.sum} × 0,75 → <b>Clamor ${r.cl}</b></div></div></div>`;
     else { h+=`<div class="grid g3" style="margin-top:6px"><label class="f">Atributo<select data-cnf="f1.atr" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ATTR.map(a=>[a,`${ATTR_FULL[a]} (${sg(calc(p.f).A[a])})`]),s.atr,'Elige…')}</select></label>
         <label class="f">Talento<select data-cnf="f1.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label>
         <label class="f">Bono (Vestimenta, Accesorios, Rasgos)<input type="number" data-cnf="f1.bono" data-k="${esc(k)}" value="${num(s.bono)}"${can?'':' disabled'}></label>
@@ -2999,11 +3012,11 @@ function cnFase1HTML(){ let h=`<div class="card"><h2>Exhibición Participantes</
   return h+`</div></div>`; }
 function cnFase2HTML(){ let h=`<div class="card"><h2>Coordinación Grupal</h2><p class="note">Cada Entrenador lleva 2 Pokémon al escenario, cada uno con un movimiento, y aplica un Talento propio. Cada Pokémon tira 1d20 + Atributo del movimiento + Talento del Entrenador (+3 de Sincronía si los dos movimientos son de la misma categoría) y resta la Exigencia (${3*rb(CN.rango)}). Cada juez califica con su afinidad por la categoría de cada movimiento; el arte no aplica. Cada Pokémon aporta suma × 0,45 (máximo 25).</p><div class="res">`;
   for(const p of cnActivos()){ const k=p.key, s=cnU(k).f2||{}, can=cnCan(p), r=s.r;
-    h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))} · trae ${num(((cnU(k).f1||{}).r||{}).cl)} de Clamor</span>`;
+    h+=`<div class="r cnrow"><div style="min-width:0"><b>${esc(nameSp(p.f))}</b> <span class="note">${esc(cnQuien(p))} · trae ${num(((cnU(k).f1||{}).r||{}).cl)} de Clamor</span>`;
     if(r){ h+=`<div class="note">${esc(TAL_LABEL(s.tal))} ${sg(r.T)}${r.R?` (incluye${esc(r.R)})`:''}${r.RF?` · ${esc(r.RF)}: falla automáticamente`:''}${r.sinc?' · Sincronía +3':''} · Exigencia −${r.ex}</div>`;
-      r.ap.forEach(a=>{ h+=cnSteps([{k:a.d===1?'ko':'ok',t:`${a.n} con ${a.mv} (${a.cat}): d20 [${a.d}] + ${a.ak} ${a.A} + ${r.T}${r.sinc?' + 3':''} = ${a.tir}${a.d===1?' · 1 natural: sin aporte':a.d===20?' · 20 natural: aporte máximo':''} → aporta ${a.cl}`}])+cnNotasHTML(a.notas,a.cat); });
+      r.ap.forEach((a,ix)=>{ const [sr,ui]=k.split('|'); h+=`<div class="actrow" style="margin-top:6px">${actImg(`${sr}|${ui||''}|${s['p'+(ix+1)]}`,a.n)}<div style="flex:1;min-width:0">`+cnSteps([{k:a.d===1?'ko':'ok',t:`${a.n} con ${a.mv} (${a.cat}): d20 [${a.d}] + ${a.ak} ${a.A} + ${r.T}${r.sinc?' + 3':''} = ${a.tir}${a.d===1?' · 1 natural: sin aporte':a.d===20?' · 20 natural: aporte máximo':''} → aporta ${a.cl}`}])+cnNotasHTML(a.notas,a.cat)+'</div></div>'; });
       h+=`<div class="note"><b>Clamor +${r.cl}</b></div>`; }
-    else { const selP=n=>`<label class="f">Pokémon ${n}<select data-cnf="f2.p${n}" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(p.team.filter(z=>z.id!==s['p'+(3-n)]).map(z=>[z.id,charName(z.f)]),s['p'+n],'Elige…')}</select></label>`;
+    else { const selP=n=>`<label class="f">Pokémon ${n}<select data-cnf="f2.p${n}" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(p.team.filter(z=>z.id!==s['p'+(3-n)]).map(z=>[z.id,nameSp(z.f)]),s['p'+n],'Elige…')}</select></label>`;
       const selM=n=>{ const y=p.team.find(z=>z.id===s['p'+n]); return `<label class="f">Movimiento ${n}<select data-cnf="f2.m${n}" data-k="${esc(k)}"${can&&y?'':' disabled'}>${y?cnOpt(cnMovs(y).map(m=>[m[0],`${m[1]} · ${m[14]} · ${ATTR_FULL[short(m[4])]||m[4]}`]),s['m'+n],'Movimiento…'):'<option value="">—</option>'}</select></label>`; };
       h+=`<div class="grid g3" style="margin-top:6px"><div class="cncol">${selP(1)}${selP(2)}</div><div class="cncol">${selM(1)}${selM(2)}</div><div class="cncol"><label class="f">Talento del Entrenador<select data-cnf="f2.tal" data-k="${esc(k)}"${can?'':' disabled'}>${cnOpt(ALL_TAL.map(t=>[t,`${TAL_LABEL(t)} (${sg(talBonus(p.f,t))})`]),s.tal,'Elige…')}</select></label></div></div>${s.tal?rasgoAskHTML(rasgoConsultas(p.f,'',s.tal,'concurso'),s.rs,`data-cnf="f2.rs" data-k="${esc(k)}"`,!can):''}`;
       const cats=[s.m1,s.m2].map(id=>(atkById.get(id)||[])[14]).filter(Boolean); if(cats.length) h+=`<div class="row" style="margin-top:4px"><span class="note">Categoría de la presentación:</span> ${cats.map(socialChip).join(' ')}${cats.length===2&&cats[0]===cats[1]?' <span class="pill">Sincronía +3</span>':''}</div>`;
@@ -3017,17 +3030,17 @@ function cnFase3HTML(){ const F=CN.f3; if(!F) return ''; const q=F.q;
   h+=`<p class="note">Cada Entrenador presenta 1 Pokémon. En cada ronda todos eligen su movimiento en secreto; cuando están listos, el Master revela las acciones una a una en orden de iniciativa. El movimiento siempre se realiza: se tira 1d100 contra la afinidad del Pokémon con la categoría del movimiento. Si la supera, gana la mitad del Clamor; con 10 o menos, el doble.</p><div class="res">`;
   F.ini.forEach((k,i)=>{ const p=cnPart(k); if(!p) return; const can=cnCan(p), s=cnSel3(k), y=p.team.find(z=>z.id===s.pk), br=num(F.br[k]);
     const done=q&&q.acts.findIndex(a=>a.k===k)<num(q.i);
-    h+=`<div class="r cnrow${done?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${i+1}. ${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span> ${y?`<span class="pill sel">${esc(charName(y.f))}${y.f.nat?' · '+esc(y.f.nat):''}</span>`:''}${br?` <span class="pill" title="Brillo">${'★'.repeat(br)}</span>`:''}${cnBar(cnClamor(k),100)}`;
+    h+=`<div class="r cnrow${done?' acted':''}"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${i+1}. ${esc(nameSp(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span> ${y?`<span class="pill sel">${esc(nameSp(y.f))}${y.f.nat?' · '+esc(y.f.nat):''}</span>`:''}${br?` <span class="pill" title="Brillo">${'★'.repeat(br)}</span>`:''}${cnBar(cnClamor(k),50)}`;
     if(!q){ if(can&&!s.ok){ const loc=CNU.sel[k]||s.mv;
-          h+=`<div class="grid g3" style="margin-top:6px">${F.ronda===1||!y?`<label class="f">Pokémon<select data-cnf="f3.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,charName(z.f)]),s.pk,'Elige…')}</select></label>`:''}
+          h+=`<div class="grid g3" style="margin-top:6px">${F.ronda===1||!y?`<label class="f">Pokémon<select data-cnf="f3.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,nameSp(z.f)]),s.pk,'Elige…')}</select></label>`:''}
             <label class="f">Movimiento (secreto)<select data-cnf="f3.mv" data-k="${esc(k)}"${y?'':' disabled'}>${y?cnMovOpt(y,loc):'<option value="">—</option>'}</select></label></div>
             ${loc&&y?`<div class="note">${esc(cefDe(loc)[0])}: ${esc(cefDe(loc)[4])}</div>`:''}<p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pick3" data-k="${esc(k)}"${y&&loc?'':' disabled'}>Escoger</button></p>`; }
-      else h+=`<div class="note">${s.ok?`✔ El entrenador ${esc(charName(p.f))} ha escogido su movimiento.`:'Aún no escoge su movimiento.'}${s.ok&&can?` <button class="btn sm" data-cn="unpick3" data-k="${esc(k)}">Cambiar</button>`:''}</div>`; }
+      else h+=`<div class="note">${s.ok?`✔ El entrenador ${esc(nameSp(p.f))} ha escogido su movimiento.`:'Aún no escoge su movimiento.'}${s.ok&&can?` <button class="btn sm" data-cn="unpick3" data-k="${esc(k)}">Cambiar</button>`:''}</div>`; }
     h+=`</div><div style="text-align:right"><span class="big">${cnClamor(k)}</span></div></div>`; });
   h+=`</div>`;
   const fuera=CN.parts.filter(k=>!CN.out[k]&&!F.ini.includes(k)); if(fuera.length) h+=`<p class="note">${fuera.map(k=>`${esc(cnNombre(k))} ${cnFl(F,k).fin?'ya dio su Gran Final y no vuelve a actuar':'descansa esta ronda (Golpe de Escena)'}`).join(' · ')}.</p>`;
   if(q){ const i=num(q.i); h+=`<h3 style="margin-top:12px">Acciones de la ronda ${F.ronda}</h3>`;
-    q.acts.slice(0,i).forEach((a,n)=>{ h+=`<div class="fx-box" style="margin-top:8px"><b>${n+1}. ${esc(cnNombre(a.k))}</b>${cnSteps(a.L)}</div>`; });
+    q.acts.slice(0,i).forEach((a,n)=>{ h+=`<div class="fx-box actrow" style="margin-top:8px">${actImg(cnPkKey(a.k),cnNombre(a.k))}<div style="flex:1;min-width:0"><b>${n+1}. ${esc(cnNombre(a.k))}</b>${cnSteps(a.L)}</div></div>`; });
     if(!i) h+=`<p class="note">Todos eligieron. ${isMaster()?'Revela la primera acción.':'El Master revelará las acciones una a una.'}</p>`;
     if(isMaster()) h+=`<p class="row" style="margin-top:8px">${i<q.acts.length?`<button class="btn pri" data-cn="sig3">${i?'Siguiente':'Revelar la primera acción'} (${i}/${q.acts.length})</button>`:`<button class="btn pri" data-cn="close3">${F.ronda>=F.n?'Cerrar la última ronda':'Cerrar la ronda y pasar a la '+(F.ronda+1)}</button>`}</p>`; }
   else if(isMaster()){ const falta=F.ini.filter(k=>!cnSel3(k).ok).length; h+=`<p class="row" style="margin-top:8px"><button class="btn pri" data-cn="resolve3"${falta||!F.ini.length?' disabled':''}>Resolver la ronda</button>${falta?`<span class="note">Falta${falta===1?'':'n'} ${falta} por escoger.</span>`:''}</p>`; }
@@ -3037,10 +3050,10 @@ function cnFase4HTML(){ const F=CN.f4; if(!F) return ''; const ron=num(CB.ronda)
   if(F.fin.length<2) return h+`<p class="note">No hay 2 finalistas.</p></div>`;
   h+=`<p class="note">${F.armado?'El Duelo se juega en la pestaña <b>Combate</b> con las reglas de siempre. Además, cada movimiento que conecta aplica su Efecto Concurso y baja el Clamor del rival. Un KO o llegar a 0 de Clamor termina el Duelo; si no, termina al cerrar la ronda '+F.n+'. El Master lo cierra con «Terminar combate» en la pestaña Combate, y ahí se calculan los bonos.':'Cada finalista elige al Pokémon que llevará al Duelo. Cuando los dos hayan escogido, empieza solo un combate nuevo con ellos en la pestaña <b>Combate</b>.'}</p><div class="res">`;
   F.fin.forEach(k=>{ const p=cnPart(k); if(!p) return; const la=cnLado(k), s=F.st[k]||{}, e=cnSel4(k), can=cnCan(p), y=p.team.find(z=>z.id===e.pk), loc=CNU.sel['4'+k]||e.pk;
-    h+=`<div class="r cnrow"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${esc(charName(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>${e.ok&&y?` <span class="pill sel">${esc(charName(y.f))}</span>`:''}${num(s.br)?` <span class="pill" title="Brillo">${'★'.repeat(num(s.br))}</span>`:''}${cnBar(num(F.cl[k]),50)}
+    h+=`<div class="r cnrow"${p.src==='jug'&&colorDe(p.uid)?` style="border-left:4px solid ${esc(colorDe(p.uid))}"`:''}><div style="min-width:0"><b>${esc(nameSp(p.f))}</b> <span class="note">${esc(cnQuien(p))}</span>${e.ok&&y?` <span class="pill sel">${esc(nameSp(y.f))}</span>`:''}${num(s.br)?` <span class="pill" title="Brillo">${'★'.repeat(num(s.br))}</span>`:''}${cnBar(num(F.cl[k]),num(F.c0)||50)}
       ${F.armado||F.res?`<div class="note">${la.n?`En combate: Vida ${pct(la.frac)}${la.ko?' · debilitado':''}`:F.res?'':'Fuera del combate.'}</div>`
-        :e.ok?`<div class="note">✔ ${esc(charName(p.f))} ha escogido a su Pokémon.${can?` <button class="btn sm" data-cn="unpick4" data-k="${esc(k)}">Cambiar</button>`:''}</div>`
-        :can?`<div class="grid g3" style="margin-top:6px"><label class="f">Pokémon para el Duelo<select data-cnf="f4.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,charName(z.f)]),loc,'Elige…')}</select></label></div><p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pick4" data-k="${esc(k)}"${loc?'':' disabled'}>Escoger</button></p>`
+        :e.ok?`<div class="note">✔ ${esc(nameSp(p.f))} ha escogido a su Pokémon.${can?` <button class="btn sm" data-cn="unpick4" data-k="${esc(k)}">Cambiar</button>`:''}</div>`
+        :can?`<div class="grid g3" style="margin-top:6px"><label class="f">Pokémon para el Duelo<select data-cnf="f4.pk" data-k="${esc(k)}">${cnOpt(p.team.map(z=>[z.id,nameSp(z.f)]),loc,'Elige…')}</select></label></div><p class="row" style="margin-top:6px"><button class="btn pri" data-cn="pick4" data-k="${esc(k)}"${loc?'':' disabled'}>Escoger</button></p>`
         :'<div class="note">Aún no escoge a su Pokémon.</div>'}</div><div style="text-align:right"><span class="big">${num(F.cl[k])}</span></div></div>`; });
   h+=`</div>`;
   if(!F.armado&&!F.res&&F.fin.every(k=>cnSel4(k).ok)&&!isMaster()) h+=`<p class="note">Los dos escogieron: el combate empieza cuando el Master tenga la app abierta.</p>`;
@@ -3180,6 +3193,7 @@ document.addEventListener('click',async e=>{
   else if(act==='newWild') createDoc('master',newPokemon({cat:'salvaje',nat:pick(D.nat)[0],carpeta:folder}));
   else if(act==='addTeam'){ const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja'); createDoc(S.open.src,newPokemon(Object.assign({entrenador:S.open.id,lugar:team.length>=6?'caja':''},S.open.src==='master'?{cat:'npc'}:{}))); }
   else if(act==='genSave'&&T.gen?.f){ const f=structuredClone(T.gen.f); if(a.dataset.to==='salvaje'){ f.cat='salvaje'; f.carpeta=''; S.view='master'; createDoc('master',f);} else { S.view='mis'; createDoc('jug',f);} }
+  else if(act==='vistaEvento'&&isMaster()&&S.canWrite){ const k=a.dataset.k; if(S.vistas[k]){ S.vistas[k].evento=!S.vistas[k].evento; saveVistas(); } }
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
   else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
   else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
@@ -3315,7 +3329,7 @@ async function boot(){
   S.db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda)||1; /* el combate empieza en la Ronda 1 */ CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null; CB.tn=dd.tn||null;
     if(missingSpecies()) reloadEspecies(); /* las copias de los Pokémon del Master traen especies que aún no se cargaron */
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
-  try{ S.db.doc('concurso/actual').onSnapshot(s=>{ CN.exists=s.exists; cnRemote(s.exists?s.data():{});
+  try{ S.db.doc('concurso/actual').onSnapshot(s=>{ if(cnPend&&S.db.doc('concurso/actual').get) return; /* hay guardados propios en curso: se relee al terminar */ CN.exists=s.exists; cnRemote(s.exists?s.data():{});
     if(S.view==='concurso'){ renderList(); safeSheet(); } else if(S.view==='combate') safeSheet(); else if(S.view==='mesa'||S.view==='master'||S.view==='mis') renderList(); },e=>console.warn(e)); }catch(e){ console.warn(e); }
   S.db.doc('config/kits').onSnapshot(s=>{ if(pend['config/kits']||inflight['config/kits']) return; S.kits=s.exists?s.data():null; if(S.view==='tools'&&S.tool==='kits') safeSheet(); },e=>console.warn(e));
   S.db.doc('config/vistas').onSnapshot(s=>{ if(pend['config/vistas']||inflight['config/vistas']) return; setVistas(s.exists?s.data():{}); if(S.view==='tools') safeSheet(); },e=>console.warn(e));
