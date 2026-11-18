@@ -1865,7 +1865,7 @@ function toolGen(){
 function toolDados(){
   return `<div class="card"><h2>Dados</h2><div class="row">${['1d100','1d20','1d4','1d6','1d8','1d10','2d6'].map(x=>`<button class="btn" data-dice="${x}">${x}</button>`).join('')}</div>
   <div class="row" style="margin-top:10px"><label class="f" style="flex:1">Expresión<input id="dexpr" placeholder="3d6+2" value=""></label><button class="btn pri" id="droll" style="align-self:end">Tirar</button>${isMaster()?'<button class="btn secret" id="dsec" style="align-self:end">Tirada Secreta</button>':''}</div>
-  <div class="row" style="margin-top:10px"><label class="f">Daño (1–24)<input type="number" id="ddmg" min="1" max="24" value="6"></label><span id="ddmgout" class="pill" style="align-self:end">${dice(6)}</span><button class="btn" id="ddmgroll" style="align-self:end">Tirar ese dado</button></div></div>
+  <div class="row dmg-row" style="margin-top:10px"><label class="f">Daño (1–24)<input class="dmg-box" type="number" id="ddmg" min="1" max="24" value="6"></label><label class="f">Resultado<span id="ddmgout" class="pill dmg-box">${dice(6)}</span></label><div class="row dmg-acts"><button class="btn" id="ddmgroll">Tirar ese dado</button>${isMaster()?'<button class="btn secret" id="ddmgsec">Tirada Secreta</button>':''}</div></div>
   <div class="card"><h2>Historial de la mesa</h2>${histHTML(40)}</div>`;
 }
 function rollExpr(s){
@@ -1911,7 +1911,8 @@ function bindTool(){
   on('dsec','click',()=>{const v=$('#dexpr').value; const r=rollExpr(v); if(!r){ $('#dexpr').setCustomValidity('Usa el formato 2d6+3'); $('#dexpr').reportValidity(); return;} logRoll(quien(),r.txt,r.tot,true);});
   document.querySelectorAll('[data-asig-kind]').forEach(b=>b.addEventListener('click',()=>openAsig(b.dataset.asigKind,b.dataset.asigId)));
   on('ddmg','input',e=>{$('#ddmgout').textContent=dice(clamp(num(e.target.value),1,24));});
-  on('ddmgroll','click',()=>{const n=clamp(num($('#ddmg').value),1,24); const r=rollExpr(dice(n)); logRoll(quien(),'Daño '+n+' → '+r.txt,r.tot);});
+  const tirarDado=sec=>{const n=clamp(num($('#ddmg').value),1,24); const r=rollExpr(dice(n)); logRoll(quien(),'Daño '+n+' → '+r.txt,r.tot,sec);};
+  on('ddmgroll','click',()=>tirarDado(false)); on('ddmgsec','click',()=>tirarDado(true));
 }
 
 /* ---------- combate ---------- */
