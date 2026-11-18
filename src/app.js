@@ -1269,19 +1269,29 @@ function openAsig(kind,id){
   const pool=poolOf('jug',S.uid), o=loadOrder('mis'); const pos=k=>{ const i=o.indexOf(k); return i<0?1e9:i; };
   const trainers=pool.filter(x=>x.f.tipo==='E').sort((a,b)=>pos(a.id)-pos(b.id)||(a.f.creado||'').localeCompare(b.f.creado||''));
   const isM=!!ras&&ras[1]==='M', mx=isM?N_MER:N_DEF, lista=isM?'meritos':'defectos';
-  const pick=(x,why)=>{ const lk=isLocked(x.f), off=lk||!!why;
-    const sub=lk?'Bloqueada por el Master':(why||(x.f.tipo==='P'?(dexById.get(x.f.especie)?dexLabel(dexById.get(x.f.especie)):'Pokémon'):'Entrenador'));
-    return `<button class="pick${lk?' locked':''}" data-pick="${esc(x.id)}"${off?' disabled':''} title="${esc(sub)}"><span>${lk?'🔒 ':''}${esc(charName(x.f))}</span><span class="note">${esc(sub)}</span></button>`; };
+  const pick=(x,why,w)=>{ const lk=isLocked(x.f), off=lk||!!why, wz=!off&&!lk&&w?w:null;
+    const sub=lk?'Bloqueada por el Master':(why||(wz?wz.t:(x.f.tipo==='P'?(dexById.get(x.f.especie)?dexLabel(dexById.get(x.f.especie)):'Pokémon'):'Entrenador')));
+    return `<button class="pick${lk?' locked':''}" data-pick="${esc(x.id)}"${off?' disabled':''} title="${esc(sub)}"><span class="${wz?wz.c:''}">${lk?'🔒 ':''}${esc(charName(x.f))}</span><span class="note${wz?' '+wz.c:''}">${esc(sub)}</span></button>`; };
+  /* advertencias (sin bloquear): Pokémon con movimiento sobre su Rango (rojo) o en el límite de libres (amarillo); Entrenador que supera los puntos de Méritos (rojo) */
+  const wMov=p=>{ if(!mov) return null; const R=ri(p.f.rango); if(R<0) return null;
+    if(ri(mov[5])>R) return {c:'w-red',t:'Movimiento sobre el Rango del Pokémon'};
+    const n=(p.f.moves||[]).slice(0,6).map(v=>atkById.get(v)).filter(m=>m&&ri(m[5])<=R).length, max=R===5?6:FREE_MV[R];
+    if(ri(mov[5])<=R && n>=max) return {c:'w-yel',t:'En el límite de movimientos: pasará de él'};
+    return null; };
+  const wRas=t=>{ if(!isM) return null;
+    const dP=(t.f.defectos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+Math.abs(num(RASGOS.get(n)[3])),0);
+    const mP=(t.f.meritos||[]).filter(n=>RASGOS.has(n)).reduce((a,n)=>a+num(RASGOS.get(n)[3]),0);
+    return PTS_LIBRES+dP-mP-num(ras[3])<0?{c:'w-red',t:'Supera el total de puntos aceptado'}:null; };
   let body='';
   if(mov){
     for(const t of trainers){ const team=teamOf(t); if(!team.length) continue;
-      body+=`<div class="pk-g">${esc(charName(t.f))}</div>`+team.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'')).join(''); }
+      body+=`<div class="pk-g">${esc(charName(t.f))}</div>`+team.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'',wMov(p))).join(''); }
     const sueltos=pool.filter(x=>x.f.tipo==='P'&&!trainers.some(t=>t.id===x.f.entrenador));
-    if(sueltos.length) body+='<div class="pk-g">Pokémon sueltos</div>'+sueltos.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'')).join('');
+    if(sueltos.length) body+='<div class="pk-g">Pokémon sueltos</div>'+sueltos.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'',wMov(p))).join('');
   } else {
     body=trainers.map(t=>{ const tiene=[...(t.f.defectos||[]),...(t.f.meritos||[])].includes(ras[0]);
       const libre=(t.f[lista]||[]).slice(0,mx).some(v=>!v)||(t.f[lista]||[]).length<mx;
-      return pick(t,tiene?'Ya lo tiene':(!libre?'Sin espacio libre':'')); }).join('');
+      return pick(t,tiene?'Ya lo tiene':(!libre?'Sin espacio libre':''),wRas(t)); }).join('');
   }
   if(!body) body='<p class="note">No tienes fichas que puedan recibir esto.</p>';
   const title=mov?`Aprender «${mov[1]}»`:`${isM?'Asignar Mérito':'Asignar Defecto'} «${ras[0]}»`;

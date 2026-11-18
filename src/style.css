@@ -451,3 +451,5 @@ details.glosf>summary{justify-content:flex-start}details.glosf>summary>span{flex
 .dmg-row input.dmg-box{background:var(--sunk);border:1px solid var(--line);color:var(--ink);padding:0 6px;letter-spacing:0;text-transform:none}
 .dmg-row .pill.dmg-box{background:var(--sunk);border:1px solid var(--line);color:var(--ink);padding:0 6px}
 .dmg-acts{gap:8px;align-items:center;flex-wrap:wrap;align-self:flex-end}
+.pick .w-red{color:var(--bad)!important;font-weight:600}
+.pick .w-yel{color:var(--warn)!important;font-weight:600}
