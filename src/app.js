@@ -675,8 +675,8 @@ async function ensurePlayerDoc(){
 }
 
 /* ---------- historial de dados (compartido) ---------- */
-function logRoll(quien,txt,val){
-  const e={ts:Date.now(),quien:String(quien||''),txt:String(txt),val:val??null};
+function logRoll(quien,txt,val,sec){
+  const e={ts:Date.now(),quien:String(quien||''),txt:String(txt),val:val??null,...(sec?{sec:true}:{})};
   if(S.uid && S.canWrite && S.db){
     const mine=(S.tir[S.uid]?.log||[]).slice(-49); mine.push(e);
     S.tir[S.uid]={log:mine}; queueSave(`tiradas/${S.uid}`,{log:mine},250);
@@ -685,13 +685,13 @@ function logRoll(quien,txt,val){
 }
 const MAX_TIR=50; /* el historial guarda solo las últimas 50 tiradas */
 function allRolls(){
-  const out=[]; for(const [u,dd] of Object.entries(S.tir)) for(const e of (dd.log||[])) out.push({...e,uid:u});
+  const out=[]; for(const [u,dd] of Object.entries(S.tir)) for(const e of (dd.log||[])) if(!e.sec||isMaster()) out.push({...e,uid:u});
   return out.sort((a,b)=>b.ts-a.ts).slice(0,MAX_TIR);
 }
 function histHTML(limit=MAX_TIR){
   const rs=allRolls().slice(0,limit);
   if(!rs.length) return '<p class="note">Todavía no hay tiradas. Tira un dado desde una ficha (clic en un atributo, un talento o el botón d100 de un movimiento) o desde Herramientas › Dados.</p>';
-  return `<div class="hist">${rs.map(r=>`<div class="h"><span class="t">${hhmm(r.ts)}</span><span><b>${esc(r.quien||'—')}</b> <span class="w"${colorDe(r.uid)?` style="color:${esc(colorDe(r.uid))}"`:''}>${esc(r.uid==='__local'?'(solo tú)':(S.players[r.uid]?.alias||''))}</span></span><span class="v">${r.val??''}</span><span class="d">${esc(r.txt)}${canDelRolls()&&r.uid!=='__local'?` <button class="btn sm" data-act="rmRoll" data-u="${esc(r.uid)}" data-ts="${r.ts}" aria-label="Eliminar tirada">Eliminar</button>`:''}</span></div>`).join('')}</div>`;
+  return `<div class="hist">${rs.map(r=>`<div class="h${r.sec?' sec':''}"><span class="t">${hhmm(r.ts)}</span><span><b>${esc(r.quien||'—')}</b> <span class="w"${colorDe(r.uid)?` style="color:${esc(colorDe(r.uid))}"`:''}>${esc(r.uid==='__local'?'(solo tú)':(S.players[r.uid]?.alias||''))}</span></span><span class="v">${r.val??''}</span><span class="d">${r.sec?'<b class="note">[secreta] </b>':''}${esc(r.txt)}${canDelRolls()&&r.uid!=='__local'?` <button class="btn sm" data-act="rmRoll" data-u="${esc(r.uid)}" data-ts="${r.ts}" aria-label="Eliminar tirada">Eliminar</button>`:''}</span></div>`).join('')}</div>`;
 }
 
 
@@ -764,7 +764,7 @@ function fillMochila(){ const f=S.cur; if(!f||f.tipo!=='E') return; const t=moch
 /* ---------- plantillas ---------- */
 function blankAttr(){ const o={}; ATTR.forEach(k=>o[k]={r:'',b:0}); return o; }
 /* Vínculo del Pokémon con su Entrenador (−10 a 10): frase de la escala y tramo con efecto */
-const VIN_FRASE=['Te odio. Si puedo, te mato.','Te odio. Te dañaré y escaparé.','Te odio. Escaparé y, si puedo, te daño.','Te odio. Mi prioridad es escapar.','Te detesto. Cuando pueda, te daño.','Te detesto. Te obedezco, pero dañaré a tus Pokémon y a ti, y escaparé cuando pueda.','Te detesto. Te obedezco, pero escaparé cuando pueda.','Me caes muy mal. Me alejo de ti.','Me caes mal. Te doy la espalda.','Ojalá estuviera otro en tu lugar.','Neutral.','Pareces simpático.','Me agradas.','Me caes bien.','Somos conocidos.','Somos amigos.','Somos buenos amigos.','Somos amigos cercanos.','Eres mi mejor amigo.','Te protegeré para que no te hieran, incluso si me hieren.','Moriré por ti si es necesario.'];
+const VIN_FRASE=['Te odio. Si puedo te mato','Te odio, Te dañaré y escaparé','Te odio. Escaparé y si puedo te daño','Te odio. Mi prioridad es escapar.','Te detesto. Cuando pueda te daño','Te detesto. Te obedezco, Dañaré a tus pokes y a ti y escaparé cuando pueda','Te detesto. Te obedezco pero escaparé cuando pueda','Me caes muy mal. Me alejo de ti.','Me caes mal. Te doy la espalda','Ojalá estuviera otro en tu lugar.','Neutral','Pareces simpático','Me agradas','Me caes Bien','Somos conocidos','Somos amigos','Somos buenos amigos','Somos amigos cercanos','Eres mi mejor amigo.','Te protegeré para que no te hieran, incluso si me hieren','Moriré por ti si es necesario'];
 const VIN_TRAMOS=[[-10,-6,'Hostil','dn','No obedece. El Master lo maneja según la escala (escapar o dañar).'],[-5,-4,'Rebelde','dn','Obedece. Si queda suelto o sin vigilancia, escapa. −4 a las tiradas de Comandar.'],[-3,-1,'Distante','wa','Obedece. −2 a las tiradas de Comandar.'],[0,4,'Neutral','','Sin cambios.'],[5,8,'Amistad','up','+2 a las tiradas de Comandar.'],[9,10,'Lealtad','up','+4 a Comandar. 9: una vez por combate, usa su Reacción para recibir un ataque dirigido al Entrenador. 10: además, una vez por combate resiste con 1 PS un golpe que lo debilitaría.']];
 function vinTramo(v){ const t=VIN_TRAMOS.find(t=>v>=t[0]&&v<=t[1])||VIN_TRAMOS[3]; return {t:t[2],c:t[3],fx:t[4]}; }
 function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,defectos:['','',''],meritos:['','','','','',''],dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
@@ -967,7 +967,7 @@ function renderSheet(){
     if(S.open.src==='master'){ h+=field('Categoría','cat',`<option value="npc">De NPC</option><option value="salvaje"${f.cat==='salvaje'?' selected':''}>Salvaje</option>`,'sel'); if(!f.entrenador) h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`; }
     h+=`<div class="fstack">${f.entrenador? `<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>` : field('Objeto','objeto',f.objeto||'','txt')}<div class="note tmov" data-c="tmov"></div></div>`;
     { const vd=S.ro||lockJug(f)?'disabled':''; const vn=clamp(num(f.vinculo),-10,10), vt=vinTramo(vn);
-      h+=`<label class="f">Vínculo<span class="vinrow"><input type="number" min="-10" max="10" step="1" data-f="vinculo" value="${vn}" ${vd} aria-label="Vínculo con su Entrenador, de −10 a 10" title="${esc(VIN_FRASE[vn+10])}"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${vt.t}</span></span></label>`;
+      h+=`<label class="f">Vínculo<span class="vinrow"><input type="number" min="-10" max="10" step="1" data-f="vinculo" value="${vn}" ${vd} aria-label="Vínculo con su Entrenador, de −10 a 10" title="${esc(VIN_FRASE[vn+10])}"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${esc(VIN_FRASE[vn+10])}</span></span></label>`;
       h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${vd} title="Bolsa propia del Pokémon. Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia del Pokémon (admite +15 o −5)"></label>`; }
   } else {
     h+=field('Rango','rango',opts(RANGOS,f.rango),'sel');
@@ -1255,7 +1255,50 @@ function renderRP(){
   if(RP.res) h+=`<div class="out"><span class="big ${RP.res.cls||''}">${RP.res.v}</span><span class="note" style="text-align:right">${RP.res.html}</span></div>`;
   el.innerHTML=h; el.hidden=false;
 }
-function doRP(){
+/* Aprender / Asignar (Movimientos y Méritos y Defectos): elige una ficha propia; las bloqueadas se ven pero no se pueden elegir */
+function modalOpen(html){ const m=document.createElement('div'); m.className='modal-bg'; m.innerHTML=html; document.body.appendChild(m); return m; }
+function askSecreta(cb){
+  const m=modalOpen('<div class="modal" role="dialog" aria-modal="true" aria-labelledby="md-t"><h3 id="md-t">¿Tirada secreta?</h3><p class="note">Una tirada secreta solo la ven los Masters en el historial.</p><div class="row modal-acts"><button class="btn" data-m="x">Cancelar</button><button class="btn" data-m="no">Pública</button><button class="btn secret" data-m="si">Secreta</button></div></div>');
+  const done=v=>{ m.remove(); if(v!=='x') cb(v==='si'); };
+  m.addEventListener('click',e=>{ const b=e.target.closest('[data-m]'); if(b) done(b.dataset.m); else if(e.target===m) done('x'); });
+}
+function openAsig(kind,id){
+  if(!S.canWrite) return;
+  const mov=kind==='mov'?atkById.get(id):null, ras=kind==='ras'?RASGOS.get(id):null;
+  if(!mov&&!ras) return;
+  const pool=poolOf('jug',S.uid), o=loadOrder('mis'); const pos=k=>{ const i=o.indexOf(k); return i<0?1e9:i; };
+  const trainers=pool.filter(x=>x.f.tipo==='E').sort((a,b)=>pos(a.id)-pos(b.id)||(a.f.creado||'').localeCompare(b.f.creado||''));
+  const isM=!!ras&&ras[1]==='M', mx=isM?N_MER:N_DEF, lista=isM?'meritos':'defectos';
+  const pick=(x,why)=>{ const lk=isLocked(x.f), off=lk||!!why;
+    const sub=lk?'Bloqueada por el Master':(why||(x.f.tipo==='P'?(dexById.get(x.f.especie)?dexLabel(dexById.get(x.f.especie)):'Pokémon'):'Entrenador'));
+    return `<button class="pick${lk?' locked':''}" data-pick="${esc(x.id)}"${off?' disabled':''} title="${esc(sub)}"><span>${lk?'🔒 ':''}${esc(charName(x.f))}</span><span class="note">${esc(sub)}</span></button>`; };
+  let body='';
+  if(mov){
+    for(const t of trainers){ const team=teamOf(t); if(!team.length) continue;
+      body+=`<div class="pk-g">${esc(charName(t.f))}</div>`+team.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'')).join(''); }
+    const sueltos=pool.filter(x=>x.f.tipo==='P'&&!trainers.some(t=>t.id===x.f.entrenador));
+    if(sueltos.length) body+='<div class="pk-g">Pokémon sueltos</div>'+sueltos.map(p=>pick(p,(p.f.moves||[]).includes(id)?'Ya conoce este movimiento':'')).join('');
+  } else {
+    body=trainers.map(t=>{ const tiene=[...(t.f.defectos||[]),...(t.f.meritos||[])].includes(ras[0]);
+      const libre=(t.f[lista]||[]).slice(0,mx).some(v=>!v)||(t.f[lista]||[]).length<mx;
+      return pick(t,tiene?'Ya lo tiene':(!libre?'Sin espacio libre':'')); }).join('');
+  }
+  if(!body) body='<p class="note">No tienes fichas que puedan recibir esto.</p>';
+  const title=mov?`Aprender «${mov[1]}»`:`${isM?'Asignar Mérito':'Asignar Defecto'} «${ras[0]}»`;
+  const hint=mov?'Elige el Pokémon que lo aprende. Ocupa su primer espacio libre de movimientos.':`Elige el Entrenador. Ocupa su primer espacio libre de ${isM?'Méritos':'Defectos'}.`;
+  const m=modalOpen(`<div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="md-t"><h3 id="md-t">${esc(title)}</h3><p class="note">${hint}</p><div class="pk-list">${body}</div><div class="row modal-acts"><button class="btn" data-m="x">Cerrar</button></div></div>`);
+  m.addEventListener('click',e=>{ if(e.target===m||e.target.closest('[data-m="x"]')){ m.remove(); return; }
+    const b=e.target.closest('[data-pick]'); if(!b||b.disabled) return;
+    const x=pool.find(p=>p.id===b.dataset.pick); if(!x) return;
+    if(isLocked(x.f)){ m.remove(); showBanner('Esa ficha está bloqueada por el Master.'); return; }
+    const nf=structuredClone(x.f);
+    if(mov){ nf.moves=[...(nf.moves||[])]; const i=nf.moves.findIndex(v=>!v); if(i<0) nf.moves.push(id); else nf.moves[i]=id; }
+    else { const cur=[...(nf[lista]||[])]; while(cur.length<mx) cur.push(''); const i=cur.findIndex(v=>!v); if(i<0){ showBanner('No hay espacio libre en '+(isM?'Méritos':'Defectos')+' de '+charName(x.f)+'.'); return; } cur[i]=ras[0]; nf[lista]=cur; }
+    saveFicha({src:x.src,uid:x.uid,id:x.id},nf);
+    m.remove(); showBanner(`${mov?'Aprendido':'Asignado'}: ${charName(x.f)}`);
+  });
+}
+function doRP(sec){
   const f=S.cur, c=calc(f);
   if(RP.kind==='attr'||RP.kind==='tal'){
     RP.attr=$('#rpA').value; RP.tal=$('#rpT')?$('#rpT').value:''; RP.x=num($('#rpX').value);
@@ -1264,7 +1307,7 @@ function doRP(){
     const nat = fail?'<b class="ko">Falla automáticamente por un rasgo</b>':r===20?'<b class="ok">20 natural: éxito</b>':r===1?'<b class="ko">1 natural: fallo</b>':'';
     const txt=`1d20 [${r}] + ${RP.attr} ${a}${RP.tal?` + ${TAL_LABEL(RP.tal)} ${t}`:''}${cq.filter(x=>x.r[2]!==-99).map(x=>` ${x.r[2]<0?'−':'+'} ${Math.abs(x.r[2])} ${x.r[0]}`).join('')}${RP.x?` + ${RP.x}`:''}${fail?' · '+cq.filter(x=>x.r[2]===-99).map(x=>x.r[0]).join(', ')+': falla':''}`;
     RP.res={v:tot,cls:fail||r===1?'ko':r===20?'ok':'',html:esc(txt)+(nat?'<br>'+nat:'')};
-    logRoll(charName(f),txt+(r===20?' · 20 natural':r===1?' · 1 natural':''),tot);
+    logRoll(charName(f),txt+(r===20?' · 20 natural':r===1?' · 1 natural':''),tot,!!sec);
   } else {
     const mi=moveInfo(f,(f.moves||[])[RP.i],c); const r=d(100);
     const hit=r<=mi.prec&&r!==100, crit=hit&&r<=Math.round(c.crit*100), re=hit&&typeof mi.m[12]==='number'&&r<=Math.round(mi.m[12]*100);
@@ -1273,14 +1316,14 @@ function doRP(){
     if(r===1) parts.push('<span class="ok">01: +1 Bono de Evasión y decisión del Narrador</span>');
     if(r===100) parts.push('<span class="ko">100: fallo crítico, −1 Bono de Evasión y decisión del Narrador</span>');
     RP.res={v:r,cls:hit?'ok':'ko',html:parts.join('<br>')};
-    logRoll(charName(f),`${mi.m[1]}: d100 [${r}] vs ${mi.prec}% · ${hit?(crit?'crítico':'conecta'):'falla'}${re?' · Rango Extra':''}`,r);
+    logRoll(charName(f),`${mi.m[1]}: d100 [${r}] vs ${mi.prec}% · ${hit?(crit?'crítico':'conecta'):'falla'}${re?' · Rango Extra':''}`,r,!!sec);
   }
   renderRP();
 }
 document.getElementById('rp').addEventListener('change',e=>{ if(!RP) return; const el=e.target;
   if(el.dataset.rc!==undefined){ const x=(RP.cq||[])[num(el.dataset.rc)]; if(x){ RP.chk ||= {}; RP.chk[x.id]=el.checked; } return; }
   if(el.id==='rpA'||el.id==='rpT'){ RP.attr=$('#rpA').value; RP.tal=$('#rpT')?$('#rpT').value:''; RP.x=num($('#rpX')?.value); renderRP(); } });
-document.getElementById('rp').addEventListener('click',e=>{ const b=e.target.closest('[data-rp]'); if(!b) return; if(b.dataset.rp==='close'){ RP=null; renderRP(); } else doRP(); });
+document.getElementById('rp').addEventListener('click',e=>{ const b=e.target.closest('[data-rp]'); if(!b) return; if(b.dataset.rp==='close'){ RP=null; renderRP(); } else if(isMaster()&&S.open?.src==='master') askSecreta(s=>doRP(s)); else doRP(false); });
 
 /* ---------- glosario ---------- */
 const tbl=(hd,rows)=>`<div class="tw"><table class="gt"><thead><tr>${hd.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="attr-name"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -1599,13 +1642,13 @@ function toolMov(){
     <label class="f">Nombre o efecto<input id="mq" value="${esc(T.q)}" placeholder="p. ej. Quemado"></label>
     ${sel('niv','Nivel',RANGOS)}${sel('tipo','Tipo',uniq(2))}${sel('clase','Clase',uniq(3))}${sel('atr','Atributo',uniq(4))}${sel('cat','Categoría',CATS)}${sel('con','Concurso',uniq(14))}
     <div class="f" style="justify-content:end"><span class="pill">${res.length} movimientos</span></div></div>${(VLAST.mov=res.map(a=>a[0]),vistaBar('mov',VLAST.mov,'los movimientos'))}</div>
-    <div class="card"><div class="tw"><table class="mtable"><thead><tr>${MCOLS.map(([lbl,i])=>{ const on=T.msort.col===i&&T.msort.dir; return `<th><button class="sortbtn" data-msort="${i}" aria-sort="${on?(T.msort.dir>0?'ascending':'descending'):'none'}">${lbl}<span class="arw">${on?(T.msort.dir>0?' ▲':' ▼'):''}</span></button></th>`; }).join('')}</tr></thead><tbody>`;
+    <div class="card"><div class="tw"><table class="mtable"><thead><tr><th></th>${MCOLS.map(([lbl,i])=>{ const on=T.msort.col===i&&T.msort.dir; return `<th><button class="sortbtn" data-msort="${i}" aria-sort="${on?(T.msort.dir>0?'ascending':'descending'):'none'}">${lbl}<span class="arw">${on?(T.msort.dir>0?' ▲':' ▼'):''}</span></button></th>`; }).join('')}</tr></thead><tbody>`;
   if(T.msort.col!==''&&T.msort.dir){ const i=num(T.msort.col), dir=T.msort.dir; const key=a=>{ const v=i===5?ri(a[5]):a[i]; return v===''||v==='-'||v==null?null:v; };
     res.sort((x,y)=>{ const A=key(x),B=key(y);
       if(A===null||B===null){ if(A===null&&B===null) return x[1].localeCompare(y[1],'es'); return A===null?1:-1; }
       const an=typeof A==='number', bn=typeof B==='number'; let r;
       if(an&&bn) r=A-B; else if(an) r=-1; else if(bn) r=1; else r=String(A).localeCompare(String(B),'es',{sensitivity:'base',numeric:true}); return r*dir||x[1].localeCompare(y[1],'es'); }); }
-  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${vistaBtn('mov',a[0])}<button class="linkbtn" data-movopen="${esc(a[0])}" aria-expanded="${T.mopen===a[0]}"><b>${esc(a[1])}</b></button></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td>${socialChip(a[14])}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr>${T.mopen===a[0]?`<tr class="fx"><td colspan="11"><b>Combate:</b> ${attrChip(short(a[4]))} ${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}${cnFxHTML(a[0]).replace('<div class="cnfx">','<div class="cnfx"><b>Concurso:</b> ')}</td></tr>`:''}`;
+  for(const a of res.slice(0,150)) h+=`<tr class="main"><td>${S.canWrite?`<button class="btn sm asig" data-asig-kind="mov" data-asig-id="${esc(a[0])}">Aprender</button>`:''}</td><td>${vistaBtn('mov',a[0])}<button class="linkbtn" data-movopen="${esc(a[0])}" aria-expanded="${T.mopen===a[0]}"><b>${esc(a[1])}</b></button></td><td>${chip(a[2])}</td><td>${claseChip(a[3])}</td><td>${rankChip(a[5])}</td><td class="num">${a[6]>0?'+':''}${esc(a[6])}</td><td class="num">${esc(a[7])}${typeof a[7]==='number'&&a[7]>0?' <span class="note">'+dice(a[7])+'</span>':''}</td><td>${attrChip(short(a[4]))}</td><td>${esc(a[10])}</td><td class="num">${typeof a[12]==='number'?pct(a[12]):'—'}</td><td>${socialChip(a[14])}</td><td class="num">${typeof a[16]==='number'?a[16].toLocaleString('es-CL')+' ₽':'—'}</td></tr>${T.mopen===a[0]?`<tr class="fx"><td colspan="12"><b>Combate:</b> ${attrChip(short(a[4]))} ${esc(a[11])}${a[13]&&a[13]!=='-'?' <span class="pill">'+esc(a[13])+'</span>':''}${cnFxHTML(a[0]).replace('<div class="cnfx">','<div class="cnfx"><b>Concurso:</b> ')}</td></tr>`:''}`;
   h+=`</tbody></table></div>${res.length>150?'<p class="note">Se muestran los primeros 150. Afina los filtros para ver el resto.</p>':''}</div>`;
   return h;
 }
@@ -1703,8 +1746,8 @@ function toolRas(){
     <label class="f">Nombre o efecto<input id="rq" value="${esc(T.rq)}" placeholder="p. ej. Fuerza"></label>
     ${sel('t','Tipo',['M','D'],['Méritos','Defectos'])}${sel('c','Categoría',RAS_CAT)}${sel('a','Aplicación',listOpts(R,4))}${sel('v','Valor',['1','2','3','4','5','6'])}
     <div class="f" style="justify-content:end"><span class="pill">${res.length} rasgos</span></div></div><p class="note">Cómo funcionan: Glosario › Rasgos.</p></div>
-    <div class="card"><div class="tw"><table class="mtable"><thead><tr>${sortHead(RCOLS,T.rsort,'rsort')}</tr></thead><tbody>`;
-  for(const r of res) h+=`<tr class="main"><td><b>${esc(r[0])}</b></td><td>${r[1]==='M'?'Mérito':'Defecto'}</td><td class="num"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b></td><td>${esc(r[2])}</td><td><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span></td></tr><tr class="fx"><td colspan="5">${esc(r[5])}${r[6]?` <span class="note">· Incompatible con: ${esc(r[6])}</span>`:''}</td></tr>`;
+    <div class="card"><div class="tw"><table class="mtable"><thead><tr><th></th>${sortHead(RCOLS,T.rsort,'rsort')}</tr></thead><tbody>`;
+  for(const r of res) h+=`<tr class="main"><td>${S.canWrite?`<button class="btn sm asig" data-asig-kind="ras" data-asig-id="${esc(r[0])}">Asignar</button>`:''}</td><td><b>${esc(r[0])}</b></td><td>${r[1]==='M'?'Mérito':'Defecto'}</td><td class="num"><b class="${r[3]<0?'ko':'ok'}">${sg(r[3])}</b></td><td>${esc(r[2])}</td><td><span class="pill ${AP_CLS[r[4]]||''}">${esc(r[4])}</span></td></tr><tr class="fx"><td colspan="6">${esc(r[5])}${r[6]?` <span class="note">· Incompatible con: ${esc(r[6])}</span>`:''}</td></tr>`;
   h+=`</tbody></table></div></div>`;
   return h;
 }
@@ -1821,7 +1864,7 @@ function toolGen(){
 }
 function toolDados(){
   return `<div class="card"><h2>Dados</h2><div class="row">${['1d100','1d20','1d4','1d6','1d8','1d10','2d6'].map(x=>`<button class="btn" data-dice="${x}">${x}</button>`).join('')}</div>
-  <div class="row" style="margin-top:10px"><label class="f" style="flex:1">Expresión<input id="dexpr" placeholder="3d6+2" value=""></label><button class="btn pri" id="droll" style="align-self:end">Tirar</button></div>
+  <div class="row" style="margin-top:10px"><label class="f" style="flex:1">Expresión<input id="dexpr" placeholder="3d6+2" value=""></label><button class="btn pri" id="droll" style="align-self:end">Tirar</button>${isMaster()?'<button class="btn secret" id="dsec" style="align-self:end">Tirada Secreta</button>':''}</div>
   <div class="row" style="margin-top:10px"><label class="f">Daño (1–24)<input type="number" id="ddmg" min="1" max="24" value="6"></label><span id="ddmgout" class="pill" style="align-self:end">${dice(6)}</span><button class="btn" id="ddmgroll" style="align-self:end">Tirar ese dado</button></div></div>
   <div class="card"><h2>Historial de la mesa</h2>${histHTML(40)}</div>`;
 }
@@ -1865,6 +1908,8 @@ function bindTool(){
   const quien=()=> (S.players[S.uid]?.alias||S.me?.name||'Dados');
   document.querySelectorAll('[data-dice]').forEach(b=>b.addEventListener('click',()=>{const r=rollExpr(b.dataset.dice); logRoll(quien(),r.txt,r.tot);}));
   on('droll','click',()=>{const v=$('#dexpr').value; const r=rollExpr(v); if(!r){ $('#dexpr').setCustomValidity('Usa el formato 2d6+3'); $('#dexpr').reportValidity(); return;} logRoll(quien(),r.txt,r.tot);});
+  on('dsec','click',()=>{const v=$('#dexpr').value; const r=rollExpr(v); if(!r){ $('#dexpr').setCustomValidity('Usa el formato 2d6+3'); $('#dexpr').reportValidity(); return;} logRoll(quien(),r.txt,r.tot,true);});
+  document.querySelectorAll('[data-asig-kind]').forEach(b=>b.addEventListener('click',()=>openAsig(b.dataset.asigKind,b.dataset.asigId)));
   on('ddmg','input',e=>{$('#ddmgout').textContent=dice(clamp(num(e.target.value),1,24));});
   on('ddmgroll','click',()=>{const n=clamp(num($('#ddmg').value),1,24); const r=rollExpr(dice(n)); logRoll(quien(),'Daño '+n+' → '+r.txt,r.tot);});
 }
