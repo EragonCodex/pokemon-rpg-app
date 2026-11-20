@@ -25,6 +25,7 @@ if (!/^import D from '\.\/data\.json';\s*$/m.test(app)) throw new Error('app.js 
 app = app.replace(/^import D from '\.\/data\.json';\s*$/m, `const D = ${data};`);
 if (/^\s*import\s/m.test(app)) throw new Error('app.js tiene otros import: el script no los sabe empaquetar');
 app = app.replace(/<\/script/gi, '<\\/script');
+app = app.replace("const PH_IMG='/placeholder.png';", `const PH_IMG='${b64('public/placeholder.png')}';`);
 
 const html = rd('index.html');
 const body = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script type="module"'))
