@@ -1462,7 +1462,7 @@ function visibleRefs(){
 }
 const refName = r=>charName(r.f)+(r.src==='master'?' · Master':(S.players[r.uid]?' · '+S.players[r.uid].alias:''));
 const T = {vopen:{}, pq:'', useI:null, useT:'', useM:'', popen:'', pbuy:'', pbuyK:'', pbuyN:1, pfl:{e:null,g:'',min:'',max:'',rar:'',gas:'',ran:'',uso:''}, psort:{col:'',dir:0}, bfl:{e:'',g:'',rar:'',gas:''}, bsort:{col:'',dir:0}, hq:'', hfl:{g:'',a:'',d:''}, hsort:{col:'',dir:0}, rq:'', rfl:{t:'',c:'',a:'',v:''}, rsort:{col:'',dir:0}, atk:'', mv:'', ex:0, riv:[{k:'',t1:'',t2:'',vit:0,sab:0}], roll:null, ini:new Set(), tie:{}, q:'', fl:{niv:'',tipo:'',clase:'',atr:'',cat:'',con:''},
-  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
+  dq:'', dfl:{tipo:'',region:'',rango:'',estado:'',pest:'todos',hab:'',habitat:'',cron:'',comp:'',color:'',etapa:'',bmin:'',bmax:''}, msort:{col:'',dir:0}, dpage:0, dsel:'', g:{rango:'Starter',t1:'',t2:'',region:'',habitat:'',cron:'',comp:'',color:'',hab:'',etapa:''}, gen:null, kit:'', kitTo:new Set(), kitDel:false};
 function renderTool(){
   return ({mov:toolMov,hab:toolHab,pre:toolPre,ras:toolRas,dex:toolDex,gen:toolGen,dados:toolDados,bloq:isMaster()?toolBloq:toolDex,kits:isMaster()?toolKits:toolDex}[S.tool]||toolDex)();
 }
@@ -1763,6 +1763,11 @@ function toolRas(){
 }
 /* Pokédex */
 const baseStats=r=>[9,10,11,12,13,14].reduce((a,i)=>a+num(r[i]),0);
+/* Columnas nuevas de la Pokédex (índices 23 a 26 de la fila): valores separados por ';' */
+const DEX_CAT=[['habitat',23,'Hábitat'],['cron',24,'Cronotipo'],['comp',25,'Comportamiento'],['color',26,'Color']];
+const multiVals=(r,i)=>String(r[i]==null?'':r[i]).split(';').map(x=>x.trim()).filter(x=>x&&x!=='-');
+const catCache={};
+const catOpts=i=>catCache[i]||(catCache[i]=[...new Set(D.dex.flatMap(r=>multiVals(r,i)))].sort((a,b)=>a.localeCompare(b,'es')));
 function dexFiltered(){
   const q=T.dq.toLowerCase(), fl=T.dfl, M=isMaster();
   return D.dex.filter(r=>{
@@ -1779,6 +1784,8 @@ function dexFiltered(){
     if(fl.tipo&&(!shown||!dexTypes(r).includes(fl.tipo))) return false;
     if(fl.rango&&(!shown||r[6]!==fl.rango)) return false;
     if(fl.hab&&(!shown||![r[15],r[16],r[17]].some(h=>String(h||'').toLowerCase()===fl.hab.toLowerCase()))) return false;
+    for(const [k,i] of DEX_CAT) if(fl[k]&&(!shown||!multiVals(r,i).includes(fl[k]))) return false;
+    if(fl.etapa&&(!shown||r[5]!==fl.etapa)) return false;
     if((fl.bmin!==''||fl.bmax!=='')&&!shown) return false;
     if(fl.bmin!==''&&baseStats(r)<num(fl.bmin)) return false;
     if(fl.bmax!==''&&baseStats(r)>num(fl.bmax)) return false;
@@ -1796,6 +1803,8 @@ function toolDex(){
     <label class="f">Región<select data-dfl="region">${opts(D.regions,T.dfl.region,'Todas')}</select></label>
     <label class="f">Rango<select data-dfl="rango">${opts(RANGOS,T.dfl.rango,'Todos')}</select></label>
     <label class="f">Habilidad<input data-dfl="hab" list="dl-hab" value="${esc(T.dfl.hab)}" placeholder="p. ej. Espesura"></label>
+    ${DEX_CAT.map(([k,i,n])=>`<label class="f">${n}<select data-dfl="${k}">${opts(catOpts(i),T.dfl[k],'Todos')}</select></label>`).join('')}
+    <label class="f">Etapa<select data-dfl="etapa"><option value="">Todas</option>${Object.keys(ETAPA_LBL).sort((a,b)=>(D.etapa[a]??9)-(D.etapa[b]??9)).map(v=>`<option value="${v}"${v===T.dfl.etapa?' selected':''}>${ETAPA_LBL[v]}</option>`).join('')}</select></label>
     <label class="f">Puntos Base<div class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" min="0" data-dfl="bmin" value="${esc(T.dfl.bmin)}" placeholder="mín." aria-label="Puntos Base mínimos" style="width:50%"><input type="number" min="0" data-dfl="bmax" value="${esc(T.dfl.bmax)}" placeholder="máx." aria-label="Puntos Base máximos" style="width:50%"></div></label>
     ${M?`<label class="f">Estado<select data-dfl="estado"><option value="">Todas</option><option value="vis"${T.dfl.estado==='vis'?' selected':''}>Para todos</option><option value="parcial"${T.dfl.estado==='parcial'?' selected':''}>Para algunos jugadores</option><option value="oculto"${T.dfl.estado==='oculto'?' selected':''}>Ocultas</option></select></label>`:`<label class="f">Estado<select data-dfl="pest"><option value="todos"${T.dfl.pest==='todos'?' selected':''}>Desbloqueadas para todos</option><option value="mio"${T.dfl.pest==='mio'?' selected':''}>Desbloqueadas para mí</option><option value="bloq"${T.dfl.pest==='bloq'?' selected':''}>Bloqueadas</option><option value=""${!T.dfl.pest?' selected':''}>Pokédex completa</option></select></label>`}
     </div>${M&&S.canWrite?`<div class="row vistabar" style="margin-top:10px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${T.vopen.dex?'pri':''}" data-vopen="dex" aria-expanded="${!!T.vopen.dex}">Visibilidad</button>${T.vopen.dex?`<button class="btn sm ${S.evento?'pri':''}" data-act="dexEvento" aria-pressed="${!!S.evento}">${S.evento?'Modo evento activo: todas visibles · Desactivar':'Activar modo evento (mostrar todas)'}</button><span class="note">El modo evento muestra todas las especies sin tocar las desbloqueadas; al desactivarlo vuelven las de antes.</span><select id="dexFor" class="btn sm" aria-label="Para quién"><option value="">Para todos</option>${dexPlayers().map(u=>`<option value="${esc(u)}"${T.dfor===u?' selected':''}>Para ${esc(S.players[u].alias||'Jugador')}</option>`).join('')}</select><button class="btn sm" data-dexall="1">Desbloquear las ${res.length} filtradas</button><button class="btn sm" data-dexall="0">Ocultar las ${res.length} filtradas</button><span class="note">Toca la Poké Ball de una especie para elegir qué jugadores la ven.</span>`:(S.evento?'<span class="note ok">Modo evento activo: todas visibles.</span>':'')}</div>`:(M?'':'<p class="note">El Master va desbloqueando especies a medida que las encuentran.</p>')}</div>`;
@@ -1822,12 +1831,18 @@ function setVis(ids,on,uid){ if(!isMaster()||!S.canWrite) return;
   else ids.forEach(id=>{ if(on) S.vis.add(id); else { S.vis.delete(id); for(const st of Object.values(S.visJ)) st.delete(id); } });
   saveVis(); }
 /* Generador */
+const ETAPA_LBL={Bebe:'Bebé',Basico:'Básico',Unica:'Única',Evolucion:'Evolución',Avanzada:'Avanzada',Mega:'Mega',Legendario:'Legendario'};
+const habsDe=r=>[r[15],r[16],r[17]].filter(x=>x&&x!=='-').map(x=>String(x).toLowerCase());
 function genPool(){
-  const g=T.g; const R=ri(g.rango);
+  const g=T.g; const R=g.rango?ri(g.rango):Infinity;
   return D.dex.filter(r=>{ if(!(isMaster()||visFor(r[0]))) return false; if(ri(r[6])>R) return false;
     const ts=dexTypes(r);
     if(g.t1&&g.t2){ if(!(ts.includes(g.t1)&&ts.includes(g.t2))) return false; }
     else if(g.t1||g.t2){ if(!ts.includes(g.t1||g.t2)) return false; }
+    if(g.t1&&g.t2&&g.t1===g.t2&&ts.length!==1) return false;
+    if(g.hab&&!habsDe(r).includes(g.hab.trim().toLowerCase())) return false;
+    if(g.etapa&&r[5]!==g.etapa) return false;
+    for(const [k,i] of DEX_CAT) if(g[k]&&!multiVals(r,i).includes(g[k])) return false;
     if(g.region&&r[18]!==g.region) return false; return true; });
 }
 function pickMove(level,cls,types,taken,stab){
@@ -1841,7 +1856,7 @@ function pickMove(level,cls,types,taken,stab){
 }
 function generate(){
   const pool=genPool(); if(!pool.length){ T.gen={error:'Ninguna especie cumple esos filtros'+(isMaster()?'.':' entre las desbloqueadas.')}; return; }
-  const sp=pick(pool); const R=ri(T.g.rango); const types=dexTypes(sp);
+  const sp=pick(pool); const R=T.g.rango?ri(T.g.rango):ri(sp[6]); const types=dexTypes(sp);
   const attr=blankAttr(); const lv={}; ATTR.forEach(k=>lv[k]=0);
   for(let p=0;p<ATTR_PTS[R];p++){ const can=ATTR.filter(k=>lv[k]<R+1); if(!can.length) break; lv[pick(can)]++; }
   ATTR.forEach(k=>attr[k].r=lv[k]?RANGOS[lv[k]-1]:'');
@@ -1852,17 +1867,20 @@ function generate(){
   const moves=plan.map(([lvl,cls])=> lvl==='OR'? pickMove(L(R+1),'FE',types,taken,true) : pickMove(lvl,cls,types,taken,false)).filter(Boolean);
   while(moves.length<6) moves.push('');
   const hab=[...new Set([sp[15],sp[16],sp[17]].filter(x=>x&&x!=='-'))];
-  T.gen={f:newPokemon({especie:sp[0],rango:T.g.rango,nat:pick(D.nat)[0],attr,moves,habilidad:pick(hab)||''})};
+  T.gen={f:newPokemon({especie:sp[0],rango:RANGOS[R],nat:pick(D.nat)[0],attr,moves,habilidad:pick(hab)||''})};
 }
 function toolGen(){
   const g=T.g; const n=genPool().length;
   let h=`<div class="card"><h2>Generador de Pokémon</h2><div class="grid g4">
-    <label class="f">Rango<select data-g="rango">${opts(RANGOS,g.rango)}</select></label>
+    <label class="f">Rango<select data-g="rango">${opts(RANGOS,g.rango,'Todos')}</select></label>
     <label class="f">Tipo 1<select data-g="t1">${opts(D.types,g.t1,'Cualquiera')}</select></label>
     <label class="f">Tipo 2<select data-g="t2">${opts(D.types,g.t2,'Cualquiera')}</select></label>
-    <label class="f">Región<select data-g="region">${opts(D.regions,g.region,'Todas')}</select></label></div>
-    <div class="row" style="margin-top:10px"><button class="btn pri" id="g-go">Generar</button><span class="note">${n} especies posibles${isMaster()?'':' (solo las desbloqueadas)'}. Con un tipo, sirve como primario o secundario; con dos, debe tener ambos.</span></div>
-    <p class="note">Especies de Rango igual o menor al elegido. Reparte ${ATTR_PTS[ri(g.rango)]} puntos de Atributo con techo ${esc(g.rango)}, elige naturaleza y habilidad al azar, y arma los movimientos con la distribución sugerida: el OverRanked es de su tipo (con STAB) y el resto son de tipos al azar.</p></div>`;
+    <label class="f">Región<select data-g="region">${opts(D.regions,g.region,'Todas')}</select></label>
+    ${DEX_CAT.map(([k,i,n])=>`<label class="f">${n}<select data-g="${k}">${opts(catOpts(i),g[k],'Cualquiera')}</select></label>`).join('')}
+    <label class="f">Habilidad<input data-g="hab" list="dl-hab" value="${esc(g.hab)}" placeholder="Cualquiera"></label>
+    <label class="f">Etapa<select data-g="etapa"><option value="">Cualquiera</option>${Object.keys(ETAPA_LBL).sort((a,b)=>(D.etapa[a]??9)-(D.etapa[b]??9)).map(v=>`<option value="${v}"${v===g.etapa?' selected':''}>${ETAPA_LBL[v]}</option>`).join('')}</select></label></div>
+    <div class="row" style="margin-top:10px"><button class="btn pri" id="g-go">Generar</button><span class="note">${n} especies posibles${isMaster()?'':' (solo las desbloqueadas)'}. Con un tipo, sirve como primario o secundario; con dos, debe tener ambos; si Tipo 1 y Tipo 2 son el mismo, la especie debe ser solo de ese tipo.</span></div>
+    <p class="note">Especies de Rango igual o menor al elegido (con «Todos», de cualquier Rango; el Pokémon sale con el Rango de su especie). Reparte ${g.rango?ATTR_PTS[ri(g.rango)]+' puntos de Atributo con techo '+esc(g.rango):'los puntos de Atributo de su Rango'}, elige naturaleza y habilidad al azar, y arma los movimientos con la distribución sugerida: el OverRanked es de su tipo (con STAB) y el resto son de tipos al azar.</p></div>`;
   if(T.gen?.error) h+=`<div class="card"><p class="ko">${esc(T.gen.error)}</p></div>`;
   else if(T.gen?.f){ const f=T.gen.f, c=calc(f), dx=dexById.get(f.especie), nat=natMap.get(f.nat);
     h+=`<div class="card"><h2>${esc(dexLabel(dx))} <span class="row">${c.tipos.map(chip).join(' ')}<span class="pill">${esc(dx[18])}</span></span></h2>

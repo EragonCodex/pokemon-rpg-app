@@ -9,7 +9,7 @@ Uso:
 Formato de cada fila (mismo orden que dex en src/data.json):
   0 ID, 1 Especie, 2 Forma, 3 Tipo Primario, 4 Tipo Secundario, 5 Etapa, 6 Rango, 7 Tipo Mov, 8 Mov Base,
   9-14 FUERZA, VITALIDAD, ENERGIA, SABIDURIA, DESTREZA, CARISMA, 15-17 Habilidad 1-3,
-  18 Region, 19 Ndex, 20 Tamaño, 21 Terrenos, 22 Monturas
+  18 Region, 19 Ndex, 20 Tamaño, 21 Terrenos, 22 Monturas, 23 Habitat, 24 Cronotipo, 25 Comportamiento, 26 Color
 No se usan: Cadena, HP Test, Base Stats.
 Necesita openpyxl (pip install openpyxl). Lee la hoja en modo solo lectura; no modifica el Excel.
 """
@@ -18,7 +18,8 @@ import openpyxl
 
 COLS = ['ID', 'Especie', 'Forma', 'Tipo Primario', 'Tipo Secundario', 'Etapa', 'Rango', 'Tipo Mov', 'Mov Base',
         'FUERZA', 'VITALIDAD', 'ENERGIA', 'SABIDURIA', 'DESTREZA', 'CARISMA',
-        'Habilidad 1', 'Habilidad 2', 'Habilidad 3', 'Region', 'Ndex', 'Tamaño', 'Terrenos', 'Monturas']
+        'Habilidad 1', 'Habilidad 2', 'Habilidad 3', 'Region', 'Ndex', 'Tamaño', 'Terrenos', 'Monturas',
+        'Habitat', 'Cronotipo', 'Comportamiento', 'Color']
 NUM = {'Mov Base', 'FUERZA', 'VITALIDAD', 'ENERGIA', 'SABIDURIA', 'DESTREZA', 'CARISMA'}
 
 

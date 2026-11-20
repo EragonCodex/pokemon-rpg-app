@@ -133,12 +133,12 @@ async function readCollection(r) {
     return deltaRows('bitacora', q => q.eq('mesa_id', r.mesa), `bitacora:${r.mesa}`);
   }
   if (r.kind === 'tiradas') {
-    const { data, error } = await sb.from('tiradas').select('id,user_id,quien,txt,val,ts').eq('mesa_id', r.mesa).order('ts', { ascending: false }).limit(400); fail(error);
+    const { data, error } = await sb.from('tiradas').select('id,user_id,quien,txt,val,ts,sec').eq('mesa_id', r.mesa).order('ts', { ascending: false }).limit(400); fail(error);
     const by = {};
     for (const k of Object.keys(tiradasCache)) tiradasCache[k] = new Map();
     for (const x of data.reverse()) {
       const ts = new Date(x.ts).getTime(); const u = x.user_id || 'anon';
-      (by[u] ||= []).push({ ts, quien: x.quien, txt: x.txt, val: x.val === null ? null : Number(x.val) });
+      (by[u] ||= []).push({ ts, quien: x.quien, txt: x.txt, val: x.val === null ? null : Number(x.val), ...(x.sec ? { sec: true } : {}) });
       (tiradasCache[u] ||= new Map()).set(ts, x.id);
     }
     return Object.entries(by).map(([u, log]) => docSnap(u, { log }));
@@ -242,7 +242,7 @@ async function writeDoc(r, data, uidActual) {
       const log = data.log || [];
       const nuevos = log.filter(e => !cache.has(e.ts));
       if (nuevos.length) {
-        const { data: ins, error } = await sb.from('tiradas').insert(nuevos.map(e => ({ user_id: u, mesa_id: r.mesa, quien: e.quien || '', txt: e.txt, val: e.val, ts: new Date(e.ts).toISOString() }))).select('id,ts'); fail(error);
+        const { data: ins, error } = await sb.from('tiradas').insert(nuevos.map(e => ({ user_id: u, mesa_id: r.mesa, quien: e.quien || '', txt: e.txt, val: e.val, ts: new Date(e.ts).toISOString(), sec: !!e.sec }))).select('id,ts'); fail(error);
         ins.forEach(x => cache.set(new Date(x.ts).getTime(), x.id));
       }
       // Borrados: vaciar el historial, o quitar una tirada concreta (no las que solo salen por el recorte a 50)
