@@ -799,7 +799,7 @@ function itemHTML(x,sub,conEsp){
   const nm = f.tipo==='P'?(f.nombre||(dx?dx[1]:'Pokémon sin especie')):(f.nombre||'Entrenador');
   const sub2 = f.tipo==='P'? `${dx?dexLabel(dx):'—'} · ${f.rango||''}${f.lugar==='caja'?' · caja':''}` : `Entrenador · ${f.rango||''}`;
   const cur = S.open&&S.open.id===x.id;
-  const btn=`<button class="item${sub?' sub':''}" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${inCombat(refKey(x))?'🥊 ':''}${cnIn(refKey(x))?'🎀 ':''}${esc(nm)}${conEsp?` <span class="note">(${esc(especieTxt(f))})</span>`:''}</span><span class="pill">${c.act}/${c.ps}</span><span class="s">${esc(sub2)}</span><span class="hp"><i class="${r<.25?'low':r<.5?'mid':''}" style="width:${r*100}%"></i></span></button>`;
+  const btn=`<button class="item${sub?' sub':''}" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${inCombat(refKey(x))?'🥊 ':''}${cnIn(refKey(x))?'🎀 ':''}${esc(nm)}${conEsp?` <span class="note">(${esc(especieTxt(f))})</span>`:''}</span><span class="pill">${c.act}/${c.ps}</span><span class="s">${esc(conEsp?statsCombate(f):sub2)}</span><span class="hp"><i class="${r<.25?'low':r<.5?'mid':''}" style="width:${r*100}%"></i></span></button>`;
   if(canGlove(x)&&(S.view==='mesa'||S.view==='master'||S.view==='mis')) return `<div class="irow${sub?' sub':''}">${btn.replace('class="item sub"','class="item"')}${gloveBtn(refKey(x))}${f.tipo==='E'?ribbonBtn(refKey(x)):''}</div>`;
   return btn;
 }
@@ -911,7 +911,7 @@ function renderList(){
     }
   } else if(S.view==='combate'){
     const ord=cbOrder();
-    h+=`<div class="grp"><h3>Combatientes</h3><div class="items">${ord.map(({x})=>x.src==='master'&&!isMaster()?`<div class="item"><span class="n">${esc(charName(x.f))} <span class="note">(${esc(especieTxt(x.f))})</span></span><span class="pill">${calc(x.f).act}/${calc(x.f).ps}</span><span class="s">Master</span></div>`:itemHTML(x,undefined,true)).join('')||'<p class="note">Sin combatientes.</p>'}</div></div>`;
+    h+=`<div class="grp"><h3>Combatientes</h3><div class="items">${ord.map(({x})=>x.src==='master'&&!isMaster()?`<div class="item"><span class="n">${esc(charName(x.f))} <span class="note">(${esc(especieTxt(x.f))})</span></span><span class="pill">${calc(x.f).act}/${calc(x.f).ps}</span><span class="s">${esc(statsCombate(x.f))}</span></div>`:itemHTML(x,undefined,true)).join('')||'<p class="note">Sin combatientes.</p>'}</div></div>`;
   } else if(S.view==='concurso'){
     h+=`<div class="grp"><h3>Participantes</h3><div class="items">${cnParts().map(p=>p.src==='master'&&!isMaster()?`<div class="item"><span class="n">🎀 ${esc(charName(p.f))}</span><span class="s">Master</span></div>`:itemHTML(p)).join('')||'<p class="note">Sin participantes.</p>'}</div></div>`;
   } else if(S.view==='glos'){
@@ -1967,6 +1967,7 @@ function fotoDeKey(k){ if(!k) return ''; const [src,uid,id]=k.split('|');
   const f=isMaster()?S.master[id]:(CB.snaps[k]||(CN.snaps[k]||{}).e);
   return (f&&(f.imgMini||f.img))||PH_IMG; }
 /* Especie junto al nombre: Pokémon por su especie; Entrenador */
+const statsCombate=f=>{ const c=calc(f); return `Vel ${c.vel} ft · Esquiva ${pct(c.esq)} · Temple ${pct(c.tem)}`; };
 const especieTxt=f=>f.tipo==='E'?'Entrenador':(dexById.get(f.especie)?dexLabel(dexById.get(f.especie)):'Pokémon');
 const inCombat=k=>CB.parts.includes(k);
 function combatant(k){ if(!k) return null; const [src,uid,id]=k.split('|'); const ref={src,uid:uid||null,id};
