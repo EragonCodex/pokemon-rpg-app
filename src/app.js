@@ -1197,7 +1197,7 @@ function onImage(e){
       const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const cx=cv.getContext('2d'); cx.fillStyle='#ffffff'; cx.fillRect(0,0,w,h); cx.drawImage(im,0,0,w,h);
       let url=cv.toDataURL('image/jpeg',0.8); if(url.length>150000) url=cv.toDataURL('image/jpeg',0.6);
       if(url.length>200000){ showBanner('La imagen es demasiado pesada incluso reducida. Prueba con otra.'); return; }
-      S.cur.img=url; commit(true); };
+      S.cur.img=url; if(isMaster()) S.cur.imgMini=miniatura(cv); commit(true); };
     im.onerror=()=>showBanner('No se pudo leer esa imagen. Usa un archivo JPG o PNG.'); im.src=fr.result; };
   fr.readAsDataURL(file);
 }
@@ -1958,6 +1958,13 @@ function cbWrite(fields,full){
     }catch(e){ onWriteError(e); } });
 }
 const snapOf=f=>{ const o=structuredClone(f); delete o.img; return o; };
+/* Miniatura chica (96 px) para que los participantes vean al Master solo en combate o Concurso */
+function miniatura(cv){ const sc=Math.min(1,96/Math.max(cv.width,cv.height)); const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(cv.width*sc)); c.height=Math.max(1,Math.round(cv.height*sc)); c.getContext('2d').drawImage(cv,0,0,c.width,c.height); return c.toDataURL('image/jpeg',0.7); }
+/* Imagen de quien usa un movimiento: jugadores desde su ficha; Master desde la miniatura de la copia de combate o Concurso */
+function fotoDeKey(k){ if(!k) return ''; const [src,uid,id]=k.split('|');
+  if(src==='jug') return ((S.fichas[uid]||{})[id]||{}).img||'';
+  const f=isMaster()?S.master[id]:(CB.snaps[k]||(CN.snaps[k]||{}).e);
+  return (f&&f.imgMini)||''; }
 const inCombat=k=>CB.parts.includes(k);
 function combatant(k){ if(!k) return null; const [src,uid,id]=k.split('|'); const ref={src,uid:uid||null,id};
   let f = src==='master' ? (isMaster()? S.master[id] : CB.snaps[k]) : (S.fichas[uid]||{})[id];
@@ -2523,7 +2530,8 @@ function connectHit(L,z,extra){
 }
 function cbLastHTML(){
   const L=CB.last; if(!L) return '';
-  let h=`<div class="card"><h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${L.cmd?'Comandar: ':''}${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
+  const foto=fotoDeKey(L.byKey);
+  let h=`<div class="card">${foto?`<img class="atk-foto" src="${esc(foto)}" alt="">`:''}<h2>Último ataque <span class="note" style="text-transform:none;letter-spacing:0">${esc(L.by)} · ${L.cmd?'Comandar: ':''}${esc(L.mv)} · ${hhmm(L.ts)}</span></h2><div class="steps-res">${L.steps.map(s=>`<div class="${s.k==='fx'?'fx-box':s.k||''}">${esc(s.t)}</div>`).join('')}</div>`;
   if(L.res&&L.res.length) h+=`<div class="res" style="margin-top:10px">`+L.res.map(z=>{ const fk=`${L.ts}|${z.key}`; const fx=CB.lastFx[fk]||{}; const t=combatant(z.key); const can=t&&canEditRef(t)&&S.canWrite;
     const canCol=!z.heal&&L.cls!=='Estado'&&t&&dmgMoves(t.f).length>0&&z.key!==L.byKey&&puedeColisionar(z.key);
     let btns='';
@@ -2885,7 +2893,7 @@ function cnCerrar3(){ if(!isMaster()||!CN.f3||!CN.f3.q) return; const F=structur
 /* ---- Fase 4 · Duelo: combate normal + Clamor invertido (cada movimiento baja el Clamor del rival) ---- */
 const cnDuenoDe=x=>x.f.tipo==='E'?x.key:`${x.src}|${x.uid||''}|${x.f.entrenador||''}`;
 function cnDuelo(x){ const F=CN.f4; if(CN.fase!==4||!F||F.res||!x) return null; const k=cnDuenoDe(x); if(!F.fin.includes(k)||F.fin.length<2) return null; return {F:structuredClone(F),k,rv:F.fin.find(z=>z!==k)}; }
-function cnGuardar4(F,lines,quien){ F.log=[...(F.log||[]),{q:quien,r:num(CB.ronda),l:lines}].slice(-12); cnWrite({f4:F}); if(S.view==='concurso') renderSheet(); }
+function cnGuardar4(F,lines,quien,key){ F.log=[...(F.log||[]),{q:quien,r:num(CB.ronda),l:lines,...(key?{k:key}:{})}].slice(-12); cnWrite({f4:F}); if(S.view==='concurso') renderSheet(); }
 /* Se llama al usar un movimiento en Combate: devuelve las líneas del efecto de Concurso */
 /* Duelo de Gala: +3 a la Iniciativa de quien más Clamor le quitó al rival en la ronda anterior */
 function cnIniBono(x){ const F=CN.f4; if(CN.fase!==4||!F||!F.armado||F.res||!F.rq) return 0; const k=cnDuenoDe(x); if(!F.fin.includes(k)) return 0;
@@ -2949,7 +2957,7 @@ function cnDuelMove(x,m,mvId,r,ok,ts){ const D4=cnDuelo(x); if(!D4||!m) return n
   { const q=(F.rq[ron] ||= {}); q[k]=num(q[k])+Math.max(0,c0-num(F.cl[rv])); }
   if(num(F.cl[rv])<=0) Lc.push({k:'ko',t:`${cnNombre(rv)} llegó a 0 de Clamor: el Duelo termina.`});
   const L=[...La,...Le,...Lc,...Lf];
-  cnGuardar4(F,L.map(l=>l.t),`${charName(x.f)} · ${m[1]}`); return L; }
+  cnGuardar4(F,L.map(l=>l.t),`${charName(x.f)} · ${m[1]}`,x.key); return L; }
 /* Colisión: se omiten los efectos de Concurso; el ganador gana 3 de Clamor (empate: 1 cada uno) y el Furor sube 1 */
 function cnDuelCol(L,A,t,winKey){ const D4=cnDuelo(A); if(!D4||cnDuenoDe(t)!==D4.rv) return []; const {F,k,rv}=D4; const out=[];
   if(F.undo&&F.undo.ts===L.ts){ F.cl=F.undo.cl; F.fu=F.undo.fu; F.st=F.undo.st; F.fuAdd=F.undo.fuAdd||{}; F.rq=F.undo.rq||{}; F.undo=null; out.push({k:'',t:'Colisión: se omite el Efecto Concurso del movimiento.'}); }
@@ -3118,7 +3126,7 @@ function cnFase4HTML(){ const F=CN.f4; if(!F) return ''; const ron=num(CB.ronda)
         :'<div class="note">Aún no escoge a su Pokémon.</div>'}</div><div style="text-align:right"><span class="big">${num(F.cl[k])}</span></div></div>`; });
   h+=`</div>`;
   if(!F.armado&&!F.res&&F.fin.every(k=>cnSel4(k).ok)&&!isMaster()) h+=`<p class="note">Los dos escogieron: el combate empieza cuando el Master tenga la app abierta.</p>`;
-  if((F.log||[]).length) h+=`<details class="rlog" open><summary>Efectos de Concurso</summary><div class="steps-res">${[...F.log].reverse().map(e=>`<div><b>R${e.r} · ${esc(e.q)}</b>${e.l.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`).join('')}</div></details>`;
+  if((F.log||[]).length) h+=`<details class="rlog" open><summary>Efectos de Concurso</summary><div class="steps-res">${[...F.log].reverse().map(e=>`<div>${fotoDeKey(e.k)?`<img class="cn-foto" src="${esc(fotoDeKey(e.k))}" alt="">`:''}<b>R${e.r} · ${esc(e.q)}</b>${e.l.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`).join('')}</div></details>`;
   if(F.res){ const R=F.res; h+=`<div class="fx-box" style="margin-top:10px"><b>Resultado: ${esc(CN_RES[R.tipo])}</b>${cnSteps(R.lines.map(t=>({k:'',t})))}<div class="row" style="margin-top:6px">${F.fin.map(k=>`<span class="pill">${esc(cnNombre(k))}: ${num(F.cl[k])} ${sg(R.bon[k])} = <b>${R.tot[k]}</b></span>`).join('')}</div><p style="margin:8px 0 0"><b>${R.gan?'🎀 Gana el Concurso: '+esc(cnNombre(R.gan)):'Empate total: lo decide el Master'}</b></p></div>`; }
   return h+`</div>`; }
 function concursoHTML(){ let h=cnCabeza(); const f=CN.fase;
@@ -3255,7 +3263,7 @@ document.addEventListener('click',async e=>{
   else if(act==='addTeam'){ const team=teamOf(S.open).filter(p=>p.f.lugar!=='caja'); createDoc(S.open.src,newPokemon(Object.assign({entrenador:S.open.id,lugar:team.length>=6?'caja':''},S.open.src==='master'?{cat:'npc'}:{}))); }
   else if(act==='genSave'&&T.gen?.f){ const f=structuredClone(T.gen.f); if(a.dataset.to==='salvaje'){ f.cat='salvaje'; f.carpeta=''; S.view='master'; createDoc('master',f);} else { S.view='mis'; createDoc('jug',f);} }
   else if(act==='dexEvento'&&isMaster()&&S.canWrite){ S.evento=!S.evento; saveVis(); }
-  else if(act==='rmImg'&&S.cur){ S.cur.img=''; commit(true); }
+  else if(act==='rmImg'&&S.cur){ S.cur.img=''; delete S.cur.imgMini; commit(true); }
   else if(act==='gen'&&S.cur&&!S.ro){ const g=S.cur.genero||'M'; S.cur.genero=S.cur.tipo==='P'?(g==='M'?'F':g==='F'?'N':'M'):(g==='F'?'M':'F'); commit(true); }
   else if(act==='formas'&&S.cur&&!S.ro){ S.formOpen=!S.formOpen; renderSheet(); }
   else if(act==='setForma'&&S.cur&&!S.ro){ const f=S.cur, dx=dexById.get(f.especie); let id=a.dataset.id;

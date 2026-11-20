@@ -453,3 +453,7 @@ details.glosf>summary{justify-content:flex-start}details.glosf>summary>span{flex
 .dmg-acts{gap:8px;align-items:center;flex-wrap:wrap;align-self:flex-end}
 .pick .w-red{color:var(--bad)!important;font-weight:600}
 .pick .w-yel{color:var(--warn)!important;font-weight:600}
+
+/* Imagen de quien usó el movimiento: Último ataque y registro de Efectos de Concurso */
+.atk-foto{float:left;width:56px;height:56px;object-fit:cover;border-radius:8px;margin:0 10px 6px 0}
+.cn-foto{width:28px;height:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px}
