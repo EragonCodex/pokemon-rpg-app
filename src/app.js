@@ -793,13 +793,13 @@ function teamOf(r){
 }
 
 /* ---------- listas ---------- */
-function itemHTML(x,sub){
+function itemHTML(x,sub,conEsp){
   const f=x.f, c=calc(f), dx=f.tipo==='P'?dexById.get(f.especie):null;
   const r=c.ps?clamp(c.act/c.ps,0,1):0;
   const nm = f.tipo==='P'?(f.nombre||(dx?dx[1]:'Pokémon sin especie')):(f.nombre||'Entrenador');
   const sub2 = f.tipo==='P'? `${dx?dexLabel(dx):'—'} · ${f.rango||''}${f.lugar==='caja'?' · caja':''}` : `Entrenador · ${f.rango||''}`;
   const cur = S.open&&S.open.id===x.id;
-  const btn=`<button class="item${sub?' sub':''}" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${inCombat(refKey(x))?'🥊 ':''}${cnIn(refKey(x))?'🎀 ':''}${esc(nm)}</span><span class="pill">${c.act}/${c.ps}</span><span class="s">${esc(sub2)}</span><span class="hp"><i class="${r<.25?'low':r<.5?'mid':''}" style="width:${r*100}%"></i></span></button>`;
+  const btn=`<button class="item${sub?' sub':''}" data-open="${esc(refKey(x))}" aria-current="${cur}"><span class="n">${inCombat(refKey(x))?'🥊 ':''}${cnIn(refKey(x))?'🎀 ':''}${esc(nm)}${conEsp?` <span class="note">(${esc(especieTxt(f))})</span>`:''}</span><span class="pill">${c.act}/${c.ps}</span><span class="s">${esc(sub2)}</span><span class="hp"><i class="${r<.25?'low':r<.5?'mid':''}" style="width:${r*100}%"></i></span></button>`;
   if(canGlove(x)&&(S.view==='mesa'||S.view==='master'||S.view==='mis')) return `<div class="irow${sub?' sub':''}">${btn.replace('class="item sub"','class="item"')}${gloveBtn(refKey(x))}${f.tipo==='E'?ribbonBtn(refKey(x)):''}</div>`;
   return btn;
 }
@@ -911,7 +911,7 @@ function renderList(){
     }
   } else if(S.view==='combate'){
     const ord=cbOrder();
-    h+=`<div class="grp"><h3>Combatientes</h3><div class="items">${ord.map(({x})=>x.src==='master'&&!isMaster()?`<div class="item"><span class="n">${esc(charName(x.f))}</span><span class="pill">${calc(x.f).act}/${calc(x.f).ps}</span><span class="s">Master</span></div>`:itemHTML(x)).join('')||'<p class="note">Sin combatientes.</p>'}</div></div>`;
+    h+=`<div class="grp"><h3>Combatientes</h3><div class="items">${ord.map(({x})=>x.src==='master'&&!isMaster()?`<div class="item"><span class="n">${esc(charName(x.f))} <span class="note">(${esc(especieTxt(x.f))})</span></span><span class="pill">${calc(x.f).act}/${calc(x.f).ps}</span><span class="s">Master</span></div>`:itemHTML(x,undefined,true)).join('')||'<p class="note">Sin combatientes.</p>'}</div></div>`;
   } else if(S.view==='concurso'){
     h+=`<div class="grp"><h3>Participantes</h3><div class="items">${cnParts().map(p=>p.src==='master'&&!isMaster()?`<div class="item"><span class="n">🎀 ${esc(charName(p.f))}</span><span class="s">Master</span></div>`:itemHTML(p)).join('')||'<p class="note">Sin participantes.</p>'}</div></div>`;
   } else if(S.view==='glos'){
@@ -2170,7 +2170,7 @@ function cbOrderHTML(){
   if(!ord.length) return h+`<p class="note">${isMaster()?'Agrega combatientes con el guante 🥊 junto a cada personaje en Mesa o en Master.':'Nadie entró al combate todavía. Usa el guante 🥊 junto a tus personajes (en Mis fichas o en Mesa) para entrar.'}</p></div>`;
   h+=`<div class="res">`+ord.map(({x,c,cnb},i)=>{ const r=c.ps?clamp(c.act/c.ps,0,1):0; const ests=[x.f.estF,x.f.estM].filter(Boolean).map(e=>{const er=estMap.get(e); const cls=er&&er[2]==='Fisico'?'F':'M'; const fx=(x.f.estFx||{})[cls]; return er?badge(e+(fx&&num(fx.n)?` ·${fx.n}`:''),TYPE_BG[er[1]]||'CCCCCC'):''}).join(' ');
     const rsOn=CBU.rs&&CBU.rs.k===x.key;
-    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}${x.src==='jug'&&colorDe(x.uid)?` style="border-left:4px solid ${esc(colorDe(x.uid))}"`:''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><img class="cb-foto" src="${esc(fotoDeKey(x.key))}" alt=""><b>${i+1}. ${esc(charName(x.f))} <span class="note">(${esc(especieTxt(x.f))})</span></b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
+    return `<div class="r cbrow${canGlove(x)?' rsable':''}${actedKeys().includes(x.key)?' acted':''}"${actedKeys().includes(x.key)?' title="Ya usó su Acción esta ronda"':''}${x.src==='jug'&&colorDe(x.uid)?` style="border-left:4px solid ${esc(colorDe(x.uid))}"`:''}>${canGlove(x)?`<div class="rsbtns"><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="heal" aria-pressed="${rsOn&&CBU.rs.m==='heal'}">Curar</button><button class="btn sm" data-cb="rs" data-k="${esc(x.key)}" data-m="dmg" aria-pressed="${rsOn&&CBU.rs.m==='dmg'}">Dañar</button></div>`:''}<div style="min-width:0"><img class="cb-foto" src="${esc(fotoDeKey(x.key))}" alt=""><b>${i+1}. ${esc(charName(x.f))}</b> <span class="note">${esc(ownerLabel(x))}</span> ${c.tipos.map(chip).join(' ')} ${ests}${ocBadge(x.f)}
       <div class="psbar" style="max-width:260px"><i style="width:${r*100}%;background:${r<.25?'var(--bad)':r<.5?'var(--warn)':'var(--good)'}"></i></div>
       <div class="note">PS ${c.act}/${c.ps} · Esquiva ${pct(c.esq)} (${num(x.f.cEsq)}) · Temple ${pct(c.tem)} (${num(x.f.cTem)}) · Vel ${c.vel} ft</div>${c.em.cn.length?`<div class="note cond-cn">${esc(c.em.cn.join(' · '))}</div>`:''}${x.f.orden?`<div class="note cond-cn">Orden ${esc(x.f.orden.n)} de ${esc(x.f.orden.by)}: ${esc(ORDEN_TXT(x.f.orden))} en su siguiente movimiento</div>`:''}</div>
       <div style="text-align:right"><div class="row" style="justify-content:flex-end;align-items:center;gap:8px;flex-wrap:nowrap">${canGlove(x)?`<select class="eqsel" data-cbeq="${esc(x.key)}" aria-label="Equipo de ${esc(charName(x.f))}">${[0,1,2,3,4].map(n=>`<option value="${n}"${eqOf(x.key)===n?' selected':''}>${n?'Equipo '+n:'Sin Equipo'}</option>`).join('')}</select>`:(eqOf(x.key)?`<span class="pill">Equipo ${eqOf(x.key)}</span>`:'')}<span class="big">${Number.isInteger(c.ini)?c.ini:c.ini.toFixed(1)}</span></div>${cnb?`<div><span class="pill sel" title="Fue quien más Clamor le quitó al rival en la ronda anterior">+${cnb} Concurso</span></div>`:''}${tied.some(t=>t.x===x)?`<div><span class="pill">${CB.ties[x.key]?'d20: '+CB.ties[x.key]:'empate'}</span></div>`:''}${canGlove(x)?`<div><button class="btn sm" data-glove="${esc(x.key)}">Quitar</button></div>`:''}</div>${rsOn?rsPanelHTML(x):''}</div>`; }).join('')+`</div>
