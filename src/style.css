@@ -460,3 +460,10 @@ details.glosf>summary{justify-content:flex-start}details.glosf>summary>span{flex
 
 /* Lista de combatientes: imagen de la ficha (o placeholder) junto al nombre */
 .cb-foto{float:left;width:44px;height:44px;object-fit:cover;border-radius:8px;margin:0 10px 6px 0}
+
+/* Fichas: botones apilados en una columna (Entrenador: 🥊 y 🎀 sobre 🎒/«En Mesa») y botón En Mesa */
+.acts{display:flex;flex-direction:column;gap:4px;justify-content:center;min-width:0}
+.acts .glove,.acts .mesa-tog{width:100%;padding:0 6px}
+.mesa-tog{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:2px 6px;cursor:pointer;font-size:11px;white-space:nowrap;color:var(--muted)}
+.mesa-tog[aria-pressed="true"]{border-color:var(--accent);background:var(--sunk);color:var(--ink)}
+.asig-fold{margin:4px 0}
