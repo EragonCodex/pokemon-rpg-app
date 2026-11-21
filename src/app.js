@@ -891,8 +891,12 @@ function renderList(){
     h+=`<div class="grp"><h3>Entrenadores ${S.canWrite?'<button class="btn sm" data-act="newE">+ Entrenador</button>':''}</h3><div class="items">${g.h||'<p class="note">Aún no tienes entrenadores.</p>'}</div></div>`;
     h+=`<div class="grp"><h3>Pokémon sueltos ${S.canWrite?'<button class="btn sm" data-act="newP">+ Pokémon</button>':''}</h3><div class="items">${g.loose||'<p class="note">Pokémon sin entrenador, para probar o guardar.</p>'}</div></div>`;
     if(isMaster()){ const otros=Object.keys(S.allPlayers).filter(u=>u!==S.uid).sort((a,b)=>String(S.allPlayers[a].alias||'').localeCompare(String(S.allPlayers[b].alias||''),'es'));
-      for(const u of otros){ const gu=groupHTML(poolOf('jug',u),'fichas.'+u);
-        h+=`<div class="grp"><h3><span class="row" style="gap:6px;flex-wrap:nowrap">${puntoDe(u)}${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.allPlayers[u].alias||'Jugador')}</span>${S.masters.includes(u)?' · Master':''}</span></h3><div class="items">${(gu.h+gu.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; } }
+      for(const u of otros){ const head=`<span class="row" style="gap:6px;flex-wrap:nowrap">${puntoDe(u)}${fotoDe(u)?`<img class="av" src="${esc(fotoDe(u))}" alt="">`:''}<span${colorDe(u)?` style="color:${esc(colorDe(u))}"`:''}>${esc(S.allPlayers[u].alias||'Jugador')}</span>${S.masters.includes(u)?' · Master':''}</span>`;
+        if(S.players[u]){ const gu=groupHTML(poolOf('jug',u),'fichas.'+u);
+          h+=`<div class="grp"><h3>${head}</h3><div class="items">${(gu.h+gu.loose)||'<p class="note">Sin fichas.</p>'}</div></div>`; }
+        else { /* fuera de la campaña: sus fichas se piden solo al abrir la sección */
+          const gu=S.subs['f'+u]?groupHTML(poolOf('jug',u),'fichas.'+u):null;
+          h+=`<details class="fold cat" data-fold="${esc('lazy|'+u)}" ${S.folders['lazy|'+u]===true?'open':''}><summary>${head}</summary><div class="items">${gu?((gu.h+gu.loose)||'<p class="note">Sin fichas.</p>'):'<p class="note">Abre esta sección para cargar sus fichas.</p>'}</div></details>`; } } }
   } else if(S.view==='mesa'){
     h+=`<div class="grp"><h3>Mesa</h3><div class="items"><button class="item" data-hist="1" aria-current="${S.open?.src==='hist'}"><span class="n">Historial de dados</span><span class="pill">${allRolls().length}</span></button></div></div>`;
     const uids=sortByOrder(Object.keys(S.players).sort((a,b)=>(a===S.uid)-(b===S.uid)||String(S.players[a].alias).localeCompare(String(S.players[b].alias))),'mesa',u=>u);
@@ -3419,6 +3423,9 @@ function onRemote(){
 }
 function keepPending(prefix,cur,next){ for(const [id,f] of Object.entries(cur||{})){ const p=prefix+id; if(pend[p]||inflight[p]) next[id]=f; } return next; }
 function snapMap(snap){ const m={}; snap.docs.forEach(x=>{ if(x.exists) m[x.id]=x.data(); }); return m; }
+function subFichasLazy(u){ if(S.subs['f'+u]) return;
+  S.subs['f'+u]=S.db.collection(`jug/${u}/fichas`).onSnapshot(snap=>{ S.fichas[u]=keepPending(`jug/${u}/fichas/`,S.fichas[u],snapMap(snap)); onRemote(); },err=>console.warn(err)); }
+document.addEventListener('toggle',e=>{ const u=e.target.dataset&&e.target.dataset.fold; if(!u||!u.startsWith('lazy|')||!e.target.open) return; subFichasLazy(u.slice(5)); },true);
 function subMesaNpc(){ if(S.subs.__mv) return;
   S.subs.__mv=S.db.collection('master').onSnapshot(snap=>{ S.master=keepPending('master/',S.master,sinMesas(snapMap(snap))); onRemote(); },e=>console.warn(e)); }
 function subPlayer(u){
@@ -3446,7 +3453,7 @@ async function boot(){
   S.raw.doc('config/mesas').onSnapshot(s=>{ S.mesasDoc=s.exists?s.data():{lista:[],miembros:{}}; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer);
     if(S.uid&&!S.owner&&!enMesa(S.uid)){ const otra=misMesas()[0]; if(otra&&num(otra.id)!==MESA) cambiarMesa(num(otra.id)); else showBanner('Aún no participas en ninguna mesa. Pide al Master que te agregue.'); }
     renderWho(); onRemote(); },e=>console.warn(e));
-  S.db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; aplicarMiembros(); buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()){ subMaster(); Object.keys(S.allPlayers).forEach(subPlayer); } },e=>console.warn(e));
+  S.db.doc('config/mesa').onSnapshot(s=>{ S.masters=(s.exists&&s.data().masters)||[]; aplicarMiembros(); buildDexList(); $('#tabMaster').hidden=!isMaster(); onRemote(); if(isMaster()) subMaster(); },e=>console.warn(e));
   S.db.doc('combate/actual').onSnapshot(s=>{ const dd=s.exists?s.data():{}; CB.exists=s.exists; CB.parts=dd.parts||[]; CB.snaps=dd.snaps||{}; CB.ties=dd.ties||{}; CB.last=dd.last||null; CB.lastFx=dd.lastFx||{}; CB.ronda=num(dd.ronda)||1; /* el combate empieza en la Ronda 1 */ CB.rondaLog=dd.rondaLog||null; CB.cond=dd.cond||{}; CB.voto=dd.voto||null; CB.eq=dd.eq||{}; CB.acted=dd.acted||null; CB.tn=dd.tn||null;
     if(missingSpecies()) reloadEspecies(); /* las copias de los Pokémon del Master traen especies que aún no se cargaron */
     if(S.view==='combate'){ renderList(); safeSheet(); } else if(S.view==='mesa'||S.view==='master') renderList(); },e=>console.warn(e));
@@ -3459,7 +3466,7 @@ async function boot(){
     if(S.view==='mesa'&&(!S.open||S.open.src==='hist') || S.view==='tools'&&S.tool==='dados') safeSheet(); if(S.view==='mesa') renderList(); },e=>console.warn(e));
   S.raw.collection('jug').onSnapshot(snap=>{ const m=snapMap(snap);
     if(S.uid && S.allPlayers[S.uid] && !m[S.uid]) m[S.uid]=S.allPlayers[S.uid];
-    S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); if(isMaster()) Object.keys(S.allPlayers).forEach(subPlayer); else subMesaNpc(); renderWho(); aplicarTema(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
+    S.allPlayers=m; aplicarMiembros(); Object.keys(S.players).forEach(subPlayer); if(!isMaster()) subMesaNpc(); renderWho(); aplicarTema(); if(S.uid) subPlayer(S.uid); onRemote(); },e=>console.warn(e));
   if(S.uid) subPlayer(S.uid);
   if(S.owner) subMaster();
   aplicarTema(); setTimeout(latido,4000); setInterval(latido,180000); /* cada 3 min: cada latido avisa a todos los conectados */

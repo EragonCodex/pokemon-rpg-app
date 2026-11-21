@@ -1,13 +1,15 @@
 -- =====================================================================
--- Fichero Pokémon RPG · 18: NPC en la Mesa (BORRADOR, sin aplicar)
+-- Fichero Pokémon RPG · 18: NPC en la Mesa
 -- © 2026 Gonzalo Toro · Pokémon RPG
 --
--- Un NPC (fila ambito = 'master') con data.enMesa = true lo leen los jugadores
--- de su campaña, para que vean sus detalles en la sección Mesa.
--- Las fichas de Master sin marca siguen privadas (solo Masters, o en combate).
+-- Regla: toda ficha de Master marcada «En Mesa» (data.enMesa = true) es pública
+-- para los jugadores de su campaña. Al quitarla de la Mesa vuelve a ser privada
+-- (solo Masters, o en combate, como antes).
 --
--- Pendiente: aprobación de Gonzalo y prueba en Postgres local antes de aplicar.
--- Las políticas son permisivas (se suman a fic_ver, no la reemplazan).
+-- Campaña 1 sin lista de miembros en config «mesas»: la ven todos (igual que su Mesa).
+-- Otras campañas: solo sus miembros (config «mesas».miembros[N][uid]).
+-- Es una política permisiva: se suma a fic_ver y no la reemplaza.
+-- Probada en Postgres local (2026-11-21) con esquema de prueba; pendiente aprobación para aplicar.
 -- =====================================================================
 
 create policy master_mesa_ver on public.fichas for select to authenticated
@@ -15,11 +17,17 @@ create policy master_mesa_ver on public.fichas for select to authenticated
     ambito = 'master'
     and (data->>'enMesa') = 'true'
     and (
-      mesa_id = 1
+      (
+        mesa_id = 1
+        and not exists (
+          select 1 from public.config c
+          where c.clave = 'mesas' and (c.valor->'miembros') ? (fichas.mesa_id::text)
+        )
+      )
       or exists (
         select 1 from public.config c
         where c.clave = 'mesas'
-          and (c.valor->'miembros'->(mesa_id::text)->>(auth.uid()::text)) is not null
+          and (c.valor->'miembros'->(fichas.mesa_id::text)->>(auth.uid()::text)) is not null
       )
     )
   );
