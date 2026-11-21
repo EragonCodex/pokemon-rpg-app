@@ -636,16 +636,17 @@ function dexPlayers(){ return Object.keys(S.players).filter(u=>!S.masters.includ
 function visState(id){ if(S.vis.has(id)) return 'all'; return dexPlayers().some(u=>S.visJ[u]&&S.visJ[u].has(id))?'some':'none'; }
 /* Vista de jugadores en Movimientos, Habilidades y Tienda: con el bloqueo activo, los jugadores solo ven lo que el Master desbloquea */
 const VSET={mov:new Set(),hab:new Set(),pre:new Set()};
-function setVistas(v){ for(const k of ['mov','hab','pre']){ const o=(v||{})[k]||{}; S.vistas[k]={on:!!o.on,ids:[...(o.ids||[])]}; VSET[k]=new Set(S.vistas[k].ids); } }
+function setVistas(v){ for(const k of ['mov','hab','pre']){ const o=(v||{})[k]||{}; S.vistas[k]={on:!!o.on,ids:[...(o.ids||[])],evento:!!o.evento}; VSET[k]=new Set(S.vistas[k].ids); } }
 const vistaOn=k=>!!(S.vistas[k]&&S.vistas[k].on);
-const veJug=(k,id)=>!vistaOn(k)||VSET[k].has(id);
+const vistaEv=k=>!!(S.vistas[k]&&S.vistas[k].evento);
+const veJug=(k,id)=>!vistaOn(k)||vistaEv(k)||VSET[k].has(id);
 const vistaVe=(k,id)=>isMaster()||veJug(k,id);
 function saveVistas(){ for(const k of ['mov','hab','pre']) S.vistas[k].ids=[...VSET[k]]; queueSave('config/vistas',structuredClone(S.vistas),500); renderSheet(); }
-function vistaBar(k,ids,nombre){ if(!isMaster()) return ''; const op=!!T.vopen[k], on=vistaOn(k); const vis=ids.filter(id=>VSET[k].has(id)).length;
+function vistaBar(k,ids,nombre){ if(!isMaster()) return ''; const op=!!T.vopen[k], on=vistaOn(k), ev=vistaEv(k); const vis=ids.filter(id=>ev||VSET[k].has(id)).length;
   let h=`<div class="row vistabar" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn sm ${op?'pri':''}" data-vopen="${k}" aria-expanded="${op}">Visibilidad</button>`;
-  if(op){ h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span><button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
+  if(op){ h+=on?`<span class="pill">${vis} de ${ids.length} visibles en este filtro</span>${k!=='pre'?`<button class="btn sm ${ev?'pri':''}" data-vista-evento="${k}" aria-pressed="${ev}">${ev?'Modo evento activo: todas visibles · Desactivar':'Activar modo evento (mostrar todas)'}</button><span class="note">El modo evento muestra todo sin tocar los bloqueos; al desactivarlo vuelven los de antes.</span>`:''}<button class="btn sm" data-vistabulk="${k}|1">Desbloquear lo filtrado</button><button class="btn sm" data-vistabulk="${k}|0">Bloquear lo filtrado</button><button class="btn sm" data-vistaall="${k}|1">Desbloquear todo</button><button class="btn sm" data-vistaall="${k}|0">Bloquear todo</button>`:`<span class="note">Sin bloqueo, los jugadores ven ${nombre} completos.</span>`; }
   return h+'</div>'; }
-const vistaBtn=(k,id)=>isMaster()&&T.vopen[k]&&vistaOn(k)?`<button class="lockbtn vbtn" data-vistaid="${k}|${esc(id)}" aria-pressed="${VSET[k].has(id)}" title="${VSET[k].has(id)?'Visible para los jugadores: clic para ocultar':'Oculto para los jugadores: clic para mostrar'}" aria-label="${VSET[k].has(id)?'Ocultar a los jugadores':'Mostrar a los jugadores'}">${VSET[k].has(id)?'👁':'🔒'}</button> `:'';
+const vistaBtn=(k,id)=>{ if(!(isMaster()&&T.vopen[k]&&vistaOn(k))) return ''; const v=vistaEv(k)||VSET[k].has(id); return `<button class="lockbtn vbtn" data-vistaid="${k}|${esc(id)}" aria-pressed="${v}" title="${v?'Visible para los jugadores: clic para ocultar':'Oculto para los jugadores: clic para mostrar'}" aria-label="${v?'Ocultar a los jugadores':'Mostrar a los jugadores'}">${v?'👁':'🔒'}</button> `; };
 const VLAST={mov:[],hab:[],pre:[]};
 function saveVis(){ const jug={}; for(const [u,set] of Object.entries(S.visJ)) if(set.size) jug[u]=[...set]; queueSave('pokedex/visibles',{ids:[...S.vis],jug,evento:!!S.evento},600); buildDexList(); renderSheet(); }
 
@@ -3277,6 +3278,7 @@ document.addEventListener('click',async e=>{
     if(T.vopen[k]&&k!=='dex'&&!vistaOn(k)){ S.vistas[k].on=true; VSET[k]=new Set(k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3])); saveVistas(); return; }
     renderSheet(); return; }
   const vs=e.target.closest('[data-vista]'); if(vs&&isMaster()){ const k=vs.dataset.vista; S.vistas[k].on=!S.vistas[k].on; saveVistas(); return; }
+  const ve=e.target.closest('[data-vista-evento]'); if(ve&&isMaster()){ const k=ve.dataset.vistaEvento; S.vistas[k].evento=!S.vistas[k].evento; saveVistas(); return; }
   const vb=e.target.closest('[data-vistabulk]'); if(vb&&isMaster()){ const [k,v]=vb.dataset.vistabulk.split('|'); for(const id of VLAST[k]) v==='1'?VSET[k].add(id):VSET[k].delete(id); saveVistas(); return; }
   const va=e.target.closest('[data-vistaall]'); if(va&&isMaster()){ const [k,v]=va.dataset.vistaall.split('|'); const all=k==='mov'?D.atk.map(a=>a[0]):k==='hab'?D.hab.map(h=>h[0]):(D.pre||[]).map(r=>r[3]); VSET[k]=v==='1'?new Set(all):new Set(); saveVistas(); return; }
   const pb=e.target.closest('[data-prebuy]'); if(pb){ const id=pb.dataset.prebuy; T.pbuy=T.pbuy===id?'':id; T.pbuyN=1; renderSheet(); return; }
