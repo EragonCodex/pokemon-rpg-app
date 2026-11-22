@@ -194,13 +194,13 @@ const OBJ_USO=new Map();
   u('Revivir','P',true,{revive:'1/2'}); u('Revivir Máximo','P',true,{revive:'max'});
   for(const [n,e] of [['Antídoto','Envenenado'],['Antiparalizador','Paralizado'],['Antihielo','Congelado'],['Antiquemar','Quemado'],['Despertar','Adormilado'],['Baya Zreza','Paralizado'],['Baya Atania','Adormilado'],['Baya Meloc','Envenenado'],['Baya Safre','Quemado'],['Baya Perasi','Congelado'],['Baya Caquic','Infestado']]) u(n,'P',true,{cura:e});
   u('Cura Total','P',true,{cura:'todos'}); u('Baya Ziuela','P',true,{cura:'todos'});
-  u('Polvo Energía','P',true,{ps:60,vinc:-1}); u('Raíz Energía','P',true,{ps:120,vinc:-1}); u('Polvo Curación','P',true,{cura:'todos',vinc:-1}); u('Hierba Revivir','P',true,{revive:'max',vinc:-1});
+  u('Polvo Energía','P',true,{ps:60,expVinc:-8}); u('Raíz Energía','P',true,{ps:120,expVinc:-8}); u('Polvo Curación','P',true,{cura:'todos',expVinc:-8}); u('Hierba Revivir','P',true,{revive:'max',expVinc:-8});
   u('Éter','P',true,{rep0:1}); u('Baya Zanama','P',true,{rep0:1}); u('Éter Máximo','P',true,{rep0:1,repLibre:1}); u('Elixir','P',true,{sinRep:3}); u('Elixir Máximo','P',true,{sinRep:'combate'});
   u('PP Más','P',false,{movRep:'menos'}); u('PP Máximos','P',false,{movRep:'sin'});
   for(const [n,a] of [['Ataque X','FUE'],['Defensa X','VIT'],['Especial X','ENE'],['Protección Especial','SAB'],['Velocidad X','DES']]) u(n,'P',true,{attr:{[a]:2}});
   u('Precisión X','P',true,{prec:2}); u('Directo','P',true,{ic:2});
   for(const [n,a] of [['Calcio','ENE'],['Carburante','DES'],['Hierro','VIT'],['Más PS','CAR'],['Proteínas','FUE'],['Zinc','SAB']]) u(n,'P',false,{attr:{[a]:1}});
-  for(const [n,a] of [['Grana','CAR'],['Algama','FUE'],['Ispero','VIT'],['Meluce','ENE'],['Uvav','SAB'],['Tamate','DES']]) u('Baya '+n,'P',false,{vinc:1,attr:{[a]:-1}});
+  for(const [n,a] of [['Grana','CAR'],['Algama','FUE'],['Ispero','VIT'],['Meluce','ENE'],['Uvav','SAB'],['Tamate','DES']]) u('Baya '+n,'P',false,{expVinc:8,attr:{[a]:-1}});
   u('Vendas limpias','E',true,{ps:4}); u('Apósito adhesivo','E',true,{ps:1}); u('Desinfectante','E',true,{cura:'todos'});
   for(const n of ['Cápsula habilidad','Chapa plateada','Golosina entrenamiento (unidad)']) u(n,'P',false,{manual:1});
   for(const n of ['Repelente','Superrepelente','Repelente Máximo','Cuerda Huida']) u(n,'*',false,{manual:1});
@@ -222,7 +222,7 @@ function aplicarObjeto(spec,f,mv){ const fx=spec.fx, out=[], c=calc(f), ps=c.ps,
   if(fx.attr) for(const [k,v] of Object.entries(fx.attr)){ const d=bumpAttr(f,k,v); out.push(`${d?sg(d):'±0'} ${k}`); }
   if(fx.prec){ const p0=num(f.prec), p1=clamp(p0+fx.prec,-6,6); f.prec=p1; out.push(`Precisión ${sg((p1-p0)*5)} %`); }
   if(fx.ic){ f.ic=clamp(num(f.ic)+fx.ic,0,5); out.push(`+${fx.ic} al Índice de Crítico`); }
-  if(fx.vinc){ setVinc(f,syncVinc(f)+fx.vinc); out.push(`Vínculo ${sg(fx.vinc)} (queda en ${f.vinculo})`); }
+  if(fx.expVinc){ syncVinc(f); f.expVinc=num(f.expVinc)+fx.expVinc; syncVinc(f); out.push(`Exp. Vínculo ${sg(fx.expVinc)} (queda en ${f.expVinc}; Vínculo ${f.vinculo})`); }
   if(fx.manual) out.push('aplica el efecto a mano');
   return `${nm}: ${out.join(', ')}.`; }
 /* objetivos posibles de un objeto: el Entrenador y su equipo (no los de la caja) */
@@ -778,7 +778,6 @@ const vinOf=e=>{ e=Math.round(num(e)); if(!e) return 0; const v=Math.floor(Math.
 /* Exp. Vínculo que da un Vínculo t (inversa de vinOf) */
 const expDeVinc=t=>{ t=clamp(Math.round(num(t)),-10,10); return t===0?0:t>0?2**t:-(2**-t); };
 function syncVinc(f){ if(f.expVinc===undefined) f.expVinc=expDeVinc(num(f.vinculo)); f.vinculo=vinOf(f.expVinc); return f.vinculo; }
-function setVinc(f,t){ f.expVinc=expDeVinc(t); f.vinculo=vinOf(f.expVinc); }
 function newPokemon(extra={}){ return Object.assign({tipo:'P',vinculo:0,expVinc:0,exp:0,genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
@@ -1517,8 +1516,7 @@ ${tbl(['Base','Dado','Mín–Máx'],filas)}
 <p><b>Daño residual:</b> el daño o la curación que se aplica al final de cada ronda por un estado o un campo (Envenenado, Quemado, Drenado…). Su dado es el de la tabla anterior, dos pasos por encima del Rango:</p>
 ${tbl(['Rango','Residual'],RANGOS.map(r=>[r,dice(ri(r)+2)]))}
 <p>Cuando un estado o campo dice «su daño residual sube un rango», el residual se calcula con el Rango siguiente (Starter pasa de 1d6 a 1d8).</p>`; }});
-const GLOS_ORD=[['El Entrenador y los Pokémon',['naturalezas','vinculo','rasgos','experiencia']],['Combate',['atacar','evasion','colision','comandar','estados','campo','movesp']],['Concursos',['concurso-pres','concurso-enf']],['Viajes',['captura','monturas']],['Apéndices',['tipos']]];
-GLOS_ORD.push(['Apéndices',['tiradas-dificultad','clases-dado-residuales']]);
+const GLOS_ORD=[['El Entrenador y los Pokémon',['naturalezas','vinculo','rasgos','experiencia']],['Combate',['atacar','evasion','colision','comandar','estados','campo','movesp']],['Concursos',['concurso-pres','concurso-enf']],['Viajes',['captura','monturas']],['Apéndices',['tipos','tiradas-dificultad','clases-dado-residuales']]];
 { const pos=new Map(GLOS_ORD.flatMap(([,ids])=>ids).map((id,i)=>[id,i])); GLOS.sort((a,b)=>(pos.has(a.id)?pos.get(a.id):99)-(pos.has(b.id)?pos.get(b.id):99)||a.t.localeCompare(b.t,'es')); }
 function glosIndiceHTML(){ const usados=new Set(GLOS_ORD.flatMap(([,ids])=>ids)); const otros=GLOS.filter(g=>!usados.has(g.id)).map(g=>g.id);
   return [...GLOS_ORD,...(otros.length?[['Otros',otros]]:[])].map(([n,ids])=>{ const gs=ids.map(id=>GLOS.find(g=>g.id===id)).filter(Boolean); if(!gs.length) return '';
