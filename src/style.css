@@ -478,3 +478,7 @@ details.asig-fold details.asig-fold{margin:6px 0 6px 4px;background:color-mix(in
 .asig-in{display:grid;gap:6px;padding:0 0 10px}
 .asig-fold .pk-sub{display:grid;gap:6px}
 .tags .chip{font-size:10px;margin-left:2px;vertical-align:middle}
+
+/* Vínculo: solo la etiqueta (máximo 2 líneas), con la misma altura que un cuadro de valor */
+.vinrow.vinonly{display:block}
+.vinrow.vinonly .pill.vin{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;line-height:1.2;height:38px;box-sizing:border-box;padding:4px 10px;align-items:center}

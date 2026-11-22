@@ -222,7 +222,7 @@ function aplicarObjeto(spec,f,mv){ const fx=spec.fx, out=[], c=calc(f), ps=c.ps,
   if(fx.attr) for(const [k,v] of Object.entries(fx.attr)){ const d=bumpAttr(f,k,v); out.push(`${d?sg(d):'±0'} ${k}`); }
   if(fx.prec){ const p0=num(f.prec), p1=clamp(p0+fx.prec,-6,6); f.prec=p1; out.push(`Precisión ${sg((p1-p0)*5)} %`); }
   if(fx.ic){ f.ic=clamp(num(f.ic)+fx.ic,0,5); out.push(`+${fx.ic} al Índice de Crítico`); }
-  if(fx.vinc){ f.vinculo=clamp(num(f.vinculo)+fx.vinc,-10,10); out.push(`Vínculo ${sg(fx.vinc)} (queda en ${f.vinculo})`); }
+  if(fx.vinc){ setVinc(f,syncVinc(f)+fx.vinc); out.push(`Vínculo ${sg(fx.vinc)} (queda en ${f.vinculo})`); }
   if(fx.manual) out.push('aplica el efecto a mano');
   return `${nm}: ${out.join(', ')}.`; }
 /* objetivos posibles de un objeto: el Entrenador y su equipo (no los de la caja) */
@@ -244,7 +244,7 @@ function usoHTML(i,it,span){ const spec=usoDe(it.obj); const objs=usoObjetivos(s
     <span class="note">${esc(it.efecto||'')}</span></div></td></tr>`; }
 const HFX=new Map(); for(const r of (D.habFx||[])) if(r[8]==='Sí'||r[8]==='Botón'){ if(!HFX.has(r[0])) HFX.set(r[0],[]); HFX.get(r[0]).push(r); }
 const hval=v=>{ const n=Number(String(v??'').replace(/−/g,'-').replace(',','.').replace(/^×/,'').replace(/\s*%$/,'')); return Number.isFinite(n)?n:0; };
-const habOf=f=>f&&f.tipo==='P'?(f.estM==='Mareado'?'Tumbos':(f.habilidad||'')):''; /* Mareado reemplaza la Habilidad por Tumbos mientras dure */
+const habOf=f=>f?(f.tipo==='P'&&f.estM==='Mareado'?'Tumbos':(f.habilidad||'')):''; /* Mareado reemplaza la Habilidad por Tumbos mientras dure */
 const habRowsOf=(f,acts)=>[...(HFX.get(habOf(f))||[]),...objRows(f)].filter(r=>!acts||acts.includes(r[2])); /* + el objeto equipado (OBJ_EQ) */
 const PASIVA=['Siempre','Mientras se cumpla'];
 function habCondOk(c,f,key,x){ return !c||String(c).split('+').every(p=>habCond1(p,f,key,x||{})); }
@@ -442,7 +442,7 @@ function crearCond(c,key,lines,why,rk){
   lines.push(`${why}: ${cls==='clima'?'el clima pasa a':cls==='campo'?'crea el campo':'crea el entorno'} ${c.n}${c.r?` (${c.r} rondas)`:' (mientras siga en combate)'}.`); }
 const habNombre=h=>{ const r=D.hab.find(z=>z[0]===h); return r?r[0]:h; };
 /* Botón de Habilidad en Atacar: activa su efecto cuando el jugador lo decide (al entrar, en la ronda 1 o cuando corresponda) */
-function activarHab(){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||x.f.tipo!=='P') return; const h=x.f.habilidad; const ht=habMap.get(h)||'';
+function activarHab(){ const x=combatant(CBU.atk); if(!x||!canEditRef(x)||!x.f.habilidad) return; const h=x.f.habilidad; const ht=habMap.get(h)||'';
   const lines=[]; const nc=/^Cuando recibe/.test(ht)?null:condDeTexto(ht);
   if(x.f.estM==='Mareado') lines.push(`${h} está reemplazada por Tumbos mientras siga Mareado.`);
   else { if(nc) crearCond(nc,x.key,lines,`${charName(x.f)} (${h})`,x.f.rango);
@@ -773,7 +773,13 @@ const VIN_FRASE=['Te odio. Si puedo te mato','Te odio, Te dañaré y escaparé',
 const VIN_TRAMOS=[[-10,-6,'Hostil','dn','No obedece. El Master lo maneja según la escala (escapar o dañar).'],[-5,-4,'Rebelde','dn','Obedece. Si queda suelto o sin vigilancia, escapa. −4 a las tiradas de Comandar.'],[-3,-1,'Distante','wa','Obedece. −2 a las tiradas de Comandar.'],[0,4,'Neutral','','Sin cambios.'],[5,8,'Amistad','up','+2 a las tiradas de Comandar.'],[9,10,'Lealtad','up','+4 a Comandar. 9: una vez por combate, usa su Reacción para recibir un ataque dirigido al Entrenador. 10: además, una vez por combate resiste con 1 PS un golpe que lo debilitaría.']];
 function vinTramo(v){ const t=VIN_TRAMOS.find(t=>v>=t[0]&&v<=t[1])||VIN_TRAMOS[3]; return {t:t[2],c:t[3],fx:t[4]}; }
 function newTrainer(extra={}){ const tal={}; ALL_TAL.forEach(t=>tal[t]=''); return Object.assign({tipo:'E',genero:'M',nombre:'Nuevo entrenador',rango:'Starter',attr:blankAttr(),tal,tipos:['',''],habilidad:'',estF:'',estM:'',profesion:'',edad:'',dinero:0,exp:0,pd:3,defectos:['','',''],meritos:['','','','','',''],dano:0,velMod:'Normal',iniTal:'',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],notas:'',img:'',creado:new Date().toISOString()},extra); }
-function newPokemon(extra={}){ return Object.assign({tipo:'P',vinculo:0,exp:0,genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
+/* Vínculo = signo × parte entera del log base 2 de |Exp. Vínculo| (−16 → −4), acotado a −10…10 */
+const vinOf=e=>{ e=Math.round(num(e)); if(!e) return 0; const v=Math.floor(Math.log2(Math.abs(e))); return clamp(e<0?-v:v,-10,10); };
+/* Exp. Vínculo que da un Vínculo t (inversa de vinOf) */
+const expDeVinc=t=>{ t=clamp(Math.round(num(t)),-10,10); return t===0?0:t>0?2**t:-(2**-t); };
+function syncVinc(f){ if(f.expVinc===undefined) f.expVinc=expDeVinc(num(f.vinculo)); f.vinculo=vinOf(f.expVinc); return f.vinculo; }
+function setVinc(f,t){ f.expVinc=expDeVinc(t); f.vinculo=vinOf(f.expVinc); }
+function newPokemon(extra={}){ return Object.assign({tipo:'P',vinculo:0,expVinc:0,exp:0,genero:'M',nombre:'',especie:'',rango:'Starter',nat:'',attr:blankAttr(),habilidad:'',estF:'',estM:'',dano:0,velMod:'Normal',cEsq:0,cTem:0,bEv:0,ic:0,prec:0,moves:['','','','','',''],entrenador:'',lugar:'',objeto:'',notas:'',img:'',creado:new Date().toISOString()},extra); }
 
 async function createDoc(src,f){
   if(!S.canWrite) return;
@@ -983,8 +989,9 @@ function renderSheet(){
     if(f.entrenador) h+=field('Lugar','lugar',`<option value="">Equipo</option><option value="caja"${f.lugar==='caja'?' selected':''}>Caja</option>`,'sel');
     if(S.open.src==='master'){ h+=field('Categoría','cat',`<option value="npc">De NPC</option><option value="salvaje"${f.cat==='salvaje'?' selected':''}>Salvaje</option>`,'sel'); if(!f.entrenador) h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`; }
     h+=`<div class="fstack">${f.entrenador? `<label class="f">Objeto<span class="fx-box" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" data-c="eqItem"></span></label>` : field('Objeto','objeto',f.objeto||'','txt')}<div class="note tmov" data-c="tmov"></div></div>`;
-    { const vd=S.ro||lockJug(f)?'disabled':''; const vn=clamp(num(f.vinculo),-10,10), vt=vinTramo(vn);
-      h+=`<label class="f">Vínculo<span class="vinrow"><input type="number" min="-10" max="10" step="1" data-f="vinculo" value="${vn}" ${vd} aria-label="Vínculo con su Entrenador, de −10 a 10" title="${esc(VIN_FRASE[vn+10])}"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${esc(VIN_FRASE[vn+10])}</span></span></label>`;
+    { const vd=S.ro?'disabled':''; const vn=syncVinc(f), vt=vinTramo(vn);
+      h+=`<label class="f">Vínculo<span class="vinrow vinonly"><span class="pill vin ${vt.c}" title="${esc(vt.fx)}">${esc(VIN_FRASE[vn+10])}</span></span></label>`;
+      h+=`<label class="f">Exp. Vínculo<input type="number" step="1" data-f="expVinc" value="${num(f.expVinc)}" ${vd} title="El Vínculo es el log base 2 de esta Exp. (−16 → −4)" aria-label="Exp. Vínculo"></label>`;
       h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${vd} title="Bolsa propia del Pokémon. Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia del Pokémon (admite +15 o −5)"></label>`; }
   } else {
     h+=field('Rango','rango',opts(RANGOS,f.rango),'sel');
@@ -994,7 +1001,7 @@ function renderSheet(){
     h+=field('Profesión','profesion',f.profesion||'','txt');
     h+=field('Edad','edad',f.edad||'','txt');
     h+=`<label class="f">Dinero (₽)<span class="money"><input type="text" inputmode="text" data-f="dinero" value="${num(f.dinero)}" ${S.ro?'disabled':''} title="Escribe un número, o +500 / −200 para sumar o restar" aria-label="Dinero en Pokepesos (admite +500 o −200)"><i aria-hidden="true">₽</i></span></label>`;
-    h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro||lockJug(f)?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
+    h+=`<label class="f">Experiencia<input type="text" inputmode="text" data-f="exp" value="${num(f.exp)}" ${S.ro?'disabled':''} title="Escribe un número, o +15 / −5 para sumar o restar" aria-label="Experiencia (admite +15 o −5)"></label>`;
     if(S.open.src==='master') h+=`<label class="f">Carpeta<input data-f="carpeta" list="dl-fold" value="${esc(f.carpeta||'')}" ${S.ro?'disabled':''}></label>`;
   }
   h+=`</div><div class="note" data-c="sub" style="margin-top:8px"></div></div></div></div>`;
@@ -1200,7 +1207,7 @@ function onField(e){
     if(v&&(!r||r[1]!==want)){ el.setCustomValidity(r?(want==='D'?'Ese es un Mérito: va en Méritos':'Ese es un Defecto: va en Defectos'):'No está en la lista de '+(want==='D'?'Defectos':'Méritos')); el.reportValidity(); return; }
     el.setCustomValidity(''); const k=p.split('.')[0]; const arr=[...(f[k]||[])]; while(arr.length<(k==='defectos'?N_DEF:N_MER)) arr.push(''); arr[num(p.split('.')[1])]=v; f[k]=arr; if(f.rasgoOp&&f.rasgoOp[k]) f.rasgoOp[k][num(p.split('.')[1])]=''; full=true; }
   else if(p.startsWith('rasgoOp.')){ setPath(f,p,v.trim()); full=true; }
-  else if(p==='vinculo'){ f.vinculo=clamp(Math.round(num(v)),-10,10); full=true; }
+  else if(p==='expVinc'){ f.expVinc=Math.round(num(v)); syncVinc(f); full=true; }
   else if(p==='vis'){ if(S.open.src==='bit'){ if(f.autor&&f.autor!==S.uid) return; if(!f.autor) f.autor=S.uid; } else if(S.open.uid!==S.uid) return; f.vis=v; full=true; }
   else if(p==='estF'||p==='estM'){ setPath(f,p,v); setEstFx(f,p==='estF'?'F':'M',v?{r:f.rango||'Starter'}:null); if(v==='Aturdido'){ const m=aturdir(refKey(S.open),f); if(m) showBanner(`${charName(f)}: ${m}.`); } full=true; }
   else setPath(f,p,v);
@@ -1525,7 +1532,7 @@ const LOCK_SVG=on=>on?'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidd
 const isLocked=f=>!!(f&&f.bloq);
 const LOCK_RX=/^(habilidad|attr\.[A-Z]{3}\.r|tal\.|meritos\.|defectos\.|rasgoOp\.)/;
 /* Mochila, Vínculo y Experiencia: con la ficha fijada se bloquean solo para jugadores, nunca para los Masters */
-const LOCK_JUG_RX=/^(vinculo|exp|mochila\.\d+\.(obj|peso|precio|efecto))$/;
+const LOCK_JUG_RX=/^(mochila\.\d+\.(obj|peso|precio|efecto))$/;
 const lockJug=f=>isLocked(f)&&!isMaster();
 function lockBtn(x){ const on=isLocked(x.f); return `<button class="lockbtn${on?' on':''}" data-lock="${esc(refKey(x))}" aria-pressed="${on}" title="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}" aria-label="${on?'Desbloquear':'Fijar'} la ficha de ${esc(charName(x.f))}">${LOCK_SVG(on)}</button>`; }
 function toolBloq(){
@@ -1941,7 +1948,7 @@ function toolGen(){
 function toolDados(){
   return `<div class="card"><h2>Dados</h2><div class="row">${['1d100','1d20','1d4','1d6','1d8','1d10','2d6'].map(x=>`<button class="btn" data-dice="${x}">${x}</button>`).join('')}</div>
   <div class="row" style="margin-top:10px"><label class="f" style="flex:1">Expresión<input id="dexpr" placeholder="3d6+2" value=""></label><button class="btn pri" id="droll" style="align-self:end">Tirar</button>${isMaster()?'<button class="btn secret" id="dsec" style="align-self:end">Tirada Secreta</button>':''}</div>
-  <div class="row dmg-row" style="margin-top:10px"><label class="f">Daño (1–24)<input class="dmg-box" type="number" id="ddmg" min="1" max="24" value="6"></label><label class="f">Resultado<span id="ddmgout" class="pill dmg-box">${dice(6)}</span></label><div class="row dmg-acts"><button class="btn" id="ddmgroll">Tirar ese dado</button>${isMaster()?'<button class="btn secret" id="ddmgsec">Tirada Secreta</button>':''}</div></div>
+  <div class="row dmg-row" style="margin-top:10px"><label class="f">Ponderación<input class="dmg-box" type="number" id="dpond" step="any" aria-label="Ponderación"></label><label class="f">Base (1–24)<input class="dmg-box" type="number" id="ddmg" min="1" max="24"></label><label class="f">Clase de Dado<span id="ddmgout" class="pill dmg-box">—</span></label><div class="row dmg-acts"><button class="btn" id="ddmgroll">Tirar ese dado</button>${isMaster()?'<button class="btn secret" id="ddmgsec">Tirada Secreta</button>':''}</div></div>
   <div class="card"><h2>Historial de la mesa</h2>${histHTML(40)}</div>`;
 }
 function rollExpr(s){
@@ -1986,8 +1993,8 @@ function bindTool(){
   on('droll','click',()=>{const v=$('#dexpr').value; const r=rollExpr(v); if(!r){ $('#dexpr').setCustomValidity('Usa el formato 2d6+3'); $('#dexpr').reportValidity(); return;} logRoll(quien(),r.txt,r.tot);});
   on('dsec','click',()=>{const v=$('#dexpr').value; const r=rollExpr(v); if(!r){ $('#dexpr').setCustomValidity('Usa el formato 2d6+3'); $('#dexpr').reportValidity(); return;} logRoll(quien(),r.txt,r.tot,true);});
   document.querySelectorAll('[data-asig-kind]').forEach(b=>b.addEventListener('click',()=>openAsig(b.dataset.asigKind,b.dataset.asigId)));
-  on('ddmg','input',e=>{$('#ddmgout').textContent=dice(clamp(num(e.target.value),1,24));});
-  const tirarDado=sec=>{const n=clamp(num($('#ddmg').value),1,24); const r=rollExpr(dice(n)); logRoll(quien(),'Daño '+n+' → '+r.txt,r.tot,sec);};
+  on('ddmg','input',e=>{$('#ddmgout').textContent=e.target.value===''?'—':dice(clamp(num(e.target.value),1,24));});
+  const tirarDado=sec=>{ const el=$('#ddmg'); if(el.value===''){ el.setCustomValidity('Ingresa la Base (1–24)'); el.reportValidity(); return; } el.setCustomValidity(''); const n=clamp(num(el.value),1,24); const r=rollExpr(dice(n)); const pv=$('#dpond').value; const tot=pv===''?r.tot:r.tot*num(pv); logRoll(quien(),'Base '+n+(pv===''?'':' × '+num(pv))+' → '+r.txt,tot,sec); };
   on('ddmgroll','click',()=>tirarDado(false)); on('ddmgsec','click',()=>tirarDado(true));
 }
 
@@ -2048,7 +2055,7 @@ function toggleGlove(k){
   else { parts.push(k); const c=combatant(k); if(c&&c.src==='master') snaps[k]=snapOf(c.f); }
   const entra=!CB.parts.includes(k);
   if(isMaster()) cbWrite({parts,snaps},true); else cbWrite({parts});
-  if(entra){ const c=combatant(k); const h=c&&c.f.tipo==='P'?c.f.habilidad:'';
+  if(entra){ const c=combatant(k); const h=c?c.f.habilidad:'';
     if(/^(Aclimatacion|Esclusadeaire|Prediccion)$/.test(h)) prediccion(); }
   else { for(const cls of ['clima','campo','entorno']){ const c=(CB.cond||{})[cls]; if(c&&c.by===k&&c.r==null){ setCond(cls,''); logRoll('Condición',`${c.n} termina: su causante salió del combate.`,null); } }
     prediccion(); }
@@ -2086,10 +2093,12 @@ function targetMode(m){ const b=m[9], dist=String(m[10]);
   if(['Area','Oponentes','Equipo','Campo','Aliados'].includes(b)) return 'multi';
   return 'single'; }
 const hasCat=(m,c)=>String(m[13]||'').split(/[;,]\s*/).map(x=>x.trim().toLowerCase()).includes(c.toLowerCase());
+/* Movimientos de tramo: Bis (2–3 usos), Recurrente (4–5), Multiple (más de 5). La primera vez no gasta la Acción */
+const recTier=m=>hasCat(m,'Bis')||hasCat(m,'Recurrente')||hasCat(m,'Multiple');
 function repOf(f,mv){ return f.rep&&f.rep.mv===mv?num(f.rep.n):0; }
 function attackInfo(x,mv){
   const f=x.f, c=calc(f), mi=moveInfo(f,mv,c); if(!mi) return null;
-  const n=repOf(f,mv), rec=hasCat(mi.m,'Recurrente')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
+  const n=repOf(f,mv), rec=hasCat(mi.m,'Multiple')||mv==='M0000'; /* Forcejeo no se penaliza por repetición */
   const sinRep=hkOf(c.em,/^sinRepeticion$/), menos=hkOf(c.em,/^repMenos$/).reduce((a,h)=>a+(hval(h.v)||1),0); /* Encadenado: no penaliza; Vistalince: penaliza como un movimiento de 1 Rango menos (mínimo Starter) */
   const mr=(f.movRep||{})[mv], libre=(f.repLibre&&n>0)||(f.sinRepHasta!=null&&num(f.sinRepHasta)>=num(CB.ronda)); /* Éter Máximo, Elixir y PP Más/Máximos */
   const RK=Object.keys(PEN), nivPen=RK[Math.max(0,RK.indexOf(mi.m[5])-menos-(mr==='menos'?1:0))]||mi.m[5];
@@ -2188,6 +2197,13 @@ function giveEstado(f,name,ctx,force){
   return (prev&&prev!==name?`${name} (reemplaza a ${prev})`:name)+(at?` (${at})`:'');
 }
 /* Aplica los efectos de un movimiento a una ficha. role: 'target' o 'self' */
+/* Descanso: restaura los estados alterados, aplica Adormilado por 2 rondas (sin Salvación) y toma prestada la Acción de la ronda siguiente */
+function descansoFx(f,ctx){ const out=[]; const l=[f.estF,f.estM].filter(Boolean);
+  if(l.length){ f.estF=''; f.estM=''; f.estFx={}; out.push(`se libera de ${l.join(' y ')}`); }
+  const r=giveEstado(f,'Adormilado',ctx,true);
+  if(f.estM==='Adormilado'){ f.estFx={...(f.estFx||{}),M:{...((f.estFx||{}).M||{}),libre:1}}; out.push('Adormilado (2 rondas, sin Salvación)'); } else out.push(r);
+  if(ctx.by&&inCombat(ctx.by)){ const t=TN(); t.prest=[...new Set([...t.prest,ctx.by])]; t.debt[ctx.by]=num(t.debt[ctx.by])+1; cbWrite({tn:t}); out.push('su Acción de la ronda siguiente queda prestada'); }
+  return out; }
 function applyOps(f,ops,role,ctx){
   const notes=[];
   for(const op of ops){
@@ -2306,6 +2322,7 @@ async function endRound(){
         if(est==='Drenado'&&fx.by&&fx.by!==x.key&&inCombat(fx.by)) heals.push({key:fx.by,val:hierba?rl.t*2:rl.t,from:name+(hierba?' (doble por Campo de Hierba)':'')});
         if(poison) fx.pr=num(fx.pr)+1; }
       if(primera){ lines.push({k:'',t:`${name}: primera ronda con ${est}, todavía no tira Salvación.`}); continue; }
+      if(num(fx.libre)>0){ fx.libre=num(fx.libre)-1; f.estFx={...(f.estFx||{}),[cls]:fx}; changed=true; lines.push({k:'',t:`${name}: ${est} no tira Salvación esta ronda (Descanso).`}); continue; }
       if(em.skipSalv.includes(est)&&!fx.sk){ fx.sk=1; f.estFx={...(f.estFx||{}),[cls]:fx}; changed=true; lines.push({k:'',t:`${name}: ${est} evita la Salvación esta ronda (${em.cond.clima==='Llovizna'&&est==='Empapado'?'Llovizna':em.cond.campo}).`}); continue; }
       const r=d(100);
       if(r<=th){ f[field]=''; setEstFx(f,cls,null); lines.push({k:'ok',t:`${name}: Salvación de ${est} d100 [${r}] ≤ ${th} → se libera.`}); }
@@ -2339,7 +2356,7 @@ function cbAttackHTML(){
   if(!mine.some(x=>x.key===CBU.atk)){ CBU.atk=mine[0].key; CBU.mv=''; CBU.picking=false; }
   const x=combatant(CBU.atk); const mvs=(x.f.moves||[]).filter(Boolean);
   if(x.key!==CBU.cmdFor){ CBU.cmdFor=x.key; CBU.cmdOpen=false; }
-  const hb=x.f.tipo==='P'&&x.f.habilidad?x.f.habilidad:'';
+  const hb=x.f.habilidad||'';
   h+=`<div class="grid g3"><label class="f">Personaje<select data-cbf="atk">${mine.map(y=>`<option value="${esc(y.key)}"${y.key===CBU.atk?' selected':''}>${esc(charName(y.f))} · ${esc(ownerLabel(y))}</option>`).join('')}</select></label>${hb?`<div class="f habact"><span>Habilidad</span><button class="btn" data-cb="hab" title="${esc(habMap.get(hb)||'')}">✦ ${esc(habNombre(hb))}</button></div>`:''}</div>`;
   if(hb&&CBU.habMsg&&CBU.habMsg.k===x.key) h+=`<div class="steps-res" style="margin-top:8px">${CBU.habMsg.lines.map(t=>`<div class="ok">${esc(t)}</div>`).join('')}</div>`;
   if(x.f.tipo==='E'&&!mvs.includes('M0000')) mvs.unshift('M0000'); /* Forcejeo: movimiento estándar de todo Entrenador */
@@ -2505,10 +2522,12 @@ function doAttack(){
       cbWrite({voto:ally?null:{ronda:num(CB.ronda),key:x.key,mv:mvId,name:charName(x.f)}}); }
     if(postCond) steps.push({k:'ok',t:'',cl});
     if(mode==='none'||!tkeys.length){
+      if(mvId==='M0622'&&nf.estM==='Adormilado'){ steps.push({k:'wa',t:`${charName(x.f)} ya está Adormilado: Descanso falla.`}); selfNow=true; }
+      else {
       const dr=rollDamage(ai,x,crit,bonus); if(dr.val!==null&&dr.heal) res.push({key:x.key,name:charName(x.f),...dr,selfMove:true});
-      const notes=applyOps(nf,parseFx(m),'all',{re,rank:m[5],by:x.key});
+      const notes=mvId==='M0622'?descansoFx(nf,{rank:m[5],by:x.key}):applyOps(nf,parseFx(m),'all',{re,rank:m[5],by:x.key});
       if(notes.length) steps.push({k:'ok',t:`Efectos en ${charName(x.f)}: ${notes.join(' · ')}`});
-      selfNow=true; }
+      selfNow=true; } }
     else for(const k of tkeys){ const t=combatant(k); if(!t) continue;
       if(!siempre&&r>pT(k)){ res.push({key:k,name:charName(t.f),val:null,det:`Falla contra este Blanco: d100 [${r}] > ${pT(k)}%`,immune:true}); continue; }
       const oc=t.f.oculto; let ocx2=false;
@@ -2532,7 +2551,7 @@ function doAttack(){
   const last={ts,by:charName(x.f),byKey:x.key,mv:m[1],mvId,tipo:ai.mi.tipo,cls:m[3],rank:m[5],d100:r,prec:ai.prec,hit,crit,re,go,steps,res,selfDone:selfNow};
   CBU.picking=false; CBU.targets=[]; CBU.colFor='';
   if(dmgMoves(x.f).includes(mvId)){ CL.am=mvId; CL.ca=crit; }
-  cbWrite({last}); markActed(x.key);
+  cbWrite({last}); if(!(recTier(m)&&ai.n===0)) markActed(x.key);
   if(recarga){ const t=TN(); t.debt[x.key]=num(t.debt[x.key])+1; cbWrite({tn:t}); }
   logRoll(charName(x.f),`${m[1]}: d100 [${r}] vs ${ai.prec}% · ${!hit?'falla':!go?'pierde la acción':crit?'crítico':'conecta'}${res.length?' · '+res.map(z=>`${z.name} ${z.heal?'+':''}${z.val??'—'}`).join(' · '):''}`,r);
   renderSheet();
@@ -2748,7 +2767,7 @@ function cbClick(b){
       if(ev.ok){ fx.ev=true; fx.done=true; }
       else { connectHit(L,z,'no logró evadir').forEach(o=>log.push({k:'',t:o})); fx.done=true; } }
     else if(act==='apply'){ const out=connectHit(L,z,''); log.push({k:'ok',t:(z.heal?'Curación aplicada':'Recibido')+(out.length?': '+out.join(' · '):'')}); fx.done=true; }
-    else if(act==='colmv'){ const pa=accionColision(z.key); if(pa) log.push({k:'wa',t:pa}); log.push(...doCollide(L,z,b.dataset.mv)); fx.done=true; CBU.colFor=''; }
+    else if(act==='colmv'){ const mvC=D.atk.find(a=>a[0]===b.dataset.mv); const sinAcc=!!mvC&&(hasCat(mvC,'Recurrente')||hasCat(mvC,'Multiple')); const pa=sinAcc?'':accionColision(z.key); if(pa) log.push({k:'wa',t:pa}); log.push(...doCollide(L,z,b.dataset.mv)); fx.done=true; CBU.colFor=''; }
     fx.log=log; cbWrite({lastFx:{[fk]:fx}}); renderSheet(); }
 }
 function cbChange(el){
