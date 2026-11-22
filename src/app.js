@@ -1504,7 +1504,21 @@ ${tbl(['Vínculo','Lo que siente'],VIN_FRASE.map((t,i)=>[String(i-10).replace('-
 /* el índice del Glosario va en orden alfabético */
 GLOS.push(...cnGlos());
 /* Índice en carpetas, en el orden del Reglamento (Parte II, Combate, Captura…); lo que no esté en la lista cae en «Otros» */
+/* Apéndices del glosario: tiradas d20 y clases de dado / daño residual */
+GLOS.push({id:'tiradas-dificultad',t:'Tiradas de Dificultad (d20)',h:()=>`<p>Cuando el éxito de una decisión es incierto, se tira <b>1d20 + Atributo + Talento</b> que aplique, y se compara con una dificultad. El éxito es un resultado <b>igual o mayor</b> que la dificultad.</p>
+${tbl(['Dificultad','Valor'],[['Natural','5'],['Fácil','9'],['Sencilla','13'],['Media','17'],['Desafiante','21'],['Difícil','27'],['Imposible','33']])}
+<p><b>Críticos:</b> un <b>1 natural siempre falla</b> y un <b>20 natural siempre tiene éxito</b>, sin importar el total. Es una regla de todo el sistema.</p>
+<p>Las Órdenes y Usar Objeto se tiran contra la dificultad del rival de mayor Rango: Starter 9 · Beginner 13 · Amateur 17 · Elite 21 · Master 27 · Legend 33.</p>
+<p class="note">En las tiradas d20 no hay crítico de daño: el Índice de Crítico (IC) y el d100 pertenecen al ataque; ver Golpe Crítico en Combate.</p>`});
+GLOS.push({id:'clases-dado-residuales',t:'Clases de Dados y Daños Residuales',h:()=>{
+  const filas=Array.from({length:24},(_,i)=>{ const n=i+1, dd=dice(n), mm=/^(\d+)d(\d+)$/.exec(dd)||[]; return [String(n), dd, `${Number(mm[1])}–${Number(mm[1])*Number(mm[2])}`]; });
+  return `<p><b>Clase de Dado (CD):</b> el valor Base de un movimiento (de 1 a 24) se convierte en el dado de daño de esta tabla. Sobre ese dado se aplican el STAB, la efectividad de tipos y el Atributo del movimiento; la defensa del objetivo lo reduce.</p>
+${tbl(['Base','Dado','Mín–Máx'],filas)}
+<p><b>Daño residual:</b> el daño o la curación que se aplica al final de cada ronda por un estado o un campo (Envenenado, Quemado, Drenado…). Su dado es el de la tabla anterior, dos pasos por encima del Rango:</p>
+${tbl(['Rango','Residual'],RANGOS.map(r=>[r,dice(ri(r)+2)]))}
+<p>Cuando un estado o campo dice «su daño residual sube un rango», el residual se calcula con el Rango siguiente (Starter pasa de 1d6 a 1d8).</p>`; }});
 const GLOS_ORD=[['El Entrenador y los Pokémon',['naturalezas','vinculo','rasgos','experiencia']],['Combate',['atacar','evasion','colision','comandar','estados','campo','movesp']],['Concursos',['concurso-pres','concurso-enf']],['Viajes',['captura','monturas']],['Apéndices',['tipos']]];
+GLOS_ORD.push(['Apéndices',['tiradas-dificultad','clases-dado-residuales']]);
 { const pos=new Map(GLOS_ORD.flatMap(([,ids])=>ids).map((id,i)=>[id,i])); GLOS.sort((a,b)=>(pos.has(a.id)?pos.get(a.id):99)-(pos.has(b.id)?pos.get(b.id):99)||a.t.localeCompare(b.t,'es')); }
 function glosIndiceHTML(){ const usados=new Set(GLOS_ORD.flatMap(([,ids])=>ids)); const otros=GLOS.filter(g=>!usados.has(g.id)).map(g=>g.id);
   return [...GLOS_ORD,...(otros.length?[['Otros',otros]]:[])].map(([n,ids])=>{ const gs=ids.map(id=>GLOS.find(g=>g.id===id)).filter(Boolean); if(!gs.length) return '';
@@ -2202,6 +2216,7 @@ function descansoFx(f,ctx){ const out=[]; const l=[f.estF,f.estM].filter(Boolean
   if(l.length){ f.estF=''; f.estM=''; f.estFx={}; out.push(`se libera de ${l.join(' y ')}`); }
   const r=giveEstado(f,'Adormilado',ctx,true);
   if(f.estM==='Adormilado'){ f.estFx={...(f.estFx||{}),M:{...((f.estFx||{}).M||{}),libre:1}}; out.push('Adormilado (2 rondas, sin Salvación)'); } else out.push(r);
+  f.ic=clamp(num(f.ic)+1,0,5); out.push('+1 al Índice de Crítico');
   if(ctx.by&&inCombat(ctx.by)){ const t=TN(); t.prest=[...new Set([...t.prest,ctx.by])]; t.debt[ctx.by]=num(t.debt[ctx.by])+1; cbWrite({tn:t}); out.push('su Acción de la ronda siguiente queda prestada'); }
   return out; }
 function applyOps(f,ops,role,ctx){
@@ -2564,7 +2579,7 @@ function habAlGolpear(L,z,t,A,m,act0,act1,ps){ const out=[]; const dmg=num(z.val
     if((mm=/^attr:(\w+)$/.exec(k))){ let n=''; mutate(r[4]==='Atacante'?L.byKey:z.key,f=>{ n=habAttr(f,mm[1],hval(v),r[0],r[4]==='Atacante'&&!aliados(L.byKey,z.key)&&z.key); }); if(n) out.push(n); }
     else if((mm=/^causaEst:(\w+)$/.exec(k))){ let n=''; mutate(L.byKey,f=>{ n=giveEstado(f,mm[1],{rank:t.f.rango||'Starter',by:z.key},false); }); if(n) out.push(`${r[0]}: ${charName(A.f)} ${n}`); }
     else if(k==='dañoAtacante'){ const pa=calc(A.f).ps; const val=v==='1/4'?Math.floor(pa/4):v==='1/6'?Math.floor(pa/6):/^2×/.test(v)?2*num(z.val):rollResid(t.f.rango).t; mutate(L.byKey,f=>{ f.dano=num(f.dano)+val; }); out.push(`${r[0]}: ${charName(A.f)} pierde ${val} PS`); } }
-  if(dmg&&m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
+  if(m[3]!=='Estado') for(const r of habRowsOf(A.f,['Siempre'])){ let mm=/^causaEst:(.+)$/.exec(r[5]); if(!mm||(!dmg&&r[3]!=='mov:contacto')||!habCondOk(r[3],A.f,L.byKey,{blanco:t.f,mov:m})) continue;
     if(d(100)>hval(r[7]||100)) continue; const e=pick(mm[1].split('/')); let n=''; mutate(z.key,f=>{ n=giveEstado(f,e,{rank:A.f.rango||'Starter',by:L.byKey},false); }); if(n) out.push(`${r[0]}: ${n}`); }
   if(x.ko) for(const r of habRowsOf(A.f,['Al debilitar'])){ const mm=/^attr:(\w+)(?:\/(\w+))?$/.exec(r[5]); if(!mm) continue; let n=''; mutate(L.byKey,f=>{ n=habAttr(f,mm[1],hval(r[6]),r[0]); }); if(n) out.push(n); }
   return out; }
